@@ -429,7 +429,7 @@ static void jockey3_midi_in_callback(struct urb *urb)
  */
 static void jockey3_wait_for_callback_completion(struct jockey3_chip *chip)
 {
-	unsigned long timeout_jiffies = jiffies + msecs_to_jiffies(10);
+	unsigned long timeout_jiffies = jiffies + msecs_to_jiffies(20);
 	unsigned int spin_count = 0;
 
 	while (1) {
@@ -647,7 +647,7 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 	struct jockey3_pcm_urb_stream *urb_stream =
 		jockey3_get_pcm_urb_stream(chip, substream->stream);
 	unsigned long start_jiffies = jiffies;
-	unsigned long timeout_jiffies = start_jiffies + msecs_to_jiffies(1500);
+	unsigned long timeout_jiffies = start_jiffies + msecs_to_jiffies(2000);
 
 	dev_dbg(&chip->intf0->dev, "PCM prepare stream %d\n", substream->stream);
 	if (jockey3_is_disconnected(chip))
@@ -661,7 +661,7 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 			/*
 			 * Empirical testing shows that the reset cycle required for changing the
 			 * sample rate typically takes around 334 ms, unless the change failed and
-			 * a re-submission is required, in which case it typically takes 1035 ms.
+			 * a re-submission is required, in which case it typically takes 1035 ms.			 
 			 */
 			dev_warn(&chip->intf0->dev, "Timeout waiting for reset completion\n");
 			return -EAGAIN;
