@@ -151,79 +151,107 @@ void ploytec_prepare_out_packet(u8 *buf)
 }
 
 /**
- * ploytec_handshake_step - Perform Ploytec handshake sequence as observed in captured USB traces.
+ * ploytec_get_firmware - Read firmware version from the device
  * @dev: USB device
- * @xfer_buf: Temporary transfer buffer
+ * @xfer_buf: Temporary transfer buffer (at least 3 bytes)
+ *
+ * Performs a request to the device to retrieve the firmware and/or hardware version.
+ * We are doing anything useful with the firmware version yet, but it seems to be required
+ * to request as per the USB traces.
  */
-int ploytec_handshake_step(struct usb_device *dev, void *xfer_buf)
+int ploytec_get_firmware(struct usb_device *dev, void *xfer_buf)
 {
 	u8 *buf = xfer_buf;
-	u8 status;
 	int ret;
 
-	ret = usb_set_interface(dev, 0, 1);
+	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_FIRMWARE, PLOYTEC_REQ_FIRMWARE_TYPE, 0, 0,
+				   buf, 3, 2000, GFP_KERNEL);
 	if (ret < 0)
 		return ret;
 
+	pr_debug("ploytec: Firmware  0x%02x 0x%02x 0x%02x\n", buf[0], buf[1], buf[2]);
+
+	// device with firmware v1.0.6  returns: 0x31, 0x01, 0x06
+	// device with unknown firmware returns: 0x31, 0x01, 0x03
+
+	return 0;
+}
+
+int ploytec_get_status(struct usb_device *dev, void *xfer_buf)
+{
+	u8 *buf = xfer_buf;
+	int ret;
+
+	/* Read Status (Request 0x49) */
+	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_STATUS, PLOYTEC_REQ_STATUS_TYPE, 0, 0,
+				   buf, 1, 2000, GFP_KERNEL);
+	if (ret < 0)
+		return ret;
+
+	return buf[0];
+}
+
+/**
+ * ploytec_initialise_device - Perform Ploytec handshake sequence as observed in USB traces.
+ * @dev: USB device
+ * @xfer_buf: Temporary transfer buffer
+ */
+int ploytec_initialise_device(struct usb_device *dev, void *xfer_buf)
+{
+	int ret;
+
+	// USB trace shows we need to read firmware version after power-up
+	ploytec_get_firmware(dev, xfer_buf);
+
+	// Select Alt Setting 0 to deactivates the audio interface
+	ret = usb_set_interface(dev, 0, 0);
+	if (ret < 0)
+		return ret;
+	ret = usb_set_interface(dev, 1, 0);
+	if (ret < 0)
+		return ret;
+
+	/* Give the hardware some time to respond, otherwise it might not be ready */
+	usleep_range(3000, 5000);
+
+	// Select Alt Setting 1 to activate the audio interface
+	ret = usb_set_interface(dev, 0, 1);
+	if (ret < 0)
+		return ret;
 	ret = usb_set_interface(dev, 1, 1);
 	if (ret < 0)
 		return ret;
 
-	/*
-	 * Read Firmware (Request 0x56):
-	 * This request often fails on the Reloop Jockey3 devices but appears
-	 * to be a necessary "poke" that advances the internal state machine.
-	 *
-	 * TODO: This behavior is currently kept as-is to match observed traces.
-	 * There is an opportunity to improve or replace this once we have a
-	 * better understanding of the Ploytec firmware interaction through
-	 * further protocol analysis or reverse engineering.
-	 */
-	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_FIRMWARE, 0xC0, 0, 0,
-				   buf, 15, 2000, GFP_KERNEL);
-	pr_debug("ploytec: Read Firmware  ret=%d\n", ret);
+	// Clear Feature (ENDPOINT_HALT):
+	usb_clear_halt(dev, usb_rcvbulkpipe(dev, 0x86));
+	usb_clear_halt(dev, usb_sndbulkpipe(dev, 0x05));
+	usb_clear_halt(dev, usb_rcvbulkpipe(dev, 0x83));
 
-	/* Read Status (Request 0x49) */
-	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_STATUS, 0xC0, 0, 0,
-				   buf, 1, 2000, GFP_KERNEL);
-	if (ret < 0)
-		return ret;
+	return ploytec_get_status(dev, xfer_buf);
+}
 
-	status = buf[0];
-	pr_debug("ploytec: Read Status: 0x%02x\n", status);
+/**
+ * ploytec_start_streaming - Trigger the device to start streaming as observed in USB traces.
+ * @dev: USB device
+ * @xfer_buf: Temporary transfer buffer
+ */
+int ploytec_start_streaming(struct usb_device *dev, void *xfer_buf)
+{
+	u8 status;
+	int ret;
 
-	// decode the status bits
-	pr_debug("ploytec: PLOYTEC_STATUS_BIT0  = %d\n", (status & PLOYTEC_STATUS_BIT0) != 0);
-	pr_debug("ploytec: PLOYTEC_STATUS_BIT1  = %d\n", (status & PLOYTEC_STATUS_BIT1) != 0);
-	pr_debug("ploytec: PLOYTEC_STATUS_BIT2  = %d\n", (status & PLOYTEC_STATUS_BIT2) != 0);
-	pr_debug("ploytec: PLOYTEC_STATUS_BIT3  = %d\n", (status & PLOYTEC_STATUS_BIT3) != 0);
-	pr_debug("ploytec: PLOYTEC_STATUS_BIT4  = %d\n", (status & PLOYTEC_STATUS_BIT4) != 0);
-	pr_debug("ploytec: PLOYTEC_STATUS_READY = %d\n", (status & PLOYTEC_STATUS_READY) != 0);
+	status = ploytec_get_status(dev, xfer_buf);
+	pr_debug("ploytec: Start Streaming: Status: 0x%02x\n", status);
 
-	/* Enable device if READY bit is not set */
-	if (!(status & PLOYTEC_STATUS_READY)) {
+	/* Enable device if STREAMING bit is not set */
+	if (!(status & PLOYTEC_STATUS_STREAMING)) {
 		ret = usb_control_msg_send(dev, 0, PLOYTEC_REQ_STATUS, 0x40,
-					   (uint16_t)((status | PLOYTEC_STATUS_READY) & 0xFF),
+					   (uint16_t)((status | PLOYTEC_STATUS_STREAMING) & 0xFF),
 					   0, NULL, 0, 2000, GFP_KERNEL);
 		if (ret < 0)
 			return ret;
 	}
-
-	// test -- read firmware again
-	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_FIRMWARE, 0xC0, 0, 0,
-				   buf, 15, 2000, GFP_KERNEL);
-	pr_debug("ploytec: Read Firmware (2) ret=%d\n", ret);
-
-		/* Read Status (Request 0x49) */
-	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_STATUS, 0xC0, 0, 0,
-				   buf, 1, 2000, GFP_KERNEL);
-	if (ret < 0)
-		return ret;
-
-	status = buf[0];
-	pr_debug("ploytec: Read Status (2): 0x%02x\n", status);
-
-	return 0;
+	return ploytec_get_status(dev, xfer_buf);
 }
 
 /**
@@ -238,7 +266,7 @@ int ploytec_get_rate(struct usb_device *dev, void *xfer_buf, u32 *rate)
 	int ret;
 
 	/* Read rate from Playback EP 0x05 */
-	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_GET_RATE, 0xA2,
+	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_GET_RATE, PLOYTEC_REQ_GET_RATE_TYPE,
 				   0x0100, PLOYTEC_EP_NUM_PCM_OUT | USB_DIR_OUT,
 				   buf, 3, 2000, GFP_KERNEL);
 	if (ret < 0)
@@ -277,13 +305,28 @@ int ploytec_set_rate(struct usb_device *dev, void *xfer_buf, u32 rate)
 		return ret;
 	}
 
-	/* Set rate on Playback EP 0x05 */
-	ret = usb_control_msg_send(dev, 0, PLOYTEC_SET_RATE, PLOYTEC_SET_RATE_TYPE,
-				   0x0100, PLOYTEC_EP_NUM_PCM_OUT | USB_DIR_OUT,
-				   buf, 3, 2000, GFP_KERNEL);
-	if (ret < 0) {
-		pr_err("ploytec: Failed to set rate on EP 0x05: %d\n", ret);
-		return ret;
+	/* 10ms delay to allow device to process the command, as per MacOS driver behavior */
+	usleep_range(10000, 11000);
+
+	/* and after that delay the device needs to be repeatedly "hammered" with rate again... */
+	for (int i = 0; i < 3; i++) {
+		/* Set rate on Capture EP 0x86 */
+		ret = usb_control_msg_send(dev, 0, PLOYTEC_SET_RATE, PLOYTEC_SET_RATE_TYPE,
+					   0x0100, PLOYTEC_EP_NUM_PCM_IN | USB_DIR_IN,
+					   buf, 3, 2000, GFP_KERNEL);
+		if (ret < 0) {
+			pr_err("ploytec: Failed to set rate on EP 0x86: %d\n", ret);
+			return ret;
+		}
+
+		/* Set rate on Playback EP 0x05 */
+		ret = usb_control_msg_send(dev, 0, PLOYTEC_SET_RATE, PLOYTEC_SET_RATE_TYPE,
+					   0x0100, PLOYTEC_EP_NUM_PCM_OUT | USB_DIR_OUT,
+					   buf, 3, 2000, GFP_KERNEL);
+		if (ret < 0) {
+			pr_err("ploytec: Failed to set rate on EP 0x05: %d\n", ret);
+			return ret;
+		}
 	}
 
 	if (ploytec_get_rate(dev, xfer_buf, &current_hw_rate) == 0) {
@@ -347,4 +390,3 @@ u8 ploytec_midi_running_status(struct ploytec_midi_state *state, u8 b, struct de
 	/* No running status expansion active, just send the data byte */
 	return b;
 }
-

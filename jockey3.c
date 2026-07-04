@@ -536,16 +536,38 @@ static void jockey3_start_urbs(struct jockey3_chip *chip)
 static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate)
 {
 	int ret;
+	int current_hw_rate;
 
 	if (jockey3_is_disconnected(chip))
 		return -ENODEV;
 
 	dev_dbg(&chip->intf0->dev, "Setting rate to %u Hz\n", rate);
-	ret = ploytec_set_rate(chip->dev, chip->xfer_buf, rate);
+
+	ret = ploytec_initialise_device(chip->dev, chip->xfer_buf);
 	if (ret < 0) {
-		dev_err(&chip->intf0->dev, "Failed to set rate: %d\n", ret);
+		dev_err(&chip->intf0->dev, "set_rate: Failed to initialise device: %d\n", ret);
 		return ret;
 	}
+
+	ploytec_get_rate(chip->dev, chip->xfer_buf, &current_hw_rate);
+	dev_dbg(&chip->intf0->dev, "Current hardware rate: %u Hz\n", current_hw_rate);
+	if (current_hw_rate != rate) {
+		dev_dbg(&chip->intf0->dev, "Setting new hardware rate: %u Hz\n", rate);
+		ret = ploytec_set_rate(chip->dev, chip->xfer_buf, rate);
+		if (ret < 0) {
+			dev_err(&chip->intf0->dev, "Failed to set rate: %d\n", ret);
+			return ret;
+		}
+	} else {
+		dev_dbg(&chip->intf0->dev, "Hardware rate already at requested value: %u Hz\n",
+			current_hw_rate);
+	}
+	ret = ploytec_start_streaming(chip->dev, chip->xfer_buf);
+	if (ret < 0) {
+		dev_err(&chip->intf0->dev, "set_rate: Failed to start streaming: %d\n", ret);
+		return ret;
+	}
+
 	dev_dbg(&chip->intf0->dev, "Rate set OK\n");
 	return 0;
 }
@@ -647,7 +669,7 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 	struct jockey3_pcm_urb_stream *urb_stream =
 		jockey3_get_pcm_urb_stream(chip, substream->stream);
 	unsigned long start_jiffies = jiffies;
-	unsigned long timeout_jiffies = start_jiffies + msecs_to_jiffies(2000);
+	unsigned long timeout_jiffies = start_jiffies + msecs_to_jiffies(1000);
 
 	dev_dbg(&chip->intf0->dev, "PCM prepare stream %d\n", substream->stream);
 	if (jockey3_is_disconnected(chip))
@@ -659,9 +681,9 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 			return -ENODEV;
 		if (time_after(jiffies, timeout_jiffies)) {
 			/*
-			 * Empirical testing shows that the reset cycle required for changing the
-			 * sample rate typically takes around 334 ms, unless the change failed and
-			 * a re-submission is required, in which case it typically takes 1035 ms.			 
+			 * Empirical testing shows that the reset cycle typically takes
+			 * around 334 ms; so a 1000 ms timeout should give is sufficient
+			 * headroom for the reset to complete.
 			 */
 			dev_warn(&chip->intf0->dev, "Timeout waiting for reset completion\n");
 			return -EAGAIN;
@@ -720,19 +742,26 @@ static snd_pcm_uframes_t jockey3_pcm_pointer(struct snd_pcm_substream *substream
 	return bytes_to_frames(substream->runtime, dma_off);
 }
 
-static int jockey3_handshake_step(struct jockey3_chip *chip)
+static int jockey3_initialise_ploytec(struct jockey3_chip *chip)
 {
 	int ret;
 
 	if (jockey3_is_disconnected(chip))
 		return -ENODEV;
 
-	ret = ploytec_handshake_step(chip->dev, chip->xfer_buf);
+	ret = ploytec_initialise_device(chip->dev, chip->xfer_buf);
 	if (ret < 0) {
-		dev_err(&chip->intf0->dev, "Ploytec handshake failed: %d\n", ret);
+		dev_err(&chip->intf0->dev, "Ploytec failed to initialise: %d\n", ret);
 		return ret;
 	}
 
+	ret = ploytec_start_streaming(chip->dev, chip->xfer_buf);
+	if (ret < 0) {
+		dev_err(&chip->intf0->dev, "Ploytec failed to start streaming: %d\n", ret);
+		return ret;
+	}
+
+	dev_dbg(&chip->intf0->dev, "Ploytec initialised successfully; status = %02x\n", ret);
 	return 0;
 }
 
@@ -780,26 +809,9 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 		chip->current_rate = rate;
 		spin_unlock_irqrestore(&chip->midi_lock, flags);
 	}
+	jockey3_start_urbs(chip);
 
-	dev_dbg(&chip->intf0->dev, "Rate changed to %u successfully, resetting device\n",
-		rate);
-	/*
-	 * Ploytec firmware re-synchronization:
-	 * Ploytec firmware require a full USB reset to re-synchronize the internal
-	 * engine after a sample rate change. Without this, the Capture EP (0x86)
-	 * often stalls or stops transmitting data, leading to EIO errors in ALSA.
-	 *
-	 * TODO: This behavior is currently kept as-is to match observed traces.
-	 * There is an opportunity to improve or replace this once we have a
-	 * better understanding of the Ploytec firmware interaction through
-	 * further protocol analysis or reverse engineering.
-	 *
-	 * pre_reset/post_reset callbacks handle the URB lifecycle.
-	 * We call this outside the rate_mutex to allow pre/post_reset to acquire it.
-	 */
-	set_bit(JOCKEY3_FLAG_RESETTING, &chip->flags);
-	usb_queue_reset_device(chip->intf0);
-
+	dev_dbg(&chip->intf0->dev, "Rate changed to %u successfully\n", rate);
 	return 0;
 }
 
@@ -868,14 +880,21 @@ static const struct snd_rawmidi_ops jockey3_midi_out_ops = {
 	.trigger = jockey3_midi_out_trigger
 };
 
-static int jockey3_handshake(struct jockey3_chip *chip)
+static int jockey3_initialise(struct jockey3_chip *chip)
 {
 	int ret;
 	int rate;
 
-	ret = jockey3_handshake_step(chip);
-	if (ret < 0)
+	for (int retry = 5; retry > 0; retry--) {
+		ret = jockey3_initialise_ploytec(chip);
+		if (ret == 0)
+			break;
+		usleep_range(50000, 100000); /* Wait 50-100 ms before retrying */
+	}
+	if (ret < 0) {
+		dev_err(&chip->intf0->dev, "Failed to initialise Ploytec: %d\n", ret);
 		return ret;
+	}
 
 	scoped_guard(spinlock_irqsave, &chip->midi_lock) {
 		chip->current_rate = 44100;
@@ -885,9 +904,9 @@ static int jockey3_handshake(struct jockey3_chip *chip)
 	if (ret < 0)
 		return ret;
 
-	dev_dbg(&chip->intf0->dev, "Handshake complete.\n");
-
 	jockey3_start_urbs(chip);
+
+	dev_dbg(&chip->intf0->dev, "Initialisation complete.\n");
 
 	return 0;
 }
@@ -1197,7 +1216,7 @@ static int jockey3_probe(struct usb_interface *intf, const struct usb_device_id 
 		return ret;
 
 	usb_set_intfdata(intf, chip);
-	ret = jockey3_handshake(chip);
+	ret = jockey3_initialise(chip);
 	if (ret < 0)
 		return ret;
 
@@ -1246,7 +1265,7 @@ static int jockey3_post_reset(struct usb_interface *intf)
 	u32 hw_rate = 0;
 
 	if (chip && intf == chip->intf0) {
-		jockey3_handshake_step(chip);
+		jockey3_initialise_ploytec(chip);
 
 		/* Verify if the sample rate persisted through the reset */
 		if (ploytec_get_rate(chip->dev, chip->xfer_buf, &hw_rate) == 0) {
@@ -1291,7 +1310,7 @@ static int jockey3_restore_device(struct jockey3_chip *chip, bool reset)
 
 	scoped_guard(mutex, &chip->rate_mutex) {
 		if (reset) {
-			ret = jockey3_handshake_step(chip);
+			ret = jockey3_initialise_ploytec(chip);
 			if (ret < 0)
 				return ret;
 		}
