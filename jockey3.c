@@ -470,9 +470,6 @@ static void jockey3_wait_for_callback_completion(struct jockey3_chip *chip)
 static void jockey3_stop_urbs(struct jockey3_chip *chip)
 {
 	dev_dbg(&chip->intf0->dev, "Stopping all URBs\n");
-	dev_dbg(&chip->intf0->dev, "%s: capture urbs = %d, capture urbs = %d, flags=%ld\n",
-		__func__, atomic_read(&chip->capture.urbs_in_flight),
-		atomic_read(&chip->playback.urbs_in_flight), chip->flags);
 
 	set_bit(JOCKEY3_FLAG_STOPPING, &chip->flags);
 
@@ -527,10 +524,6 @@ static void jockey3_start_urbs(struct jockey3_chip *chip)
 	ret = usb_submit_urb(chip->midi_in_urb, GFP_KERNEL);
 	if (ret < 0)
 		dev_err(&chip->intf0->dev, "Failed to submit MIDI IN URB: %d\n", ret);
-
-	dev_dbg(&chip->intf0->dev, "%s: capture urbs = %d, capture urbs = %d, flags=%ld\n",
-		__func__, atomic_read(&chip->capture.urbs_in_flight),
-		atomic_read(&chip->playback.urbs_in_flight), chip->flags);
 }
 
 static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate)
@@ -543,15 +536,16 @@ static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate)
 
 	dev_dbg(&chip->intf0->dev, "Setting rate to %u Hz\n", rate);
 
-	ret = ploytec_initialise_device(chip->dev, chip->xfer_buf);
-	if (ret < 0) {
-		dev_err(&chip->intf0->dev, "set_rate: Failed to initialise device: %d\n", ret);
-		return ret;
-	}
-
 	ploytec_get_rate(chip->dev, chip->xfer_buf, &current_hw_rate);
 	dev_dbg(&chip->intf0->dev, "Current hardware rate: %u Hz\n", current_hw_rate);
 	if (current_hw_rate != rate) {
+		ret = ploytec_initialise_device(chip->dev, chip->xfer_buf);
+		if (ret < 0) {
+			dev_err(&chip->intf0->dev, "Failed to initialise device to change rate: %d\n",
+				ret);
+			return ret;
+		}
+
 		dev_dbg(&chip->intf0->dev, "Setting new hardware rate: %u Hz\n", rate);
 		ret = ploytec_set_rate(chip->dev, chip->xfer_buf, rate);
 		if (ret < 0) {
@@ -564,7 +558,8 @@ static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate)
 	}
 	ret = ploytec_start_streaming(chip->dev, chip->xfer_buf);
 	if (ret < 0) {
-		dev_err(&chip->intf0->dev, "set_rate: Failed to start streaming: %d\n", ret);
+		dev_err(&chip->intf0->dev, "Failed to start streaming after rate change: %d\n",
+			ret);
 		return ret;
 	}
 
