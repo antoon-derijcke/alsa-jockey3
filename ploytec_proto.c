@@ -164,16 +164,21 @@ int ploytec_get_firmware(struct usb_device *dev, void *xfer_buf)
 	u8 *buf = xfer_buf;
 	int ret;
 
+	if (!dev)
+		return -ENODEV;
+	if (!xfer_buf)
+		return -EINVAL;
+
 	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_FIRMWARE, PLOYTEC_REQ_FIRMWARE_TYPE, 0, 0,
 				   buf, 3, 2000, GFP_KERNEL);
 	if (ret < 0)
 		return ret;
 
-	pr_debug("ploytec: Firmware  0x%02x 0x%02x 0x%02x\n", buf[0], buf[1], buf[2]);
-
+	// device with firmware v1.0.3  returns: 0x31, 0x01, 0x03
 	// device with firmware v1.0.6  returns: 0x31, 0x01, 0x06
-	// device with unknown firmware returns: 0x31, 0x01, 0x03
-
+	// buf[0] = 0x31, educated guess this may be hardware model/revision
+	pr_debug("ploytec: Firmware  0x%02x v%d.%d.%d\n", buf[0],
+		 buf[1], buf[2] >> 4, buf[2] & 0x0F);
 	return 0;
 }
 
@@ -181,6 +186,11 @@ int ploytec_get_status(struct usb_device *dev, void *xfer_buf)
 {
 	u8 *buf = xfer_buf;
 	int ret;
+
+	if (!dev)
+		return -ENODEV;
+	if (!xfer_buf)
+		return -EINVAL;
 
 	/* Read Status (Request 0x49) */
 	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_STATUS, PLOYTEC_REQ_STATUS_TYPE, 0, 0,
@@ -240,6 +250,11 @@ int ploytec_start_streaming(struct usb_device *dev, void *xfer_buf)
 	u8 status;
 	int ret;
 
+	if (!dev)
+		return -ENODEV;
+	if (!xfer_buf)
+		return -EINVAL;
+
 	status = ploytec_get_status(dev, xfer_buf);
 	pr_debug("ploytec: Start Streaming: Status: 0x%02x\n", status);
 
@@ -265,6 +280,11 @@ int ploytec_get_rate(struct usb_device *dev, void *xfer_buf, u32 *rate)
 	u8 *buf = xfer_buf;
 	int ret;
 
+	if (!dev)
+		return -ENODEV;
+	if (!xfer_buf)
+		return -EINVAL;
+
 	/* Read rate from Playback EP 0x05 */
 	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_GET_RATE, PLOYTEC_REQ_GET_RATE_TYPE,
 				   0x0100, PLOYTEC_EP_NUM_PCM_OUT | USB_DIR_OUT,
@@ -288,6 +308,11 @@ int ploytec_set_rate(struct usb_device *dev, void *xfer_buf, u32 rate)
 	u32 current_hw_rate = 0;
 	int ret;
 
+	if (!dev)
+		return -ENODEV;
+	if (!xfer_buf)
+		return -EINVAL;
+
 	ploytec_get_rate(dev, xfer_buf, &current_hw_rate);
 	pr_debug("ploytec: Setting rate %u Hz (current hw rate: %u Hz)\n",
 		 rate, current_hw_rate);
@@ -308,7 +333,7 @@ int ploytec_set_rate(struct usb_device *dev, void *xfer_buf, u32 rate)
 	/* 10ms delay to allow device to process the command, as per MacOS driver behavior */
 	usleep_range(10000, 11000);
 
-	/* and after that delay the device needs to be repeatedly "hammered" with rate again... */
+	/* and after that delay the device is repeatedly "hammered" with rate again... */
 	for (int i = 0; i < 3; i++) {
 		/* Set rate on Capture EP 0x86 */
 		ret = usb_control_msg_send(dev, 0, PLOYTEC_SET_RATE, PLOYTEC_SET_RATE_TYPE,

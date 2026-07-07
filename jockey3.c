@@ -1166,7 +1166,7 @@ static int jockey3_probe(struct usb_interface *intf, const struct usb_device_id 
 	init_usb_anchor(&chip->playback.anchor);
 	init_usb_anchor(&chip->capture.anchor);
 
-	chip->xfer_buf = kmalloc(64, GFP_KERNEL);
+	chip->xfer_buf = kmalloc(USB_XFER_BUF_SIZE, GFP_KERNEL);
 	if (!chip->xfer_buf)
 		return -ENOMEM;
 	ret = devm_add_action_or_reset(&intf->dev, jockey3_kfree_action, chip->xfer_buf);

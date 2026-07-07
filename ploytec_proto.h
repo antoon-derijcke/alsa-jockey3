@@ -12,6 +12,8 @@
 #include <linux/types.h>
 #include <linux/usb.h>
 
+#define USB_XFER_BUF_SIZE		64	// temporary buffer for USB control transfers
+
 /* Ploytec Protocol Constants */
 #define PLOYTEC_PKT_SIZE		512
 
