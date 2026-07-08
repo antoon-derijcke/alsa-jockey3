@@ -11,12 +11,12 @@
 #include <linux/delay.h>
 #include <linux/jiffies.h>
 #include <linux/bitops.h>
+#include <linux/mutex.h>
+#include <linux/cleanup.h>
 #include <sound/core.h>
 #include <sound/initval.h>
 #include <sound/rawmidi.h>
 #include <sound/pcm.h>
-#include <linux/mutex.h>
-#include <linux/cleanup.h>
 #include "ploytec_proto.h"
 
 #define RELOOP_VENDOR_ID         0x200c
