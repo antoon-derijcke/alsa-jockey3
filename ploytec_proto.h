@@ -52,10 +52,6 @@
 #define PLOYTEC_STATUS_BIT4		0x10
 #define PLOYTEC_STATUS_STREAMING	0x20
 
-/* Bit-shuffling codec for S24_3LE (3 bytes per sample) */
-void ploytec_encode_s24_3le(u8 *dest, const u8 *src);
-void ploytec_decode_s24_3le(u8 *dest, const u8 *src);
-
 struct ploytec_midi_state {
 	int expected_data;	// number data bytes for the 'running status' voice message
 	int data_count;

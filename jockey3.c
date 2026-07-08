@@ -18,6 +18,7 @@
 #include <sound/rawmidi.h>
 #include <sound/pcm.h>
 #include "ploytec_proto.h"
+#include "ploytec_codec.h"
 
 #define RELOOP_VENDOR_ID         0x200c
 #define RELOOP_JOCKEY3_ME_PID    0x1009
