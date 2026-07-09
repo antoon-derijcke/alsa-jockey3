@@ -136,9 +136,9 @@ static bool jockey3_process_out_packet(struct jockey3_chip *chip, u8 *urb_buf)
 	struct snd_pcm_runtime *runtime;
 	unsigned int pcm_buffer_size;
 	unsigned int alsa_frame_size;
-//	unsigned int frames_in_batch;
-//	unsigned int bytes_avail;
-	int f;
+	unsigned int frames_in_batch;
+	unsigned int bytes_avail;
+	int f = 0;
 
 	if (unlikely(!substream || !substream->runtime))
 		return false;
@@ -150,13 +150,29 @@ static bool jockey3_process_out_packet(struct jockey3_chip *chip, u8 *urb_buf)
 	pcm_buffer_size = snd_pcm_lib_buffer_bytes(substream);
 	alsa_frame_size = runtime->channels * 3;  // 4 * 3 = 12 bytes
 
-	for (f = 0; f < PLOYTEC_PLAYBACK_FRAMES; f++) {
-		ploytec_encode_s24_3le(urb_buf + f * PLOYTEC_PLAYBACK_FRAME_SIZE,
-				       runtime->dma_area + urb_stream->dma_off);
-		urb_stream->dma_off += alsa_frame_size;
+	while (f < PLOYTEC_PLAYBACK_FRAMES) {
+		/* calculate how many samples we can process in one batch */
+		frames_in_batch = PLOYTEC_PLAYBACK_FRAMES - f;
+		bytes_avail = pcm_buffer_size - urb_stream->dma_off;
+
+		/* Respect circular buffer wrap-around */
+		if (bytes_avail < frames_in_batch * alsa_frame_size)
+			frames_in_batch = bytes_avail / alsa_frame_size;
+
+		if (frames_in_batch == 0)
+			break;
+
+		ploytec_encode_batch(urb_buf + f * PLOYTEC_PLAYBACK_FRAME_SIZE,
+				     runtime->dma_area + urb_stream->dma_off,
+				     frames_in_batch);
+
+		urb_stream->dma_off += frames_in_batch * alsa_frame_size;
 		if (urb_stream->dma_off >= pcm_buffer_size)
 			urb_stream->dma_off -= pcm_buffer_size;
-		urb_stream->period_off += alsa_frame_size;
+
+		urb_stream->period_off += frames_in_batch * alsa_frame_size;
+
+		f += frames_in_batch;
 	}
 
 	if (urb_stream->period_off >= runtime->period_size * alsa_frame_size) {
@@ -174,7 +190,9 @@ static bool jockey3_process_in_packet(struct jockey3_chip *chip, const u8 *urb_b
 	struct snd_pcm_runtime *runtime;
 	unsigned int pcm_buffer_size;
 	unsigned int alsa_frame_size;
-	int f;
+	unsigned int frames_in_batch;
+	unsigned int bytes_left;
+	int f = 0;
 
 	if (unlikely(!substream || !substream->runtime))
 		return false;
@@ -186,13 +204,29 @@ static bool jockey3_process_in_packet(struct jockey3_chip *chip, const u8 *urb_b
 	pcm_buffer_size = snd_pcm_lib_buffer_bytes(substream);
 	alsa_frame_size = runtime->channels * 3; // 6 * 3 = 18 bytes
 
-	for (f = 0; f < PLOYTEC_CAPTURE_FRAMES; f++) {
-		ploytec_decode_s24_3le(runtime->dma_area + urb_stream->dma_off,
-				       urb_buf + f * PLOYTEC_CAPTURE_FRAME_SIZE);
-		urb_stream->dma_off += alsa_frame_size;
+	while (f < PLOYTEC_CAPTURE_FRAMES) {
+		frames_in_batch = PLOYTEC_CAPTURE_FRAMES - f;
+		bytes_left = pcm_buffer_size - urb_stream->dma_off;
+
+		/* Respect circular buffer wrap-around */
+		if (bytes_left < frames_in_batch * alsa_frame_size)
+			frames_in_batch = bytes_left / alsa_frame_size;
+
+		if (frames_in_batch == 0)
+			break;
+
+		ploytec_decode_batch(runtime->dma_area + urb_stream->dma_off,
+				     urb_buf + f * PLOYTEC_CAPTURE_FRAME_SIZE,
+				     frames_in_batch);
+
+		/* Advance pointers */
+		urb_stream->dma_off += frames_in_batch * alsa_frame_size;
 		if (urb_stream->dma_off >= pcm_buffer_size)
 			urb_stream->dma_off -= pcm_buffer_size;
-		urb_stream->period_off += alsa_frame_size;
+
+		urb_stream->period_off += frames_in_batch * alsa_frame_size;
+
+		f += frames_in_batch;
 	}
 
 	if (urb_stream->period_off >= runtime->period_size * alsa_frame_size) {

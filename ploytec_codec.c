@@ -26,7 +26,7 @@
  * - bit 0 of each byte corresponds to the first channel in the pair.
  * - bit 1 of each byte corresponds to the second channel in the pair.
  */
-void ploytec_encode_s24_3le(u8 *dest, const u8 *src)
+static inline void ploytec_encode_s24_3le(u8 *dest, const u8 *src)
 {
 	int i;
 
@@ -70,7 +70,7 @@ void ploytec_encode_s24_3le(u8 *dest, const u8 *src)
  * - Bytes 0x00-0x17: Pair 1 (bits 0,1,2)
  * - Bytes 0x20-0x37: Pair 2 (bits 0,1,2)
  */
-void ploytec_decode_s24_3le(u8 *dest, const u8 *src)
+static inline void ploytec_decode_s24_3le(u8 *dest, const u8 *src)
 {
 	int i;
 
