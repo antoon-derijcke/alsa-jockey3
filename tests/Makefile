@@ -7,7 +7,7 @@ test: test_codec
 	@echo running test
 	./test_codec
 
-test_codec: test_ploytec_codec.o ploytec_codec.o
+test_codec: test_ploytec_codec.o ploytec_codec.o ploytec_codec_new.o
 	$(CC) $(CFLAGS) -isystem stubs -o $@ $^
 
 clean:
@@ -20,6 +20,9 @@ ploytec_codec.c:
 	ln -s ../ploytec_codec.h ploytec_codec.h
 
 ploytec_codec.o: ploytec_codec.c
+	$(CC) $(CFLAGS) -isystem stubs -c $< -o $@
+
+ploytec_codec_new.o: ploytec_codec_new.c
 	$(CC) $(CFLAGS) -isystem stubs -c $< -o $@
 
 

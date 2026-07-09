@@ -136,6 +136,8 @@ static bool jockey3_process_out_packet(struct jockey3_chip *chip, u8 *urb_buf)
 	struct snd_pcm_runtime *runtime;
 	unsigned int pcm_buffer_size;
 	unsigned int alsa_frame_size;
+//	unsigned int frames_in_batch;
+//	unsigned int bytes_avail;
 	int f;
 
 	if (unlikely(!substream || !substream->runtime))
@@ -664,8 +666,7 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 	struct jockey3_chip *chip = snd_pcm_substream_chip(substream);
 	struct jockey3_pcm_urb_stream *urb_stream =
 		jockey3_get_pcm_urb_stream(chip, substream->stream);
-	unsigned long start_jiffies = jiffies;
-	unsigned long timeout_jiffies = start_jiffies + msecs_to_jiffies(1000);
+	unsigned long timeout_jiffies = jiffies + msecs_to_jiffies(1000);
 
 	dev_dbg(&chip->intf0->dev, "PCM prepare stream %d\n", substream->stream);
 	if (jockey3_is_disconnected(chip))
@@ -678,15 +679,13 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 		if (time_after(jiffies, timeout_jiffies)) {
 			/*
 			 * Empirical testing shows that the reset cycle typically takes
-			 * around 334 ms; so a 1000 ms timeout should give is sufficient
+			 * around 334 ms; so a 1000 ms timeout should give us sufficient
 			 * headroom for the reset to complete.
 			 */
 			dev_warn(&chip->intf0->dev, "Timeout waiting for reset completion\n");
 			return -EAGAIN;
 		}
 	}
-	dev_dbg(&chip->intf0->dev, "%s waited %d ms for reset completion.\n",
-		__func__, jiffies_to_msecs(jiffies - start_jiffies));
 
 	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
 		urb_stream->dma_off = 0;
@@ -757,7 +756,7 @@ static int jockey3_initialise_ploytec(struct jockey3_chip *chip)
 		return ret;
 	}
 
-	dev_dbg(&chip->intf0->dev, "Ploytec initialised successfully; status = %02x\n", ret);
+	dev_dbg(&chip->intf0->dev, "Ploytec initialised successfully; status = 0x%02x\n", ret);
 	return 0;
 }
 
@@ -881,7 +880,7 @@ static int jockey3_initialise(struct jockey3_chip *chip)
 	int ret;
 	int rate;
 
-	for (int retry = 5; retry > 0; retry--) {
+	for (int retry = 10; retry > 0; retry--) {
 		ret = jockey3_initialise_ploytec(chip);
 		if (ret == 0)
 			break;
@@ -893,7 +892,7 @@ static int jockey3_initialise(struct jockey3_chip *chip)
 	}
 
 	scoped_guard(spinlock_irqsave, &chip->midi_lock) {
-		chip->current_rate = 44100;
+		chip->current_rate = 44100;	// default sample rate at power-on
 		rate = chip->current_rate;
 	}
 	ret = jockey3_set_rate(chip, rate);
@@ -1267,7 +1266,7 @@ static int jockey3_post_reset(struct usb_interface *intf)
 		if (ploytec_get_rate(chip->dev, chip->xfer_buf, &hw_rate) == 0) {
 			if (hw_rate != chip->current_rate) {
 				dev_warn(&chip->intf0->dev,
-					 "Rate mismatch after reset! HW: %u, Expected: %u. Re-applying...\n",
+					 "Rate mismatch after reset. HW: %u, Expected: %u. Re-applying...\n",
 					 hw_rate, chip->current_rate);
 				jockey3_set_rate(chip, chip->current_rate);
 			} else {

@@ -11,8 +11,19 @@
 
 #include <linux/types.h>
 
+#define PLOYTEC_PLAYBACK_FRAMES		10	// number of samples per Frame
+#define PLOYTEC_PLAYBACK_FRAME_SIZE	48
+
+#define PLOYTEC_CAPTURE_FRAMES		8	// number of samples per frame
+#define PLOYTEC_CAPTURE_FRAME_SIZE	64
+
 /* Bit-shuffling codec for S24_3LE (3 bytes per sample) */
 void ploytec_encode_s24_3le(u8 *dest, const u8 *src);
 void ploytec_decode_s24_3le(u8 *dest, const u8 *src);
+
+/* batching of the sample processing */
+void ploytec_encode_batch(u8 *dest, const u8 *src, const int n_frames);
+void ploytec_decode_batch(u8 *dest, const u8 *src, const int n_frames);
+
 
 #endif /* PLOYTEC_CODEC_H */

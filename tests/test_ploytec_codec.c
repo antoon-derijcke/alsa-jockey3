@@ -12,55 +12,20 @@
 #include <time.h>
 #include <stdint.h>
 #include "ploytec_codec.h"
+#include "ploytec_codec_new.h"
 
 #define TEST_ITERATIONS		1000000
-#define BENCHMARK_ITERATIONS	1000000
+#define BENCHMARK_ITERATIONS	100000000
 
 typedef void (*encode_fn_t)(uint8_t *dest, const uint8_t *src);
 typedef void (*decode_fn_t)(uint8_t *dest, const uint8_t *src);
 
-/* Reference implementations (copy of the ones in ploytec_proto.c) */
-static void reference_encode_s24_3le(u8 *dest, const u8 *src)
-{
-	int i;
-
-	/* First 24 bytes: odd channels (ALSA Ch 1 & 3) */
-	for (i = 0; i < 8; i++) {
-		dest[i]     = (((src[2] >> (7 - i)) & 1) << 0) | (((src[8] >> (7 - i)) & 1) << 1);
-		dest[8+i]   = (((src[1] >> (7 - i)) & 1) << 0) | (((src[7] >> (7 - i)) & 1) << 1);
-		dest[16+i]  = (((src[0] >> (7 - i)) & 1) << 0) | (((src[6] >> (7 - i)) & 1) << 1);
-	}
-
-	/* Second 24 bytes: even channels (ALSA Ch 2 & 4) */
-	for (i = 0; i < 8; i++) {
-		dest[24+i] = (((src[5] >> (7 - i)) & 1) << 0) | (((src[11] >> (7 - i)) & 1) << 1);
-		dest[32+i] = (((src[4] >> (7 - i)) & 1) << 0) | (((src[10] >> (7 - i)) & 1) << 1);
-		dest[40+i] = (((src[3] >> (7 - i)) & 1) << 0) | (((src[9] >> (7 - i)) & 1) << 1);
-	}
-}
-
-static void reference_decode_s24_3le(u8 *dest, const u8 *src)
-{
-    int i;
-    memset(dest, 0, 18);
-
-    /* Channel 1 (bit 0 of bytes 0x00-0x17) */
-    for (i = 0; i < 8; i++) {
-        dest[0] |= ((src[0x10 + i] & 0x01) << (7 - i));
-        dest[1] |= ((src[0x08 + i] & 0x01) << (7 - i));
-        dest[2] |= ((src[0x00 + i] & 0x01) << (7 - i));
-    }
-    /* ... (rest of the reference decode - copy full function from ploytec_proto.c if you want a pure reference) */
-    /* For brevity, we'll use the real functions for decode validation too. */
-}
-
 /* Simple random data generator */
 static void fill_random(uint8_t *buf, size_t len)
 {
-    for (size_t i = 0; i < len; i++)
-        buf[i] = rand() & 0xFF;
+	for (size_t i = 0; i < len; i++)
+		buf[i] = rand() & 0xFF;
 }
-
 
 unsigned int validate_encoder(void)
 {
@@ -81,14 +46,22 @@ unsigned int validate_encoder(void)
 		* encoded_opt and encoded_ref are the outputs 
 		*/
 
-		ploytec_encode_s24_3le(encoded_ref, src);	// "known good" reference implementation
+		ploytec_encode_s24_3le_version1(encoded_ref, src);	// "known good" reference implementation
 
 		/* put here the different encoders we'd like to compare against the reference... */
-		ploytec_encode_s24_3le(encoded_opt, src);
+
+		ploytec_encode_s24_3le(encoded_opt, src);	// version in the jockey3 driver
 		if (memcmp(encoded_opt, encoded_ref, 48) != 0) {
 			errors++;
 			if (errors < 5)
-				printf("Encode mismatch at iteration %d\n", t);
+				printf("Encode mismatch at iteration %d (loopcombined)\n", t);
+		}	
+		
+		ploytec_encode_s24_3le_loopcombined(encoded_opt, src);
+		if (memcmp(encoded_opt, encoded_ref, 48) != 0) {
+			errors++;
+			if (errors < 5)
+				printf("Encode mismatch at iteration %d (loopcombined)\n", t);
 		}	
 	}
 
@@ -115,14 +88,22 @@ unsigned int validate_decoder(void)
 		* input = src for both,
 		* decoded_opt and decoded_ref are the outputs 
 		*/		
-		ploytec_decode_s24_3le(decoded_ref, src);	// "known good" reference implementation
+		ploytec_decode_s24_3le_version1(decoded_ref, src);	// "known good" reference implementation
 
 		/* put here the different decoders we'd like to compare against the reference... */
-		ploytec_decode_s24_3le(decoded_opt, src);
+		
+		ploytec_decode_s24_3le(decoded_opt, src);	// version in the jockey3 driver
 		if (memcmp(decoded_opt, decoded_ref, 6 * 3) != 0) {
 			errors++;
 			if (errors < 5)
-				printf("Decode mismatch at iteration %d\n", t);
+				printf("Decode mismatch at iteration %d (loopcombined)\n", t);
+		}
+			
+		ploytec_decode_s24_3le_loopcombined(decoded_opt, src);
+		if (memcmp(decoded_opt, decoded_ref, 6 * 3) != 0) {
+			errors++;
+			if (errors < 5)
+				printf("Decode mismatch at iteration %d (loopcombined)\n", t);
 		}	
 	}
 
@@ -131,7 +112,7 @@ unsigned int validate_decoder(void)
 
 
 
-void encode_benchmark(const char *label, encode_fn_t encode_fn)
+float encode_benchmark(const char *label, encode_fn_t encode_fn, float baseline)
 {
 	int frames = 1 << 10;	// 1024 frames (must be a power of 2)
 	uint8_t src[frames * 3 * 4];		// 4ch * 3 bytes (encode input)
@@ -150,12 +131,17 @@ void encode_benchmark(const char *label, encode_fn_t encode_fn)
 	}
 	end = clock();
 	time_ms = ((double)(end - start) * 1000.0) / CLOCKS_PER_SEC;
-	printf("Encode %s: %.2f ms (%.2f ns/call)\n",
-		label, time_ms, (time_ms * 1e6) / BENCHMARK_ITERATIONS);
+
+	if (baseline <0)
+		baseline = time_ms;
+
+	printf("Encode %s: %.2f ms (%.2f ns/call) %.1f%%\n",
+		label, time_ms, (time_ms * 1e6) / BENCHMARK_ITERATIONS, 100 * time_ms / baseline);
 	
+	return time_ms;
 }
 
-void decode_benchmark(const char *label, decode_fn_t decode_fn)
+float decode_benchmark(const char *label, decode_fn_t decode_fn, float baseline)
 {
 	int frames = 1 << 10;	// 1024 frames (must be a power of 2)
 	uint8_t src[frames * 64];	// 64 byte input frame 
@@ -168,20 +154,27 @@ void decode_benchmark(const char *label, decode_fn_t decode_fn)
 
 	start = clock();
 	for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-		/* feed diffrent data too the decoder to avoid the compiler from optimizing it out...*/
+		/* feed different data too the decoder to avoid the compiler from optimizing it out...*/
 		decode_fn(decoded, &src[frame*64]);
 		src[frame * 64] = decoded[12];
 		frame = (frame + 1) % frames;
 	}
 	end = clock();
 	time_ms = ((double)(end - start) * 1000.0) / CLOCKS_PER_SEC;
-	printf("Decode %s: %.2f ms (%.2f ns/call)\n",
-		label, time_ms, (time_ms * 1e6) / BENCHMARK_ITERATIONS);
+
+	if (baseline <0)
+		baseline = time_ms;
+
+	printf("Decode %s: %.2f ms (%.2f ns/call) %.1f%%\n",
+		label, time_ms, (time_ms * 1e6) / BENCHMARK_ITERATIONS, 100 * time_ms / baseline);
+
+	return time_ms;
 }
 
 int main(void)
 {
 	unsigned int errors = 0;
+	float baseline;
 	
 	printf("Ploytec codec test / benchmark\n\n");
 
@@ -208,8 +201,11 @@ int main(void)
 
 	/* === Benchmark === */
 	printf("\n=== Performance benchmark (%d iterations) ===\n", BENCHMARK_ITERATIONS);
-	encode_benchmark("Original", ploytec_encode_s24_3le);
-	decode_benchmark("Original", ploytec_decode_s24_3le);
+	baseline = encode_benchmark("Original", ploytec_encode_s24_3le_version1, -1);
+	encode_benchmark("LoopCombined", ploytec_encode_s24_3le_loopcombined, baseline);
+
+	baseline = decode_benchmark("Original", ploytec_decode_s24_3le_version1, -1);
+	decode_benchmark("LoopCombined", ploytec_decode_s24_3le_loopcombined, baseline);
 
 	return errors ? 1 : 0;
 }
