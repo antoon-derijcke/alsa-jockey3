@@ -539,16 +539,16 @@ static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate)
 
 	dev_dbg(&chip->intf0->dev, "Setting rate to %u Hz\n", rate);
 
+	ret = ploytec_initialise_device(chip->dev, chip->xfer_buf);
+	if (ret < 0) {
+		dev_err(&chip->intf0->dev, "Failed to initialise device to change rate: %d\n",
+			ret);
+		return ret;
+	}
+
 	ploytec_get_rate(chip->dev, chip->xfer_buf, &current_hw_rate);
 	dev_dbg(&chip->intf0->dev, "Current hardware rate: %u Hz\n", current_hw_rate);
 	if (current_hw_rate != rate) {
-		ret = ploytec_initialise_device(chip->dev, chip->xfer_buf);
-		if (ret < 0) {
-			dev_err(&chip->intf0->dev, "Failed to initialise device to change rate: %d\n",
-				ret);
-			return ret;
-		}
-
 		dev_dbg(&chip->intf0->dev, "Setting new hardware rate: %u Hz\n", rate);
 		ret = ploytec_set_rate(chip->dev, chip->xfer_buf, rate);
 		if (ret < 0) {
