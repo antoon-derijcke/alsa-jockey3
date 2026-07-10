@@ -220,7 +220,8 @@ int main(void)
 	srand(time(NULL));
 
 	/* build lookup table */
-	init_ploytec_bit_spread_table();
+	init_ploytec_bit_spread_lut32();
+	init_ploytec_bit_spread_lut64();	
 
 	/* === Correctness test === */
 	printf("=== Correctness validation (Encoder)===\n");

@@ -18,10 +18,12 @@ void ploytec_decode_s24_3le_version1(u8 *dest, const u8 *src);
 void ploytec_encode_s24_3le_loopcombined(u8 *dest, const u8 *src);
 void ploytec_decode_s24_3le_loopcombined(u8 *dest, const u8 *src);
 
-void init_ploytec_bit_spread_table(void);
+void init_ploytec_bit_spread_lut64(void);
 void ploytec_encode_s24_3le_lut64(u8 *dest, const u8 *src);
-void ploytec_encode_s24_3le_lut32(u8 *dest, const u8 *src);
 void ploytec_decode_s24_3le_pack64(u8 *dest, const u8 *src);
+
+void init_ploytec_bit_spread_lut32(void);
+void ploytec_encode_s24_3le_lut32(u8 *dest, const u8 *src);
 void ploytec_decode_s24_3le_pack32(u8 *dest, const u8 *src);
 
 

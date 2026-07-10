@@ -1,5 +1,9 @@
 # Makefile user-space testing code
 
+
+# for compiling i386 target
+#CC = i686-linux-gnu-gcc
+
 CFLAGS += -Wall -O2
 
 
@@ -7,8 +11,6 @@ test: test_codec
 	@echo running test
 	./test_codec
 
-test_codec: test_ploytec_codec.o ploytec_codec.o ploytec_codec_new.o
-	$(CC) $(CFLAGS) -isystem stubs -o $@ $^
 
 clean:
 	rm *.o test_codec ploytec_codec.[ch]
@@ -29,5 +31,7 @@ ploytec_codec_new.o: ploytec_codec_new.c
 test_ploytec_codec.o: test_ploytec_codec.c
 	$(CC) $(CFLAGS) -isystem stubs -c $< -o $@
 
+test_codec: test_ploytec_codec.o ploytec_codec.o ploytec_codec_new.o
+	$(CC) $(CFLAGS) -isystem stubs -o $@ $^
 
 .PHONY: test_codec
