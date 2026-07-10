@@ -11,7 +11,7 @@ test_codec: test_ploytec_codec.o ploytec_codec.o ploytec_codec_new.o
 	$(CC) $(CFLAGS) -isystem stubs -o $@ $^
 
 clean:
-	rm *.o test_codec
+	rm *.o test_codec ploytec_codec.[ch]
 
 
 # create a symlink to the ploytec_codec.c to avoid it pulling-in the kernel headers when compiling the test code

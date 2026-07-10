@@ -50,7 +50,7 @@ unsigned int validate_encoder(void)
 
 		/* put here the different encoders we'd like to compare against the reference... */
 
-		ploytec_encode_s24_3le(encoded_opt, src);	// version in the jockey3 driver
+		ploytec_encode_batch(encoded_opt, src, 1);	// version in the jockey3 driver
 		if (memcmp(encoded_opt, encoded_ref, 48) != 0) {
 			errors++;
 			if (errors < 5)
@@ -62,7 +62,21 @@ unsigned int validate_encoder(void)
 			errors++;
 			if (errors < 5)
 				printf("Encode mismatch at iteration %d (loopcombined)\n", t);
-		}	
+		}
+
+		ploytec_encode_s24_3le_lut32(encoded_opt, src);
+		if (memcmp(encoded_opt, encoded_ref, 48) != 0) {
+			errors++;
+			if (errors < 5)
+				printf("Encode mismatch at iteration %d (lut32)\n", t);
+		}
+
+		ploytec_encode_s24_3le_lut64(encoded_opt, src);
+		if (memcmp(encoded_opt, encoded_ref, 48) != 0) {
+			errors++;
+			if (errors < 5)
+				printf("Encode mismatch at iteration %d (lut64)\n", t);
+		}
 	}
 
 	return errors;
@@ -92,7 +106,7 @@ unsigned int validate_decoder(void)
 
 		/* put here the different decoders we'd like to compare against the reference... */
 		
-		ploytec_decode_s24_3le(decoded_opt, src);	// version in the jockey3 driver
+		ploytec_decode_batch(decoded_opt, src, 1);	// version in the jockey3 driver
 		if (memcmp(decoded_opt, decoded_ref, 6 * 3) != 0) {
 			errors++;
 			if (errors < 5)
@@ -105,6 +119,20 @@ unsigned int validate_decoder(void)
 			if (errors < 5)
 				printf("Decode mismatch at iteration %d (loopcombined)\n", t);
 		}	
+		
+		ploytec_decode_s24_3le_pack32(decoded_opt, src);
+		if (memcmp(decoded_opt, decoded_ref, 6 * 3) != 0) {
+			errors++;
+			if (errors < 5)
+				printf("Decode mismatch at iteration %d (pack32)\n", t);
+		}
+
+		ploytec_decode_s24_3le_pack64(decoded_opt, src);
+		if (memcmp(decoded_opt, decoded_ref, 6 * 3) != 0) {
+			errors++;
+			if (errors < 5)
+				printf("Decode mismatch at iteration %d (pack64)\n", t);
+		}
 	}
 
 	return errors;
@@ -135,8 +163,8 @@ float encode_benchmark(const char *label, encode_fn_t encode_fn, float baseline)
 	if (baseline <0)
 		baseline = time_ms;
 
-	printf("Encode %s: %.2f ms (%.2f ns/call) %.1f%%\n",
-		label, time_ms, (time_ms * 1e6) / BENCHMARK_ITERATIONS, 100 * time_ms / baseline);
+	printf("Encode %16s: %.2f ms (%.2f ns/call) - %.1f%% %.2fx\n",
+		label, time_ms, (time_ms * 1e6) / BENCHMARK_ITERATIONS, 100 * time_ms / baseline, baseline / time_ms);
 	
 	return time_ms;
 }
@@ -165,10 +193,21 @@ float decode_benchmark(const char *label, decode_fn_t decode_fn, float baseline)
 	if (baseline <0)
 		baseline = time_ms;
 
-	printf("Decode %s: %.2f ms (%.2f ns/call) %.1f%%\n",
-		label, time_ms, (time_ms * 1e6) / BENCHMARK_ITERATIONS, 100 * time_ms / baseline);
+	printf("Decode %16s: %.2f ms (%.2f ns/call) - %.1f%% %.2fx\n",
+		label, time_ms, (time_ms * 1e6) / BENCHMARK_ITERATIONS, 100 * time_ms / baseline, baseline / time_ms);
 
 	return time_ms;
+}
+
+/* wrapper to the version in the actual driver -- call using a batch size of 1 */
+static inline void ploytec_encode_driver(u8 *dest, const u8 *src)
+{
+	ploytec_encode_batch(dest, src, 1);
+}
+
+static inline void ploytec_decode_driver(u8 *dest, const u8 *src)
+{
+	ploytec_decode_batch(dest, src, 1);
 }
 
 int main(void)
@@ -180,6 +219,8 @@ int main(void)
 
 	srand(time(NULL));
 
+	/* build lookup table */
+	init_ploytec_bit_spread_table();
 
 	/* === Correctness test === */
 	printf("=== Correctness validation (Encoder)===\n");
@@ -189,7 +230,6 @@ int main(void)
 	else
 		printf("❌ %d encode errors detected!\n", errors);
 
-
 	printf("=== Correctness validation (Decoder)===\n");
 	errors = validate_decoder();
 	if (errors == 0)
@@ -197,15 +237,19 @@ int main(void)
 	else
 		printf("❌ %d decode errors detected!\n", errors);
 
-
-
 	/* === Benchmark === */
 	printf("\n=== Performance benchmark (%d iterations) ===\n", BENCHMARK_ITERATIONS);
 	baseline = encode_benchmark("Original", ploytec_encode_s24_3le_version1, -1);
+	encode_benchmark("Jockey3Driver", ploytec_encode_driver, baseline);
 	encode_benchmark("LoopCombined", ploytec_encode_s24_3le_loopcombined, baseline);
+	encode_benchmark("BitSpreadTable32", ploytec_encode_s24_3le_lut32, baseline);
+	encode_benchmark("BitSpreadTable64", ploytec_encode_s24_3le_lut64, baseline);
 
 	baseline = decode_benchmark("Original", ploytec_decode_s24_3le_version1, -1);
+	decode_benchmark("Jockey3Driver", ploytec_decode_driver, baseline);
 	decode_benchmark("LoopCombined", ploytec_decode_s24_3le_loopcombined, baseline);
+	decode_benchmark("Pack32", ploytec_decode_s24_3le_pack32, baseline);
+	decode_benchmark("Pack64", ploytec_decode_s24_3le_pack64, baseline);
 
 	return errors ? 1 : 0;
 }
