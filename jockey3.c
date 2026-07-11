@@ -778,6 +778,8 @@ static int jockey3_initialise_ploytec(struct jockey3_chip *chip)
 	if (jockey3_is_disconnected(chip))
 		return -ENODEV;
 
+	ploytec_initialise_codec();
+
 	ret = ploytec_initialise_device(chip->dev, chip->xfer_buf);
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Ploytec failed to initialise: %d\n", ret);

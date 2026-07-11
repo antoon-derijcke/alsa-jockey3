@@ -18,6 +18,7 @@
 #define PLOYTEC_CAPTURE_FRAME_SIZE	64
 
 /* batching of the sample processing */
+void ploytec_initialise_codec(void);
 void ploytec_encode_batch(u8 *dest, const u8 *src, const int n_frames);
 void ploytec_decode_batch(u8 *dest, const u8 *src, const int n_frames);
 

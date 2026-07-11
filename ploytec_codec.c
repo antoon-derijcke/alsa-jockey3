@@ -6,8 +6,20 @@
  *   Copyright (c) 2026 by Frank van de Pol <fvdpol@gmail.com>
  */
 
-#include "ploytec_codec.h"
+#include <linux/unaligned.h>
 #include <linux/string.h>
+#include "ploytec_codec.h"
+
+#ifdef REFERENCE_CODEC
+
+/** 
+ * The reference implementation of the Ploytec is performing a bit gather/scatter
+ * operation with minimal optimization, and mainly serves for reference and validation
+ * of correctness of any optimized version of the encoder/decoder.
+ *
+ * compile with the REFERENCE_CODEC symbol set to use this encoder instead of the 
+ * optimized variants.
+ */
 
 /**
  * ploytec_encode_s24_3le - Encode 4-channel S24_3LE to 48-byte Ploytec frame
@@ -92,7 +104,337 @@ static inline void ploytec_decode_s24_3le(u8 *dest, const u8 *src)
 		dest[0x11] |= (((src[0x20 + i] & 0x04) >> 2) << (7 - i));
 	}
 }
+#else // not REFERENCE_CODEC
+#ifdef CONFIG_64BIT
+/*
+ * =========================================================================
+ * PLOYTEC BIT-PLANE INTERLEAVING OPTIMIZATION NOTE
+ * =========================================================================
+ * * CORE PERFORMANCE PROBLEM:
+ * The Ploytec firmware uses a non-standard "bit-plane" format where bits 
+ * from different channels are interleaved into the same byte. The naive 
+ * implementation processes data bit-by-bit using heavily nested loops, 
+ * causing massive CPU overhead due to serial bit-shifting operations, 
+ * branch mispredictions, and an inability to utilize hardware pipelines.
+ *
+ * THE SOLUTION: SWAR (SIMD Within A Register) & INT-MULTIPLIERS
+ * Instead of bit-by-bit iteration, we treat entire 32-bit or 64-bit blocks 
+ * of memory as parallel vector lanes inside standard CPU registers. This 
+ * completely eliminates loops and branches, reducing operations to a small,
+ * deterministic chain of native processor instructions.
+ *
+ * -------------------------------------------------------------------------
+ * 1. ENCODING MATH: BIT-SPREAD LOOKUP TABLES (LUT)
+ * -------------------------------------------------------------------------
+ * To encode, we must take a single 8-bit channel byte (e.g., b7 b6 b5 ... b0)
+ * and "spread" its bits across an 8-byte destination block so that each bit 
+ * lands on bit 0 of 8 separate bytes.
+ * 
+ * 64-Bit Implementation:
+ * We use a precomputed 256-entry 64-bit LUT (ploytec_bit_spread). For any 
+ * byte value, the table returns a u64 where the bits are perfectly spaced out:
+ * Input Byte:  0b11000000
+ * u64 Return:  0x0000000000000101 (Bit 7 and 6 mapped to byte 0 and 1)
+ *
+ * By loading the spread values of two channels simultaneously, we shift the 
+ * second channel by 1 (<< 1) to align its bits to bit position 1, and bitwise 
+ * OR them together. This encodes two full channels into an 8-byte frame using 
+ * just one lookup and a single 64-bit store.
+ *
+ * 32-Bit Implementation:
+ * A 32-bit register cannot hold 8 spread bytes at once. Thus, the 32-bit 
+ * variant splits the input byte into two 4-bit nibbles using two distinct 
+ * 32-bit LUTs (high nibble and low nibble). Each lookup fills 4 bytes of 
+ * destination memory natively using 32-bit registers, maintaining low 
+ * register pressure and avoiding 64-bit arithmetic emulation penalties on 
+ * 32-bit architectures (like ARM32/armhf).
+ *
+ * -------------------------------------------------------------------------
+ * 2. DECODING MATH: PARALLEL BIT GATHER VIA MAGIC MULTIPLIERS
+ * -------------------------------------------------------------------------
+ * To decode, we must perform the inverse: extract a specific bit position 
+ * from 8 consecutive bytes in memory and pack them back into a single byte.
+ *
+ * 64-Bit Implementation (`pack_bit_plane64`):
+ * 1. Load 8 bytes into a u64 register.
+ * 2. Shift right by the desired bit index and mask with 0x0101010101010101ULL.
+ * This leaves the target bit isolated as bit 0 of every single byte.
+ * 3. Multiply the masked u64 by the magic constant: 0x8040201008040201ULL.
+ *
+ * This multiplication acts as a parallel shift-and-add engine:
+ * Byte 7 is multiplied by 0x01 (shifted << 0)
+ * Byte 6 is multiplied by 0x02 (shifted << 1)
+ * ...
+ * Byte 0 is multiplied by 0x80 (shifted << 7)
+ *
+ * The mathematical properties of this multiplication collapse all 8 isolated 
+ * bits perfectly into the most significant byte (the highest 8 bits) of the 
+ * u64 register. A final logical shift right (>> 56) extracts the completed 
+ * audio byte in a single operation.
+ *
+ * 32-Bit Implementation (`pack_bit_plane32`):
+ * To avoid emulating 64-bit multiplication on a 32-bit CPU, we read two 
+ * separate 4-byte halves into native u32 registers. We apply the 32-bit 
+ * magic multiplier (0x08040201U) to both halves independently. This collapses 
+ * each half into a 4-bit nibble at the top of each register. We then combine 
+ * the two resulting nibbles `(high << 4) | low` to form the final byte.
+ *
+ * -------------------------------------------------------------------------
+ * 3. ENDIANNESS & ALIGNMENT MITIGATION
+ * -------------------------------------------------------------------------
+ * All bitwise shifting (`<<`, `>>`) and multiplier math inside CPU registers 
+ * is inherently endian-agnostic. However, reading and writing these multi-byte 
+ * integers (u32/u64) directly to physical RAM introduces two system hazards:
+ * - Byte Inversion on Big Endian architectures (e.g., MIPS, PowerPC).
+ * - Kernel Alignment Faults (SIGBUS) on alignment-strict processors.
+ *
+ * To ensure safe, architecture-independent execution, all memory interfaces 
+ * utilize the kernel's `get_unaligned_le32/64` and `put_unaligned_le32/64` 
+ * macros (or user-space memcpy/bswap equivalents). 
+ * 
+ * On little-endian architectures with unaligned support (x86_64, arm64, armhf), 
+ * the compiler optimizes these macros completely out, compiling down to standard, 
+ * zero-overhead native instruction loads and stores. On big-endian or strict-
+ * alignment architectures, the macros safely handle arbitrary memory addresses 
+ * and emit hardware byte-swaps (`rev`) automatically.
+ * 
+ * -------------------------------------------------------------------------
+ * 4. EMPIRICAL PERFORMANCE TESTING
+ * -------------------------------------------------------------------------
+ * Compared to the reference implementation, testing of these optimised
+ * versions showed a significant improvement, justifying the added complexity
+ * from these optimisations. Table show the relative speed-up and the time 
+ * for encoding (4ch) or decoding (6ch) a sample frame on the validation
+ * hardware:
+ * 
+ * Architecture	Bit	Encode	Decode		Encode Time	Decode Time
+ *   i386	32	 4.7x	 4.7x		 14.4 ns	 27.5 ns
+ *   x86_64	64	10.2x	 8.8x		  7.3 ns	 15.0 ns
+ *   armhf	32	 3.9x	 4.6x		208.9 ns	448.5 ns
+ *   arm64	64	 8.1x	 5.7x		 15.6 ns	 41.5 ns
+ * 
+ * =========================================================================
+ */
 
+static u64 ploytec_bit_spread_64[256];
+
+static void init_ploytec_bit_spread_lut64(void)
+{
+	for (int b = 0; b < 256; b++) {
+		u64 spread = 0;
+
+		// Extract bit (7 - i) and place it into bit 0 of byte i
+		for (int i = 0; i < 8; i++)
+			spread |= (u64)((b >> (7 - i)) & 1) << (i * 8);
+
+		ploytec_bit_spread_64[b] = spread;
+	}
+}
+
+static inline void ploytec_encode_s24_3le_lut64(u8 *dest, const u8 *src)
+{
+	// put_unaligned_le64 safely writes a 64-bit value in Little Endian order,
+	// even if the target CPU is Big Endian or alignment-strict.
+
+	// First 24 bytes: odd channels (ALSA Ch 1 & 3)
+	put_unaligned_le64(ploytec_bit_spread_64[src[2]] | (ploytec_bit_spread_64[src[8]] << 1), dest + 0);
+	put_unaligned_le64(ploytec_bit_spread_64[src[1]] | (ploytec_bit_spread_64[src[7]] << 1), dest + 8);
+	put_unaligned_le64(ploytec_bit_spread_64[src[0]] | (ploytec_bit_spread_64[src[6]] << 1), dest + 16);
+	
+	// Second 24 bytes: even channels (ALSA Ch 2 & 4)
+	put_unaligned_le64(ploytec_bit_spread_64[src[5]] | (ploytec_bit_spread_64[src[11]] << 1), dest + 24);
+	put_unaligned_le64(ploytec_bit_spread_64[src[4]] | (ploytec_bit_spread_64[src[10]] << 1), dest + 32);
+	put_unaligned_le64(ploytec_bit_spread_64[src[3]] | (ploytec_bit_spread_64[src[9]] << 1), dest + 40);
+}
+
+static inline u8 pack_bit_plane64(u64 val, int bit_index)
+{
+	// Shift target bit to bit 0 of each byte, then mask it
+	u64 masked = (val >> bit_index) & 0x0101010101010101ULL;
+
+	// Multiplier acts as a parallel shift-and-add, collecting 
+	// the bits into the highest byte of the u64
+	return (u8)((masked * 0x8040201008040201ULL) >> 56);
+}
+
+static inline void ploytec_decode_s24_3le_pack64(u8 *dest, const u8 *src)
+{
+	u64 blocks_0_17_low  = get_unaligned_le64(src + 0x00);
+	u64 blocks_0_17_mid  = get_unaligned_le64(src + 0x08);
+	u64 blocks_0_17_high = get_unaligned_le64(src + 0x10);
+
+	u64 blocks_20_37_low  = get_unaligned_le64(src + 0x20);
+	u64 blocks_20_37_mid  = get_unaligned_le64(src + 0x28);
+	u64 blocks_20_37_high = get_unaligned_le64(src + 0x30);
+
+	// Channel 1 (Bit 0 of bytes 0x00-0x17)
+	dest[0x00] = pack_bit_plane64(blocks_0_17_high, 0);
+	dest[0x01] = pack_bit_plane64(blocks_0_17_mid,  0);
+	dest[0x02] = pack_bit_plane64(blocks_0_17_low,  0);
+
+	// Channel 2 (Bit 0 of bytes 0x20-0x37)
+	dest[0x03] = pack_bit_plane64(blocks_20_37_high, 0);
+	dest[0x04] = pack_bit_plane64(blocks_20_37_mid,  0);
+	dest[0x05] = pack_bit_plane64(blocks_20_37_low,  0);
+
+	// Channel 3 (Bit 1 of bytes 0x00-0x17)
+	dest[0x06] = pack_bit_plane64(blocks_0_17_high, 1);
+	dest[0x07] = pack_bit_plane64(blocks_0_17_mid,  1);
+	dest[0x08] = pack_bit_plane64(blocks_0_17_low,  1);
+
+	// Channel 4 (Bit 1 of bytes 0x20-0x37)
+	dest[0x09] = pack_bit_plane64(blocks_20_37_high, 1);
+	dest[0x0A] = pack_bit_plane64(blocks_20_37_mid,  1);
+	dest[0x0B] = pack_bit_plane64(blocks_20_37_low,  1);
+
+	// Channel 5 (Bit 2 of bytes 0x00-0x17)
+	dest[0x0C] = pack_bit_plane64(blocks_0_17_high, 2);
+	dest[0x0D] = pack_bit_plane64(blocks_0_17_mid,  2);
+	dest[0x0E] = pack_bit_plane64(blocks_0_17_low,  2);
+
+	// Channel 6 (Bit 2 of bytes 0x20-0x37)
+	dest[0x0F] = pack_bit_plane64(blocks_20_37_high, 2);
+	dest[0x10] = pack_bit_plane64(blocks_20_37_mid,  2);
+	dest[0x11] = pack_bit_plane64(blocks_20_37_low,  2);
+}
+
+#else // not CONFIG_64BIT
+static u32 ploytec_bit_spread_32_high[256];
+static u32 ploytec_bit_spread_32_low[256];
+
+void init_ploytec_bit_spread_lut32(void)
+{
+	for (int b = 0; b < 256; b++) {
+		u32 high_spread = 0;
+		u32 low_spread  = 0;
+
+		// Process high nibble (bits 7 down to 4) -> maps to bytes 0 to 3
+		for (int i = 0; i < 4; i++)
+			high_spread |= (u32)((b >> (7 - i)) & 1) << (i * 8);
+
+		// Process low nibble (bits 3 down to 0) -> maps to bytes 0 to 3
+		for (int i = 0; i < 4; i++)
+			low_spread  |= (u32)((b >> (3 - i)) & 1) << (i * 8);
+
+		ploytec_bit_spread_32_high[b] = high_spread;
+		ploytec_bit_spread_32_low[b]  = low_spread;
+	}
+}
+
+static inline void ploytec_encode_s24_3le_lut32(u8 *dest, const u8 *src)
+{
+	// put_unaligned_le32 safely writes a 32-bit value in Little Endian order,
+	// even if the target CPU is Big Endian or alignment-strict.
+
+	// First 24 bytes: Odd channels (ALSA Ch 1 [src 0,1,2] & Ch 3 [src 6,7,8])
+	// Block 1: Most Significant Bytes
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[2]] | (ploytec_bit_spread_32_high[src[8]] << 1), dest + 0);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[2]]  | (ploytec_bit_spread_32_low[src[8]]  << 1), dest + 4);
+
+	// Block 2: Middle Bytes
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[1]] | (ploytec_bit_spread_32_high[src[7]] << 1), dest + 8);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[1]]  | (ploytec_bit_spread_32_low[src[7]]  << 1), dest + 12);
+
+	// Block 3: Least Significant Bytes
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[0]] | (ploytec_bit_spread_32_high[src[6]] << 1), dest + 16);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[0]]  | (ploytec_bit_spread_32_low[src[6]]  << 1), dest + 20);
+
+
+	// Second 24 bytes: Even channels (ALSA Ch 2 [src 3,4,5] & Ch 4 [src 9,10,11])
+	// Block 1: Most Significant Bytes
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[5]] | (ploytec_bit_spread_32_high[src[11]] << 1), dest + 24);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[5]]  | (ploytec_bit_spread_32_low[src[11]]  << 1), dest + 28);
+
+	// Block 2: Middle Bytes
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[4]] | (ploytec_bit_spread_32_high[src[10]] << 1), dest + 32);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[4]]  | (ploytec_bit_spread_32_low[src[10]]  << 1), dest + 36);
+
+	// Block 3: Least Significant Bytes
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[3]] | (ploytec_bit_spread_32_high[src[9]] << 1), dest + 40);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[3]]  | (ploytec_bit_spread_32_low[src[9]]  << 1), dest + 44);
+}
+
+static inline u8 pack_bit_plane32(u32 high_4_bytes, u32 low_4_bytes, int bit_index)
+{
+	// Isolate the targeted bit index across all 4 bytes simultaneously
+	u32 high_masked = (high_4_bytes >> bit_index) & 0x01010101U;
+	u32 low_masked  = (low_4_bytes  >> bit_index) & 0x01010101U;
+
+	// Use 32-bit multiplier to gather bits 0,1,2,3 into the highest byte
+	u8 high_bits = (u8)((high_masked * 0x08040201U) >> 24);
+	u8 low_bits  = (u8)((low_masked  * 0x08040201U) >> 24);
+
+	// Combine the upper 4 bits and lower 4 bits into the single output audio byte
+	return (high_bits << 4) | low_bits;
+}
+
+static inline void ploytec_decode_s24_3le_pack32(u8 *dest, const u8 *src)
+{
+	// Pre-load all required 4-byte chunks into native 32-bit registers
+	u32 src_00_high = get_unaligned_le32(src + 0x00);
+	u32 src_04_low  = get_unaligned_le32(src + 0x04);
+	u32 src_08_high = get_unaligned_le32(src + 0x08);
+	u32 src_0C_low  = get_unaligned_le32(src + 0x0C);
+	u32 src_10_high = get_unaligned_le32(src + 0x10);
+	u32 src_14_low  = get_unaligned_le32(src + 0x14);
+
+	u32 src_20_high = get_unaligned_le32(src + 0x20);
+	u32 src_24_low  = get_unaligned_le32(src + 0x24);
+	u32 src_28_high = get_unaligned_le32(src + 0x28);
+	u32 src_2C_low  = get_unaligned_le32(src + 0x2C);
+	u32 src_30_high = get_unaligned_le32(src + 0x30);
+	u32 src_34_low  = get_unaligned_le32(src + 0x34);
+
+	// --- Channel 1: Bit 0 of bytes 0x00-0x17 ---
+	dest[0x00] = pack_bit_plane32(src_10_high, src_14_low, 0);
+	dest[0x01] = pack_bit_plane32(src_08_high, src_0C_low, 0);
+	dest[0x02] = pack_bit_plane32(src_00_high, src_04_low, 0);
+
+	// --- Channel 2: Bit 0 of bytes 0x20-0x37 ---
+	dest[0x03] = pack_bit_plane32(src_30_high, src_34_low, 0);
+	dest[0x04] = pack_bit_plane32(src_28_high, src_2C_low, 0);
+	dest[0x05] = pack_bit_plane32(src_20_high, src_24_low, 0);
+
+	// --- Channel 3: Bit 1 of bytes 0x00-0x17 ---
+	dest[0x06] = pack_bit_plane32(src_10_high, src_14_low, 1);
+	dest[0x07] = pack_bit_plane32(src_08_high, src_0C_low, 1);
+	dest[0x08] = pack_bit_plane32(src_00_high, src_04_low, 1);
+
+	// --- Channel 4: Bit 1 of bytes 0x20-0x37 ---
+	dest[0x09] = pack_bit_plane32(src_30_high, src_34_low, 1);
+	dest[0x0A] = pack_bit_plane32(src_28_high, src_2C_low, 1);
+	dest[0x0B] = pack_bit_plane32(src_20_high, src_24_low, 1);
+
+	// --- Channel 5: Bit 2 of bytes 0x00-0x17 ---
+	dest[0x0C] = pack_bit_plane32(src_10_high, src_14_low, 2);
+	dest[0x0D] = pack_bit_plane32(src_08_high, src_0C_low, 2);
+	dest[0x0E] = pack_bit_plane32(src_00_high, src_04_low, 2);
+
+	// --- Channel 6: Bit 2 of bytes 0x20-0x37 ---
+	dest[0x0F] = pack_bit_plane32(src_30_high, src_34_low, 2);
+	dest[0x10] = pack_bit_plane32(src_28_high, src_2C_low, 2);
+	dest[0x11] = pack_bit_plane32(src_20_high, src_24_low, 2);
+}
+#endif	// CONFIG_64BIT
+#endif	// REFERENCE_CODEC
+
+/**
+ * ploytec_initialise_codec - Initialisation of the pre-computed lookup table
+ */
+void ploytec_initialise_codec(void)
+{
+#ifdef REFERENCE_CODEC
+	pr_debug("ploytec: using portable codec\n");
+#else
+#ifdef CONFIG_64BIT
+	pr_debug("ploytec: using 64 bit optimized codec\n");
+	init_ploytec_bit_spread_lut64();
+#else
+	pr_debug("ploytec: using 32 bit optimized codec\n");
+	init_ploytec_bit_spread_lut32();
+#endif // CONFIG_64BIT
+#endif // REFERENCE_CODEC
+}
 
 /**
  * ploytec_encode_batch - Encode a number of 4-channel S24_3LE to 48-byte Ploytec frames
@@ -103,7 +445,15 @@ static inline void ploytec_decode_s24_3le(u8 *dest, const u8 *src)
 void ploytec_encode_batch(u8 *dest, const u8 *src, const int n_frames)
 {
 	for (int f = 0; f < n_frames; f++) {
+#ifdef REFERENCE_CODEC
 		ploytec_encode_s24_3le(dest, src);
+#else
+#ifdef CONFIG_64BIT
+		ploytec_encode_s24_3le_lut64(dest, src);
+#else
+		ploytec_encode_s24_3le_lut32(dest, src);
+#endif	// CONFIG_64BIT
+#endif	// REFERENCE_CODEC
 		dest += PLOYTEC_PLAYBACK_FRAME_SIZE;
 		src  += 12;	// 4 channels * 3 bytes/sample
 	}
@@ -118,7 +468,15 @@ void ploytec_encode_batch(u8 *dest, const u8 *src, const int n_frames)
 void ploytec_decode_batch(u8 *dest, const u8 *src, const int n_frames)
 {
 	for (int f = 0; f < n_frames; f++) {
+#ifdef REFERENCE_CODEC
 		ploytec_decode_s24_3le(dest, src);
+#else
+#ifdef CONFIG_64BIT
+		ploytec_decode_s24_3le_pack64(dest, src);
+#else
+		ploytec_decode_s24_3le_pack32(dest, src);
+#endif
+#endif
 		dest += 18;	// 6 channels * 3 bytes/sample
 		src += PLOYTEC_CAPTURE_FRAME_SIZE;
 	}
