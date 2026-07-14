@@ -41,9 +41,10 @@ MODULE_PARM_DESC(enable, "Enable " CARD_NAME " soundcard.");
 #define JOCKEY3_N_URBS 8
 
 /* Chip flags */
-#define JOCKEY3_FLAG_DISCONNECTED 0
-#define JOCKEY3_FLAG_STOPPING     1
-#define JOCKEY3_FLAG_RESETTING    2
+#define JOCKEY3_FLAG_DISCONNECTED	0
+#define JOCKEY3_FLAG_STOPPING		1
+#define JOCKEY3_FLAG_RESETTING		2
+#define JOCKEY3_FLAG_RATE_CHANGING	2
 
 struct jockey3_pcm_urb_stream {
 	struct snd_pcm_substream *substream;
@@ -52,6 +53,7 @@ struct jockey3_pcm_urb_stream {
 	unsigned char *bufs[JOCKEY3_N_URBS];
 	atomic_t urbs_in_flight;	// keep track of in-flight URBs
 	spinlock_t lock; // protects playback stream state and buffer offsets
+	unsigned long last_callback_jiffies;	// for monitoring stalled URB stream
 	unsigned int dma_off;
 	unsigned int period_off;
 	bool running;
@@ -101,6 +103,36 @@ static inline bool jockey3_is_stopping(const struct jockey3_chip *chip)
 static inline bool jockey3_is_resetting(const struct jockey3_chip *chip)
 {
 	return test_bit(JOCKEY3_FLAG_RESETTING, &chip->flags);
+}
+
+static inline bool jockey3_is_rate_changing(const struct jockey3_chip *chip)
+{
+	return test_bit(JOCKEY3_FLAG_RATE_CHANGING, &chip->flags);
+}
+
+static int jockey3_wait_for_rate_change_completion(const struct jockey3_chip *chip)
+{
+	unsigned long timeout_jiffies = jiffies + msecs_to_jiffies(1000);
+
+	if (jockey3_is_rate_changing(chip))
+		dev_dbg(&chip->intf0->dev, "Waiting for rate change completion\n");
+
+	while (jockey3_is_rate_changing(chip)) {
+		usleep_range(5000, 20000);
+		if (jockey3_is_disconnected(chip))
+			return -ENODEV;
+		if (time_after(jiffies, timeout_jiffies)) {
+			/*
+			 * Empirical testing shows that the rate changing typically takes
+			 * around 200 ms; so a 1000 ms timeout should give us sufficient
+			 * headroom for the rate-change to complete.
+			 */
+			dev_warn(&chip->intf0->dev, "Timeout waiting for rate change completion\n");
+			return -EAGAIN;
+		}
+	}
+
+	return 0;
 }
 
 static inline struct jockey3_pcm_urb_stream *jockey3_get_pcm_urb_stream(struct jockey3_chip *chip,
@@ -262,6 +294,10 @@ static void jockey3_capture_callback(struct urb *urb)
 	int ret;
 
 	atomic_dec(&urb_stream->urbs_in_flight);
+	WRITE_ONCE(urb_stream->last_callback_jiffies, jiffies);
+
+	if (unlikely(urb_stream->callback_processing))
+		dev_warn_ratelimited(&chip->intf0->dev, "Capture: callback_processing already true on new callback!\n");
 
 	if (unlikely(jockey3_urb_error_fatal(chip, urb, "Capture")))
 		return;
@@ -367,6 +403,7 @@ static void jockey3_playback_callback(struct urb *urb)
 	int i, ret;
 
 	atomic_dec(&urb_stream->urbs_in_flight);
+	WRITE_ONCE(urb_stream->last_callback_jiffies, jiffies);
 
 	if (unlikely(jockey3_urb_error_fatal(chip, urb, "Playback")))
 		return;
@@ -608,12 +645,19 @@ static int jockey3_pcm_open(struct snd_pcm_substream *substream)
 {
 	struct jockey3_chip *chip = snd_pcm_substream_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct jockey3_pcm_urb_stream *urb_stream =
+		jockey3_get_pcm_urb_stream(chip, substream->stream);
 	int ret;
 
 	dev_dbg(&chip->intf0->dev, "PCM open stream %d\n", substream->stream);
 
 	if (jockey3_is_disconnected(chip))
 		return -ENODEV;
+
+	/* Ensure the card is not in-process of a rate-change */
+	ret = jockey3_wait_for_rate_change_completion(chip);
+	if (ret < 0)
+		return ret;
 
 	runtime->hw.info =
 		SNDRV_PCM_INFO_MMAP |
@@ -661,12 +705,8 @@ static int jockey3_pcm_open(struct snd_pcm_substream *substream)
 	}
 
 	/* Substream registration under spinlock to ensure memory consistency to the ISR*/
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		guard(spinlock_irqsave)(&chip->playback.lock);
-		chip->playback.substream = substream;
-	} else {
-		guard(spinlock_irqsave)(&chip->capture.lock);
-		chip->capture.substream = substream;
+	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+		urb_stream->substream = substream;
 	}
 
 	return 0;
@@ -701,13 +741,14 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 	struct jockey3_pcm_urb_stream *urb_stream =
 		jockey3_get_pcm_urb_stream(chip, substream->stream);
 	unsigned long timeout_jiffies = jiffies + msecs_to_jiffies(1000);
+	int ret = 0;
 
 	dev_dbg(&chip->intf0->dev, "PCM prepare stream %d\n", substream->stream);
 	if (jockey3_is_disconnected(chip))
 		return -ENODEV;
 
 	while (jockey3_is_resetting(chip)) {
-		usleep_range(1000, 5000);
+		usleep_range(5000, 20000);
 		if (jockey3_is_disconnected(chip))
 			return -ENODEV;
 		if (time_after(jiffies, timeout_jiffies)) {
@@ -721,6 +762,11 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 		}
 	}
 
+	/* Ensure the card is not in-process of a rate-change */
+	ret = jockey3_wait_for_rate_change_completion(chip);
+	if (ret < 0)
+		return ret;
+
 	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
 		urb_stream->dma_off = 0;
 		urb_stream->period_off = 0;
@@ -733,6 +779,7 @@ static int jockey3_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	struct jockey3_chip *chip = snd_pcm_substream_chip(substream);
 	struct jockey3_pcm_urb_stream *urb_stream =
 		jockey3_get_pcm_urb_stream(chip, substream->stream);
+	int ret = 0;
 
 	dev_dbg(&chip->intf0->dev, "PCM trigger stream %d, cmd %d\n", substream->stream, cmd);
 
@@ -740,6 +787,11 @@ static int jockey3_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		return -ENODEV;
 	if (jockey3_is_resetting(chip))
 		return -EBUSY;
+
+	/* Ensure the card is not in-process of a rate-change */
+	ret = jockey3_wait_for_rate_change_completion(chip);
+	if (ret < 0)
+		return ret;
 
 	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
 		switch (cmd) {
@@ -796,6 +848,38 @@ static int jockey3_initialise_ploytec(struct jockey3_chip *chip)
 	return 0;
 }
 
+static bool jockey3_check_urb_stream_alive(struct jockey3_chip *chip, const unsigned int timeout_ms)
+{
+	unsigned long timeout_jiffies = msecs_to_jiffies(timeout_ms);
+	unsigned long deadline = jiffies + timeout_jiffies;
+	unsigned long capture_last_seen;
+	unsigned long playback_last_seen;
+	bool capture_alive = false;
+	bool playback_alive = false;
+
+	while (time_before(jiffies, deadline)) {
+		if (jockey3_is_disconnected(chip))
+			return false;
+
+		capture_last_seen = READ_ONCE(chip->capture.last_callback_jiffies);
+		capture_alive =	time_after(capture_last_seen + timeout_jiffies, jiffies);
+
+		playback_last_seen = READ_ONCE(chip->playback.last_callback_jiffies);
+		playback_alive = time_after(playback_last_seen + timeout_jiffies, jiffies);
+
+		if (capture_alive && playback_alive)
+			return true;
+
+		usleep_range(1000, 2000);
+	}
+
+	if (!playback_alive)
+		dev_warn(&chip->intf0->dev, "Playback URB has stalled.\n");
+	if (!capture_alive)
+		dev_warn(&chip->intf0->dev, "Capture URB has stalled.\n");
+	return false;
+}
+
 static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 				 struct snd_pcm_hw_params *hw_params)
 {
@@ -809,6 +893,11 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 
 	if (jockey3_is_disconnected(chip))
 		return -ENODEV;
+
+	/* Ensure the card is not in-process of a rate-change */
+	ret = jockey3_wait_for_rate_change_completion(chip);
+	if (ret < 0)
+		return ret;
 
 	scoped_guard(mutex, &chip->rate_mutex) {
 		if (chip->current_rate == rate) {
@@ -827,22 +916,50 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 			return -EBUSY;
 		}
 
+		/* flag that we are in-process of rate changeing*/
+		set_bit(JOCKEY3_FLAG_RATE_CHANGING, &chip->flags);
+
 		jockey3_stop_urbs(chip);
 
 		ret = jockey3_set_rate(chip, rate);
 		if (ret != 0) {
 			dev_err(&chip->intf0->dev, "Rate change to %u failed: %d\n", rate, ret);
 			jockey3_start_urbs(chip);
+			clear_bit(JOCKEY3_FLAG_RATE_CHANGING, &chip->flags);
 			return ret;
 		}
 
 		spin_lock_irqsave(&chip->midi_lock, flags);
 		chip->current_rate = rate;
 		spin_unlock_irqrestore(&chip->midi_lock, flags);
-	}
-	jockey3_start_urbs(chip);
 
-	dev_dbg(&chip->intf0->dev, "Rate changed to %u successfully\n", rate);
+		jockey3_start_urbs(chip);
+		clear_bit(JOCKEY3_FLAG_RATE_CHANGING, &chip->flags);
+	}
+
+	/*
+	 * Ploytec firmware re-synchronization:
+	 * In some cases the sample rate change process can fail to restart the
+	 * Capture EP (0x86): resulting in the device not transmitting data.
+	 * When this happens the Ploytec firmware requires a full USB reset to
+	 * re-synchronize the internal engine and restart sending packets.
+	 * The stalled flow would otherwise lead to EIO errors in ALSA.
+	 *
+	 * TODO: There is an opportunity to improve or replace this once we have
+	 * a better understanding of the Ploytec firmware interaction through
+	 * further protocol analysis or reverse engineering.
+	 *
+	 * pre_reset/post_reset callbacks handle the URB lifecycle.
+	 * We call this outside the rate_mutex to allow pre/post_reset to acquire it.
+	 */
+	if (!jockey3_check_urb_stream_alive(chip, 50)) {
+		dev_warn(&chip->intf0->dev, "Resetting device to recover from stall...\n");
+		set_bit(JOCKEY3_FLAG_RESETTING, &chip->flags);
+		usb_queue_reset_device(chip->intf0);
+	} else {
+		dev_dbg(&chip->intf0->dev, "Rate changed to %u successfully\n", rate);
+	}
+
 	return 0;
 }
 

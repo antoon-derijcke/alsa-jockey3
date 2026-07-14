@@ -12,12 +12,12 @@
 
 #ifdef REFERENCE_CODEC
 
-/** 
+/**
  * The reference implementation of the Ploytec is performing a bit gather/scatter
  * operation with minimal optimization, and mainly serves for reference and validation
  * of correctness of any optimized version of the encoder/decoder.
  *
- * compile with the REFERENCE_CODEC symbol set to use this encoder instead of the 
+ * compile with the REFERENCE_CODEC symbol set to use this encoder instead of the
  * optimized variants.
  */
 
@@ -45,14 +45,14 @@ static inline void ploytec_encode_s24_3le(u8 *dest, const u8 *src)
 
 	for (i = 0; i < 8; i++) {
 		/* First 24 bytes: odd channels (ALSA Ch 1 & 3) */
-		dest[i]     = (((src[2] >> (7 - i)) & 1) << 0) | (((src[8] >> (7 - i)) & 1) << 1);
-		dest[8+i]   = (((src[1] >> (7 - i)) & 1) << 0) | (((src[7] >> (7 - i)) & 1) << 1);
-		dest[16+i]  = (((src[0] >> (7 - i)) & 1) << 0) | (((src[6] >> (7 - i)) & 1) << 1);
+		dest[i]      = (((src[2] >> (7 - i)) & 1) << 0) | (((src[8] >> (7 - i)) & 1) << 1);
+		dest[8 + i]  = (((src[1] >> (7 - i)) & 1) << 0) | (((src[7] >> (7 - i)) & 1) << 1);
+		dest[16 + i] = (((src[0] >> (7 - i)) & 1) << 0) | (((src[6] >> (7 - i)) & 1) << 1);
 
 		/* Second 24 bytes: even channels (ALSA Ch 2 & 4) */
-		dest[24+i] = (((src[5] >> (7 - i)) & 1) << 0) | (((src[11] >> (7 - i)) & 1) << 1);
-		dest[32+i] = (((src[4] >> (7 - i)) & 1) << 0) | (((src[10] >> (7 - i)) & 1) << 1);
-		dest[40+i] = (((src[3] >> (7 - i)) & 1) << 0) | (((src[9]  >> (7 - i)) & 1) << 1);
+		dest[24 + i] = (((src[5] >> (7 - i)) & 1) << 0) | (((src[11] >> (7 - i)) & 1) << 1);
+		dest[32 + i] = (((src[4] >> (7 - i)) & 1) << 0) | (((src[10] >> (7 - i)) & 1) << 1);
+		dest[40 + i] = (((src[3] >> (7 - i)) & 1) << 0) | (((src[9]  >> (7 - i)) & 1) << 1);
 	}
 }
 
@@ -111,15 +111,15 @@ static inline void ploytec_decode_s24_3le(u8 *dest, const u8 *src)
  * PLOYTEC BIT-PLANE INTERLEAVING OPTIMIZATION NOTE
  * =========================================================================
  * * CORE PERFORMANCE PROBLEM:
- * The Ploytec firmware uses a non-standard "bit-plane" format where bits 
- * from different channels are interleaved into the same byte. The naive 
- * implementation processes data bit-by-bit using heavily nested loops, 
- * causing massive CPU overhead due to serial bit-shifting operations, 
+ * The Ploytec firmware uses a non-standard "bit-plane" format where bits
+ * from different channels are interleaved into the same byte. The naive
+ * implementation processes data bit-by-bit using heavily nested loops,
+ * causing massive CPU overhead due to serial bit-shifting operations,
  * branch mispredictions, and an inability to utilize hardware pipelines.
  *
  * THE SOLUTION: SWAR (SIMD Within A Register) & INT-MULTIPLIERS
- * Instead of bit-by-bit iteration, we treat entire 32-bit or 64-bit blocks 
- * of memory as parallel vector lanes inside standard CPU registers. This 
+ * Instead of bit-by-bit iteration, we treat entire 32-bit or 64-bit blocks
+ * of memory as parallel vector lanes inside standard CPU registers. This
  * completely eliminates loops and branches, reducing operations to a small,
  * deterministic chain of native processor instructions.
  *
@@ -127,32 +127,32 @@ static inline void ploytec_decode_s24_3le(u8 *dest, const u8 *src)
  * 1. ENCODING MATH: BIT-SPREAD LOOKUP TABLES (LUT)
  * -------------------------------------------------------------------------
  * To encode, we must take a single 8-bit channel byte (e.g., b7 b6 b5 ... b0)
- * and "spread" its bits across an 8-byte destination block so that each bit 
+ * and "spread" its bits across an 8-byte destination block so that each bit
  * lands on bit 0 of 8 separate bytes.
- * 
+ *
  * 64-Bit Implementation:
- * We use a precomputed 256-entry 64-bit LUT (ploytec_bit_spread). For any 
+ * We use a precomputed 256-entry 64-bit LUT (ploytec_bit_spread). For any
  * byte value, the table returns a u64 where the bits are perfectly spaced out:
  * Input Byte:  0b11000000
  * u64 Return:  0x0000000000000101 (Bit 7 and 6 mapped to byte 0 and 1)
  *
- * By loading the spread values of two channels simultaneously, we shift the 
- * second channel by 1 (<< 1) to align its bits to bit position 1, and bitwise 
- * OR them together. This encodes two full channels into an 8-byte frame using 
+ * By loading the spread values of two channels simultaneously, we shift the
+ * second channel by 1 (<< 1) to align its bits to bit position 1, and bitwise
+ * OR them together. This encodes two full channels into an 8-byte frame using
  * just one lookup and a single 64-bit store.
  *
  * 32-Bit Implementation:
- * A 32-bit register cannot hold 8 spread bytes at once. Thus, the 32-bit 
- * variant splits the input byte into two 4-bit nibbles using two distinct 
- * 32-bit LUTs (high nibble and low nibble). Each lookup fills 4 bytes of 
- * destination memory natively using 32-bit registers, maintaining low 
- * register pressure and avoiding 64-bit arithmetic emulation penalties on 
+ * A 32-bit register cannot hold 8 spread bytes at once. Thus, the 32-bit
+ * variant splits the input byte into two 4-bit nibbles using two distinct
+ * 32-bit LUTs (high nibble and low nibble). Each lookup fills 4 bytes of
+ * destination memory natively using 32-bit registers, maintaining low
+ * register pressure and avoiding 64-bit arithmetic emulation penalties on
  * 32-bit architectures (like ARM32/armhf).
  *
  * -------------------------------------------------------------------------
  * 2. DECODING MATH: PARALLEL BIT GATHER VIA MAGIC MULTIPLIERS
  * -------------------------------------------------------------------------
- * To decode, we must perform the inverse: extract a specific bit position 
+ * To decode, we must perform the inverse: extract a specific bit position
  * from 8 consecutive bytes in memory and pack them back into a single byte.
  *
  * 64-Bit Implementation (`pack_bit_plane64`):
@@ -167,52 +167,52 @@ static inline void ploytec_decode_s24_3le(u8 *dest, const u8 *src)
  * ...
  * Byte 0 is multiplied by 0x80 (shifted << 7)
  *
- * The mathematical properties of this multiplication collapse all 8 isolated 
- * bits perfectly into the most significant byte (the highest 8 bits) of the 
- * u64 register. A final logical shift right (>> 56) extracts the completed 
+ * The mathematical properties of this multiplication collapse all 8 isolated
+ * bits perfectly into the most significant byte (the highest 8 bits) of the
+ * u64 register. A final logical shift right (>> 56) extracts the completed
  * audio byte in a single operation.
  *
  * 32-Bit Implementation (`pack_bit_plane32`):
- * To avoid emulating 64-bit multiplication on a 32-bit CPU, we read two 
- * separate 4-byte halves into native u32 registers. We apply the 32-bit 
- * magic multiplier (0x08040201U) to both halves independently. This collapses 
- * each half into a 4-bit nibble at the top of each register. We then combine 
+ * To avoid emulating 64-bit multiplication on a 32-bit CPU, we read two
+ * separate 4-byte halves into native u32 registers. We apply the 32-bit
+ * magic multiplier (0x08040201U) to both halves independently. This collapses
+ * each half into a 4-bit nibble at the top of each register. We then combine
  * the two resulting nibbles `(high << 4) | low` to form the final byte.
  *
  * -------------------------------------------------------------------------
  * 3. ENDIANNESS & ALIGNMENT MITIGATION
  * -------------------------------------------------------------------------
- * All bitwise shifting (`<<`, `>>`) and multiplier math inside CPU registers 
- * is inherently endian-agnostic. However, reading and writing these multi-byte 
+ * All bitwise shifting (`<<`, `>>`) and multiplier math inside CPU registers
+ * is inherently endian-agnostic. However, reading and writing these multi-byte
  * integers (u32/u64) directly to physical RAM introduces two system hazards:
  * - Byte Inversion on Big Endian architectures (e.g., MIPS, PowerPC).
  * - Kernel Alignment Faults (SIGBUS) on alignment-strict processors.
  *
- * To ensure safe, architecture-independent execution, all memory interfaces 
- * utilize the kernel's `get_unaligned_le32/64` and `put_unaligned_le32/64` 
- * macros (or user-space memcpy/bswap equivalents). 
- * 
- * On little-endian architectures with unaligned support (x86_64, arm64, armhf), 
- * the compiler optimizes these macros completely out, compiling down to standard, 
+ * To ensure safe, architecture-independent execution, all memory interfaces
+ * utilize the kernel's `get_unaligned_le32/64` and `put_unaligned_le32/64`
+ * macros (or user-space memcpy/bswap equivalents).
+ *
+ * On little-endian architectures with unaligned support (x86_64, arm64, armhf),
+ * the compiler optimizes these macros completely out, compiling down to standard,
  * zero-overhead native instruction loads and stores. On big-endian or strict-
- * alignment architectures, the macros safely handle arbitrary memory addresses 
+ * alignment architectures, the macros safely handle arbitrary memory addresses
  * and emit hardware byte-swaps (`rev`) automatically.
- * 
+ *
  * -------------------------------------------------------------------------
  * 4. EMPIRICAL PERFORMANCE TESTING
  * -------------------------------------------------------------------------
  * Compared to the reference implementation, testing of these optimised
  * versions showed a significant improvement, justifying the added complexity
- * from these optimisations. Table show the relative speed-up and the time 
+ * from these optimisations. Table show the relative speed-up and the time
  * for encoding (4ch) or decoding (6ch) a sample frame on the validation
  * hardware:
- * 
+ *
  * Architecture	Bit	Encode	Decode		Encode Time	Decode Time
  *   i386	32	 4.7x	 4.7x		 14.4 ns	 27.5 ns
  *   x86_64	64	10.2x	 8.8x		  7.3 ns	 15.0 ns
  *   armhf	32	 3.9x	 4.6x		208.9 ns	448.5 ns
  *   arm64	64	 8.1x	 5.7x		 15.6 ns	 41.5 ns
- * 
+ *
  * =========================================================================
  */
 
@@ -237,14 +237,20 @@ static inline void ploytec_encode_s24_3le_lut64(u8 *dest, const u8 *src)
 	// even if the target CPU is Big Endian or alignment-strict.
 
 	// First 24 bytes: odd channels (ALSA Ch 1 & 3)
-	put_unaligned_le64(ploytec_bit_spread_64[src[2]] | (ploytec_bit_spread_64[src[8]] << 1), dest + 0);
-	put_unaligned_le64(ploytec_bit_spread_64[src[1]] | (ploytec_bit_spread_64[src[7]] << 1), dest + 8);
-	put_unaligned_le64(ploytec_bit_spread_64[src[0]] | (ploytec_bit_spread_64[src[6]] << 1), dest + 16);
-	
+	put_unaligned_le64(ploytec_bit_spread_64[src[2]] |
+			   (ploytec_bit_spread_64[src[8]] << 1), dest + 0);
+	put_unaligned_le64(ploytec_bit_spread_64[src[1]] |
+			   (ploytec_bit_spread_64[src[7]] << 1), dest + 8);
+	put_unaligned_le64(ploytec_bit_spread_64[src[0]] |
+			   (ploytec_bit_spread_64[src[6]] << 1), dest + 16);
+
 	// Second 24 bytes: even channels (ALSA Ch 2 & 4)
-	put_unaligned_le64(ploytec_bit_spread_64[src[5]] | (ploytec_bit_spread_64[src[11]] << 1), dest + 24);
-	put_unaligned_le64(ploytec_bit_spread_64[src[4]] | (ploytec_bit_spread_64[src[10]] << 1), dest + 32);
-	put_unaligned_le64(ploytec_bit_spread_64[src[3]] | (ploytec_bit_spread_64[src[9]] << 1), dest + 40);
+	put_unaligned_le64(ploytec_bit_spread_64[src[5]] |
+			   (ploytec_bit_spread_64[src[11]] << 1), dest + 24);
+	put_unaligned_le64(ploytec_bit_spread_64[src[4]] |
+			   (ploytec_bit_spread_64[src[10]] << 1), dest + 32);
+	put_unaligned_le64(ploytec_bit_spread_64[src[3]] |
+			   (ploytec_bit_spread_64[src[9]] << 1), dest + 40);
 }
 
 static inline u8 pack_bit_plane64(u64 val, int bit_index)
@@ -252,7 +258,7 @@ static inline u8 pack_bit_plane64(u64 val, int bit_index)
 	// Shift target bit to bit 0 of each byte, then mask it
 	u64 masked = (val >> bit_index) & 0x0101010101010101ULL;
 
-	// Multiplier acts as a parallel shift-and-add, collecting 
+	// Multiplier acts as a parallel shift-and-add, collecting
 	// the bits into the highest byte of the u64
 	return (u8)((masked * 0x8040201008040201ULL) >> 56);
 }
@@ -328,30 +334,41 @@ static inline void ploytec_encode_s24_3le_lut32(u8 *dest, const u8 *src)
 
 	// First 24 bytes: Odd channels (ALSA Ch 1 [src 0,1,2] & Ch 3 [src 6,7,8])
 	// Block 1: Most Significant Bytes
-	put_unaligned_le32(ploytec_bit_spread_32_high[src[2]] | (ploytec_bit_spread_32_high[src[8]] << 1), dest + 0);
-	put_unaligned_le32(ploytec_bit_spread_32_low[src[2]]  | (ploytec_bit_spread_32_low[src[8]]  << 1), dest + 4);
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[2]] |
+			   (ploytec_bit_spread_32_high[src[8]] << 1), dest + 0);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[2]]  |
+			   (ploytec_bit_spread_32_low[src[8]]  << 1), dest + 4);
 
 	// Block 2: Middle Bytes
-	put_unaligned_le32(ploytec_bit_spread_32_high[src[1]] | (ploytec_bit_spread_32_high[src[7]] << 1), dest + 8);
-	put_unaligned_le32(ploytec_bit_spread_32_low[src[1]]  | (ploytec_bit_spread_32_low[src[7]]  << 1), dest + 12);
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[1]] |
+			   (ploytec_bit_spread_32_high[src[7]] << 1), dest + 8);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[1]]  |
+			   (ploytec_bit_spread_32_low[src[7]]  << 1), dest + 12);
 
 	// Block 3: Least Significant Bytes
-	put_unaligned_le32(ploytec_bit_spread_32_high[src[0]] | (ploytec_bit_spread_32_high[src[6]] << 1), dest + 16);
-	put_unaligned_le32(ploytec_bit_spread_32_low[src[0]]  | (ploytec_bit_spread_32_low[src[6]]  << 1), dest + 20);
-
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[0]] |
+			   (ploytec_bit_spread_32_high[src[6]] << 1), dest + 16);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[0]]  |
+			   (ploytec_bit_spread_32_low[src[6]]  << 1), dest + 20);
 
 	// Second 24 bytes: Even channels (ALSA Ch 2 [src 3,4,5] & Ch 4 [src 9,10,11])
 	// Block 1: Most Significant Bytes
-	put_unaligned_le32(ploytec_bit_spread_32_high[src[5]] | (ploytec_bit_spread_32_high[src[11]] << 1), dest + 24);
-	put_unaligned_le32(ploytec_bit_spread_32_low[src[5]]  | (ploytec_bit_spread_32_low[src[11]]  << 1), dest + 28);
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[5]] |
+			   (ploytec_bit_spread_32_high[src[11]] << 1), dest + 24);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[5]]  |
+			   (ploytec_bit_spread_32_low[src[11]]  << 1), dest + 28);
 
 	// Block 2: Middle Bytes
-	put_unaligned_le32(ploytec_bit_spread_32_high[src[4]] | (ploytec_bit_spread_32_high[src[10]] << 1), dest + 32);
-	put_unaligned_le32(ploytec_bit_spread_32_low[src[4]]  | (ploytec_bit_spread_32_low[src[10]]  << 1), dest + 36);
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[4]] |
+			   (ploytec_bit_spread_32_high[src[10]] << 1), dest + 32);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[4]]  |
+			   (ploytec_bit_spread_32_low[src[10]]  << 1), dest + 36);
 
 	// Block 3: Least Significant Bytes
-	put_unaligned_le32(ploytec_bit_spread_32_high[src[3]] | (ploytec_bit_spread_32_high[src[9]] << 1), dest + 40);
-	put_unaligned_le32(ploytec_bit_spread_32_low[src[3]]  | (ploytec_bit_spread_32_low[src[9]]  << 1), dest + 44);
+	put_unaligned_le32(ploytec_bit_spread_32_high[src[3]] |
+			   (ploytec_bit_spread_32_high[src[9]] << 1), dest + 40);
+	put_unaligned_le32(ploytec_bit_spread_32_low[src[3]]  |
+			   (ploytec_bit_spread_32_low[src[9]]  << 1), dest + 44);
 }
 
 static inline u8 pack_bit_plane32(u32 high_4_bytes, u32 low_4_bytes, int bit_index)
@@ -427,10 +444,10 @@ void ploytec_initialise_codec(void)
 	pr_debug("ploytec: using portable codec\n");
 #else
 #ifdef CONFIG_64BIT
-	pr_debug("ploytec: using 64 bit optimized codec\n");
+	pr_debug("ploytec: using 64-bit optimized codec\n");
 	init_ploytec_bit_spread_lut64();
 #else
-	pr_debug("ploytec: using 32 bit optimized codec\n");
+	pr_debug("ploytec: using 32-bit optimized codec\n");
 	init_ploytec_bit_spread_lut32();
 #endif // CONFIG_64BIT
 #endif // REFERENCE_CODEC
@@ -461,7 +478,7 @@ void ploytec_encode_batch(u8 *dest, const u8 *src, const int n_frames)
 
 /**
  * ploytec_decode_batch - Decode a number of 64-byte Ploytec frames to 6-channel S24_3LE
- * @dest: nframes * 18-byte destination buffer (6 channels * 3 bytes) 
+ * @dest: nframes * 18-byte destination buffer (6 channels * 3 bytes)
  * @src: n_frames * 64-byte source buffer
  * @n_frames: number of frames to be processed batch
  */
