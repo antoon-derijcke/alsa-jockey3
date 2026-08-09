@@ -107,6 +107,19 @@ profiles:
         JT-BUILD-004: {iterations: 0}
         JT-PROBE-002: {iterations: 0}
         JT-RATE-001:  {params: {iterations_per_run: 15}}
+      x86_64-debug:
+        # Audio quality cannot be judged on a KASAN kernel -- see the
+        # constraints on this target in targets.yaml. JT-AUDIO-003 asks whether
+        # music plays without clicks, and on this target the answer is no for
+        # reasons that have nothing to do with the driver. Running it would
+        # record a fail against the driver for the kernel's overhead, which is
+        # worse than not running it.
+        #
+        # The channel sweep stays: it asks which output a tone came from and at
+        # what pitch, and a crackle does not make that ambiguous.
+        JT-AUDIO-003: {iterations: 0}
+      arm64-debug:
+        JT-AUDIO-003: {iterations: 0}
 
   regression:
     description: >
@@ -156,6 +169,11 @@ profiles:
         JT-RATE-001: {iterations: 0}
         JT-PCM-001:  {iterations: 0}
         JT-PROBE-002: {iterations: 0}
+      x86_64-debug:
+        # See the note under `functional`: quality verdicts are void here.
+        JT-AUDIO-003: {iterations: 0}
+      arm64-debug:
+        JT-AUDIO-003: {iterations: 0}
 
   soak:
     description: >

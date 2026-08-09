@@ -124,6 +124,37 @@ environment context, recorded with every run and never part of the target's
 identity. The same `x86_64-debug` kernel gives the same target whichever
 machine boots it, and the runner can be launched from any of them.
 
+### A debug kernel cannot judge audio quality
+
+Measured on 2026-08-09, and worth stating plainly because the evidence is
+counter-intuitive. The same FLAC plays with a light continuous crackle on
+`x86_64-debug` and cleanly on `x86_64-prod`. On **both**, `xrun_counter` stays
+at zero and `avail_max` sits around 5500. Feeding `aplay` from a file instead
+of through a pipe changes nothing.
+
+So ALSA is equally comfortable on both, and the shortfall is entirely
+downstream of it. That is the free-running URB ring: KASAN inflates the
+completion handlers and the codec enough that URBs are resubmitted late, the
+device's packet stream gets gaps, and it is audible. Nothing in
+`/proc/asound` can observe past the point where the driver hands bytes to
+usbcore, which is why the defect is audible and unreported at the same time.
+
+The consequence for the suite is narrow but firm:
+
+- **Functional verdicts stay valid on a debug kernel** — does it enumerate,
+  play, capture, switch rate, recover from a stall, survive a reload. These
+  are what the debug target exists for, and KASAN and lockdep are the reason
+  to run them there.
+- **Verdicts about how it sounds are void.** `JT-AUDIO-003` and `JT-SOAK-002`
+  are disabled on the debug targets. Running them would record a failure
+  against the driver for the kernel's overhead, which is worse than not
+  running them at all.
+- **`JT-AUDIO-001` stays enabled.** It asks which output a tone came from and
+  at what pitch; a crackle does not make either ambiguous.
+
+A latency or throughput figure from a debug kernel is likewise a fact about
+KASAN, which is why §4 already puts those on `x86_64-prod`.
+
 | Target | Typical machine | Role |
 |---|---|---|
 | `x86_64-debug` | HP EliteDesk 800 G2 (i5, 64 GB, NVMe) | Primary. Memory errors and lock inversions surface here or nowhere. |

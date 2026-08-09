@@ -552,6 +552,13 @@ cases:
       The only test that can catch codec packing errors as they actually
       manifest. Worth doing at 44.1 and 96 kHz at minimum.
 
+      Disabled on the debug targets, and that is not caution. Measured
+      2026-08-09: the same file crackles audibly on x86_64-debug and plays
+      cleanly on x86_64-prod, with xrun_counter zero and avail_max around 5500
+      on both -- so ALSA is comfortable either way and the gap is downstream of
+      it, in URBs resubmitted late under KASAN. Asking "did it sound clean?"
+      there records a fail against the driver for the kernel's overhead.
+
   - id: JT-AUDIO-004
     title: Capture signal presence
     area: AUDIO
