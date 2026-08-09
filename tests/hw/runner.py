@@ -9,8 +9,16 @@ interesting failure is a kernel oops.
 
     ./runner.py --list                     what exists
     ./runner.py --profile smoke --dry-run  what would run here
-    sudo ./runner.py --profile smoke       run it
-    sudo ./runner.py --case JT-RATE-001    run one case
+    ./runner.py --profile smoke            run it
+    ./runner.py --case JT-RATE-001         run one case
+
+Run it as an ordinary user. Playing audio, capturing, MIDI and reading sysfs
+need no privilege; the few operations that do -- loading the module, reading
+dmesg, marking the log, dynamic debug, rtcwake -- go through the root-owned
+helper in priv/, which is the whole privileged surface of this suite. See
+priv/README.md. Running the whole thing under sudo still works, but it makes
+every case root for the benefit of a handful of operations, and leaves result
+files owned by root.
 
 Case contract
 -------------
@@ -40,7 +48,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import alsa, env, kmsg, results          # noqa: E402
+from lib import alsa, env, kmsg, priv, results    # noqa: E402
 
 try:
     import yaml
@@ -291,9 +299,14 @@ def preflight(target_name, target_spec, plan, args):
     # build-only run on the build host is not missing anything by not having a
     # DJ controller plugged into it.
     if needs_running_kernel(plan):
-        if os.geteuid() != 0 and not args.dry_run:
-            problems.append("not root -- module load/unload and /dev/kmsg "
-                            "markers will not work (re-run with sudo)")
+        if not args.dry_run:
+            ok, why = priv.available()
+            if not ok:
+                problems.append(f"privileged helper unusable: {why}")
+            elif priv.stale():
+                problems.append(
+                    f"{priv.HELPER} differs from tests/hw/priv/jockey3-testctl "
+                    f"-- re-run `sudo tests/hw/priv/install.sh`")
         if card is None:
             problems.append("no Jockey 3 card found in /proc/asound")
     needed = set()
@@ -305,8 +318,10 @@ def preflight(target_name, target_spec, plan, args):
                 needed.update(["aplay", "arecord"])
             if case.get("area") == "MIDI":
                 needed.add("amidi")
-            if "rtc-wake" in (case.get("requires") or []):
-                needed.add("rtcwake")
+            # rtcwake is deliberately not checked here. It lives in /sbin,
+            # which is not on a non-root PATH, and it is invoked inside the
+            # privileged helper rather than by the case -- so `which rtcwake`
+            # would report it missing on a machine where it works fine.
     missing = alsa.missing_tools(sorted(needed))
     if missing:
         problems.append("missing tools: " + ", ".join(missing))

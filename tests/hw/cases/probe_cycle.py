@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
 
 from lib.case import Case          # noqa: E402
-from lib import alsa, env          # noqa: E402
+from lib import alsa, env, priv    # noqa: E402
 
 
 def wait_for_card(present, timeout=10.0):
@@ -35,31 +35,32 @@ def wait_for_card(present, timeout=10.0):
 
 def main():
     c = Case()
-    if os.geteuid() != 0:
-        c.blocked("needs root to load and unload the module")
-    c.require_tools("modprobe", "rmmod")
+    ok, why = priv.available()
+    if not ok:
+        c.blocked(f"cannot load or unload the module: {why}")
 
     iterations = int(c.params.get("iterations_per_run", 3))
 
-    # Enable the firmware message before the first load. It is a dev_dbg
-    # emitted once at probe, and it is the only place the firmware revision
-    # appears -- there is no sysfs attribute, and adding one would be a change
-    # to the driver made for tests.
-    ok, why = env.enable_firmware_debug()
-    if not ok:
-        c.note(f"firmware debug not enabled: {why}")
+    # The firmware message is a dev_dbg emitted once at probe, and it is the
+    # only place the firmware revision appears -- there is no sysfs attribute,
+    # and adding one would be a change to the driver made for tests.
+    #
+    # Nothing to enable here: priv.load_module() passes the rule as modprobe's
+    # dyndbg= parameter on every load, which is the only way to have it in
+    # place before probe runs. Enabling it once per case does not work, because
+    # dynamic_debug drops a module's rules each time it unloads.
 
     load_ms, unload_ms = [], []
 
     for i in range(1, iterations + 1):
         if env.module_loaded():
-            c.run(["rmmod", env.MODULE_DASH], timeout=30)
+            priv.unload_module(timeout=30)
             wait_for_card(False)
 
         t0 = time.time()
-        rc, _out, err = c.run(["modprobe", env.MODULE_DASH], timeout=60)
+        rc, _out, err = priv.load_module()
         if rc != 0:
-            c.fail(f"iteration {i}: modprobe failed: {err.strip()[:120]}")
+            c.fail(f"iteration {i}: load failed: {err.strip()[:120]}")
             break
 
         idx, seen_at = wait_for_card(True)
@@ -77,9 +78,9 @@ def main():
             c.fail(f"iteration {i}: no rawmidi device")
 
         t0 = time.time()
-        rc, _out, err = c.run(["rmmod", env.MODULE_DASH], timeout=60)
+        rc, _out, err = priv.unload_module()
         if rc != 0:
-            c.fail(f"iteration {i}: rmmod failed: {err.strip()[:120]}")
+            c.fail(f"iteration {i}: unload failed: {err.strip()[:120]}")
             break
         _, gone_at = wait_for_card(False)
         if gone_at is None:
@@ -89,7 +90,7 @@ def main():
 
     # Leave the driver loaded: every case after this one expects a card.
     if not env.module_loaded():
-        c.run(["modprobe", env.MODULE_DASH], timeout=60)
+        priv.load_module()
         wait_for_card(True)
 
     if load_ms:

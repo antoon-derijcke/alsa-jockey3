@@ -19,6 +19,8 @@ import os
 import re
 import subprocess
 
+from lib import priv
+
 MODULE = "snd_reloop_jockey3"          # as it appears in sysfs
 MODULE_DASH = "snd-reloop-jockey3"     # as modprobe spells it
 
@@ -170,18 +172,25 @@ def enable_firmware_debug():
     Enabled per-format rather than for the whole module, so the log is not
     flooded by every other dev_dbg in the driver during the run.
 
-    Must be called BEFORE the module is loaded -- the message is emitted once,
-    at probe.
+    Only useful for a module that is ALREADY loaded, and even then only until
+    it is next unloaded: dynamic_debug drops a module's rules when the module
+    goes away, and the callsite does not exist at all while it is unloaded.
+
+    The firmware message is emitted once, at probe, so enabling it here can
+    never catch it. That is `priv.load_module()`'s job -- it passes the rule as
+    modprobe's dyndbg= parameter, which applies before the module initializes.
+    This function remains for turning the message on for an already-loaded
+    module, and its counterpart for turning it off.
+
+    /sys/kernel/debug is mode 0700 root, so this goes through the privileged
+    helper. The format string lives in the helper, not here: it is the thing
+    being granted, and a caller that could choose it could enable every
+    dev_dbg in the kernel.
     """
-    if not os.path.exists(DYNDBG):
-        return False, "debugfs dynamic_debug not available"
-    rule = f"format \"Firmware 0x%02x\" +p\n"
-    try:
-        with open(DYNDBG, "w", encoding="utf-8") as f:
-            f.write(rule)
+    ok, err = priv.dyndbg_firmware(True)
+    if ok:
         return True, ""
-    except OSError as e:
-        return False, f"cannot write dynamic_debug control: {e}"
+    return False, err or "cannot enable dynamic debug"
 
 
 def firmware_from_log(lines):

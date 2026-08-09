@@ -1,0 +1,155 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# The complete set of root operations the Jockey 3 test framework performs.
+#
+#   jockey3-testctl <verb> [argument]
+#
+# Everything else the tests do -- opening the card, playing, capturing, MIDI,
+# stopping the user's sound server, reading sysfs and /proc/config.gz -- runs
+# as an ordinary user and must never appear here.
+#
+# WHY A SCRIPT RATHER THAN SUDOERS ENTRIES PER BINARY
+# ---------------------------------------------------
+# sudoers matches a command line, and its wildcards are far weaker than they
+# look. `NOPASSWD: /sbin/modprobe *` grants the right to load ANY module,
+# which is unrestricted root. Pinning every argument instead produces a dozen
+# brittle entries that have to change whenever a case changes.
+#
+# One root-owned script with a fixed verb interface and validated arguments
+# gives a boundary that can actually be reviewed: this file is the boundary,
+# and reading it tells you the whole privileged surface of the test suite.
+#
+# INSTALLATION
+# ------------
+# This file is version-controlled in tests/hw/priv/ so it can be reviewed and
+# changed under review, but it MUST be installed to a root-owned path before
+# it is granted sudo rights -- a script sudo can run must not be writable by
+# the user it grants privilege to, or the boundary is worthless. The Seafile
+# share is user-writable, so running it from there under sudo would be exactly
+# that mistake. Use install.sh.
+#
+# DELIBERATELY ABSENT: installing a module
+# ----------------------------------------
+# Copying a .ko into /lib/modules and loading it is arbitrary kernel code
+# execution -- root by another name. Deploying a new driver build therefore
+# stays a deliberate, password-protected act (see reload_driver.sh); only
+# loading and unloading the ALREADY-INSTALLED module is automated here.
+
+set -u
+
+MODULE=snd-reloop-jockey3
+MODULE_U=snd_reloop_jockey3
+DYNDBG=/sys/kernel/debug/dynamic_debug/control
+
+# The one dev_dbg carrying the firmware revision. Matched by format string so
+# the log is not flooded by every other dev_dbg in the driver during a run.
+FW_FORMAT='Firmware 0x%02x'
+
+die() { echo "jockey3-testctl: $*" >&2; exit 2; }
+
+usage() {
+	sed -n '/^# Verbs:/,/^$/p' "$0" | sed 's/^# \?//'
+	exit 2
+}
+
+# Verbs:
+#   status                 report that the helper is installed and usable
+#   load                   modprobe the driver and its soundcore dependencies
+#   unload                 rmmod the driver (no-op when not loaded)
+#   dmesg-read             print the kernel log
+#   dmesg-mark <token>     write a JT-MARK boundary token to /dev/kmsg
+#   dyndbg-firmware on|off enable/disable the firmware-revision probe message
+#   printk-console <1-8>   set the console loglevel
+#   rtcwake-mem <1-3600>   suspend to RAM and wake after N seconds
+
+[ $# -ge 1 ] || usage
+verb=$1
+shift
+
+case "$verb" in
+status)
+	echo "jockey3-testctl ok"
+	echo "module=$MODULE"
+	echo "dyndbg=$([ -w "$DYNDBG" ] && echo yes || echo no)"
+	exit 0
+	;;
+
+load)
+	[ $# -eq 0 ] || die "load takes no arguments"
+	# Explicit dependency loads: the driver declares a softdep on these, but
+	# loading them first makes a missing soundcore module an obvious error
+	# here rather than a confusing modprobe failure.
+	modprobe snd-pcm || die "modprobe snd-pcm failed"
+	modprobe snd-rawmidi || die "modprobe snd-rawmidi failed"
+	# The firmware revision exists only as a dev_dbg emitted once, at probe,
+	# so it has to be enabled before the module initializes -- hence the
+	# dyndbg= module parameter rather than a write to the control file.
+	#
+	# Writing the control file cannot work here for two reasons: the callsite
+	# does not exist while the module is unloaded, and dynamic_debug discards
+	# a module's rules when it unloads, so a rule set once per test case is
+	# gone after the first unload/reload. That is why the first hardware runs
+	# recorded "firmware unknown" for every run.
+	exec modprobe "$MODULE" "dyndbg=format \"$FW_FORMAT\" +p"
+	;;
+
+unload)
+	[ $# -eq 0 ] || die "unload takes no arguments"
+	grep -q "^${MODULE_U} " /proc/modules || exit 0
+	exec rmmod "$MODULE"
+	;;
+
+dmesg-read)
+	[ $# -eq 0 ] || die "dmesg-read takes no arguments"
+	exec dmesg --color=never
+	;;
+
+dmesg-mark)
+	[ $# -eq 1 ] || die "dmesg-mark needs exactly one token"
+	# Validated rather than trusted: this string reaches the kernel log, and
+	# the runner later slices the log on it. Control characters or newlines
+	# would let a token forge a boundary, or split one log line into two.
+	[[ $1 =~ ^JT-MARK\ [A-Za-z0-9._:#+-]{1,64}\ [0-9a-f]{8,32}$ ]] \
+		|| die "malformed marker token"
+	printf '%s\n' "$1" > /dev/kmsg || die "cannot write /dev/kmsg"
+	exit 0
+	;;
+
+dyndbg-firmware)
+	[ $# -eq 1 ] || die "dyndbg-firmware needs on or off"
+	case "$1" in
+	on)  flag='+p' ;;
+	off) flag='-p' ;;
+	*)   die "dyndbg-firmware takes on or off" ;;
+	esac
+	[ -e "$DYNDBG" ] || die "debugfs dynamic_debug not available"
+	# The format string is fixed in this file, never taken from the caller.
+	printf 'format "%s" %s\n' "$FW_FORMAT" "$flag" > "$DYNDBG" \
+		|| die "cannot write $DYNDBG"
+	exit 0
+	;;
+
+printk-console)
+	[ $# -eq 1 ] || die "printk-console needs a level"
+	[[ $1 =~ ^[1-8]$ ]] || die "console loglevel must be 1-8"
+	# Only the console level is touched; the other three fields are left as
+	# the system set them.
+	read -r _cur def minl defl < /proc/sys/kernel/printk \
+		|| die "cannot read kernel.printk"
+	printf '%s\t%s\t%s\t%s\n' "$1" "$def" "$minl" "$defl" \
+		> /proc/sys/kernel/printk || die "cannot set kernel.printk"
+	exit 0
+	;;
+
+rtcwake-mem)
+	[ $# -eq 1 ] || die "rtcwake-mem needs a duration in seconds"
+	[[ $1 =~ ^[0-9]{1,4}$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 3600 ] \
+		|| die "suspend duration must be 1-3600 seconds"
+	exec rtcwake -m mem -s "$1"
+	;;
+
+*)
+	die "unknown verb '$verb'"
+	;;
+esac

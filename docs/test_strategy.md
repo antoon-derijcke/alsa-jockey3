@@ -273,6 +273,37 @@ renders them into a markdown checklist for a given profile and target; the
 answers are read back into the same result record, so one run produces one
 report regardless of who or what performed each case.
 
+### Privilege
+
+**The runner is an ordinary user process.** Almost everything a case does needs
+no privilege at all: opening the card, playback, capture, MIDI, stopping the
+session's sound server, reading sysfs and `/proc/config.gz`. `/dev/snd/*` is
+`root:audio`, so membership of `audio` is the whole requirement.
+
+Seven operations do need root — loading and unloading the module, reading
+`dmesg` under `dmesg_restrict=1`, writing the boundary marker to `/dev/kmsg`,
+the dynamic-debug rule, the console loglevel, and `rtcwake`. All seven are
+verbs in one root-owned script, `tests/hw/priv/jockey3-testctl`, reached
+through a single sudoers entry. That script *is* the privilege boundary, and
+reading it tells you everything the suite can do as root.
+
+The suite used to require `sudo ./runner.py`, which made every case root for
+the benefit of a handful of operations and left result files owned by root.
+Granting sudo per binary instead would be worse than it looks:
+`NOPASSWD: /sbin/modprobe *` is the right to load any module, which is
+unrestricted root.
+
+**Installing a module is deliberately excluded.** Copying a `.ko` into
+`/lib/modules` and loading it is arbitrary kernel code execution, so wrapping
+it in a narrow-looking verb would make the allowlist presentational rather than
+a real boundary. Deploying a new build asks for a password, once, in
+`actions/reload_driver.sh`; cycling the already-installed module is automated,
+which is what an unattended profile actually needs.
+
+`selftest.py` checks the boundary cannot erode: that every verb the Python
+calls exists in the script, that a generated marker token passes the script's
+own validation, and that nothing outside `lib/priv.py` reaches for privilege.
+
 ---
 
 ## 8. Environment capture
@@ -328,8 +359,14 @@ declared by the operator, because the operator is the least reliable part of
 the system at 2am.
 
 **Preparation.** PipeWire/wireplumber is stopped so the device is not claimed,
-`kernel.printk` is raised, and the card is resolved by driver match. All of it
-is restored afterwards.
+and the card is resolved by driver match. Both are restored afterwards.
+
+Raising `kernel.printk` is *not* yet part of preparation. The verb exists in
+the privileged helper — adding one later would mean reinstalling on every test
+machine — but nothing calls it. Console verbosity has not so far been the thing
+standing between a failure and its explanation; `dmesg` is captured in full
+either way, and the console only matters for a hang, which is what the serial
+capture is for.
 
 **Crash capture.** The EliteDesk's serial console is captured externally, which
 survives the hang that makes dmesg unreachable. Moving that capture from a

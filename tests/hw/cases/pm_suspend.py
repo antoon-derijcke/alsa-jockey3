@@ -22,30 +22,26 @@ sys.path.insert(0, os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
 
 from lib.case import Case          # noqa: E402
-from lib import alsa               # noqa: E402
+from lib import alsa, priv         # noqa: E402
 
 
 def main():
     c = Case()
-    if os.geteuid() != 0:
-        c.blocked("needs root to suspend")
+    ok, why = priv.available()
+    if not ok:
+        c.blocked(f"cannot suspend: {why}")
     c.require_card()
-    c.require_tools("rtcwake")
 
     sleep_s = int(c.params.get("sleep_seconds", 10))
 
     before = alsa.substreams(c.card)
     t0 = time.time()
-    try:
-        p = subprocess.run(["rtcwake", "-m", "mem", "-s", str(sleep_s)],
-                           capture_output=True, text=True,
-                           timeout=sleep_s + 180)
-        rc, err = p.returncode, p.stderr
-    except subprocess.TimeoutExpired:
-        c.fail(f"machine did not resume within {sleep_s + 180}s")
-        c.done()
+    rc, _out, err = priv.rtcwake_mem(sleep_s)
     elapsed = time.time() - t0
 
+    if rc == 124:
+        c.fail(f"machine did not resume within {sleep_s + 180}s")
+        c.done()
     if rc != 0:
         c.fail(f"rtcwake exited {rc}: {(err or '').strip()[:160]}")
         c.done()
