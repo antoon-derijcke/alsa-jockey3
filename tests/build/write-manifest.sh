@@ -91,6 +91,22 @@ srcversion=$(grep -a -o 'srcversion=[0-9A-Fa-f]\{16,\}' "$KO" 2>/dev/null \
 dirty=false
 [ -z "$(git -C "$SRC_DIR" status --porcelain 2>/dev/null)" ] || dirty=true
 
+# The kernel tree is the other half of the answer to "what was tested".
+#
+# The fields above describe the driver SOURCE -- which revision of this
+# repository was copied in. They say nothing about the tree that supplied the
+# headers, the configuration and Module.symvers, and that tree can be stale or
+# carry uncommitted changes of its own. Recording only the first half produced
+# a manifest reading "dirty: false" for a module built in a worktree that was
+# both modified and 40-odd commits behind its branch.
+#
+# Dirtiness is scoped to sound/usb/jockey3 rather than the whole tree: a kernel
+# tree accumulates untracked build output and scratch directories that have no
+# bearing on the module, and a flag that is always true tells you nothing.
+kdirty=false
+[ -z "$(git -C "$KERNEL_SRC" status --porcelain sound/usb/jockey3 2>/dev/null)" ] \
+	|| kdirty=true
+
 mkdir -p "$MANIFEST_DIR"
 cat > "$MANIFEST_DIR/$build_id.json" <<EOF
 {
@@ -104,6 +120,10 @@ cat > "$MANIFEST_DIR/$build_id.json" <<EOF
   "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "built_on": "$(uname -n)",
   "kernel_src": "$KERNEL_SRC",
+  "kernel_git_hash": "$(git -C "$KERNEL_SRC" rev-parse HEAD 2>/dev/null)",
+  "kernel_git_describe": "$(git -C "$KERNEL_SRC" describe --always 2>/dev/null)",
+  "kernel_git_ref": "$(git -C "$KERNEL_SRC" rev-parse --abbrev-ref HEAD 2>/dev/null)",
+  "kernel_driver_dirty": $kdirty,
   "kernel_release": "$KERNEL_RELEASE",
   "arch": "$(uname -m)"
 }

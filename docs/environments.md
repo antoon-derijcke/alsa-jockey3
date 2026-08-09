@@ -112,6 +112,48 @@ QEMU cross targets. Same reason as #3: `kunit.py` always builds out of tree.
 
 ---
 
+## A test build comes from committed sources
+
+`build_module.sh` does **not** copy sources in. It checks that the driver
+committed on `feature/jockey3` matches this repository byte for byte, points
+the build worktree at that commit, and builds what is there.
+
+The reason is that a result has to name something. A module compiled from
+whatever was lying in a build worktree cannot be reproduced, and the manifest
+would name a revision that never contained those bytes. That is not a
+hypothetical: before this rule, a module was built in a worktree that was both
+modified and a commit behind its branch, and its manifest read `dirty: false`
+because only the *repository* was checked.
+
+So the loop before testing on hardware is:
+
+```sh
+# 1. commit in this repository, as usual
+# 2. stage into the kernel branch and commit there
+tests/build/sync-driver.sh ~/sound
+git -C ~/sound add sound/usb/jockey3
+git -C ~/sound commit --amend --no-edit     # feature/jockey3 is one patch
+# 3. build and deploy
+tests/build/build_module.sh x86_64-debug --manifest
+```
+
+`feature/jockey3` is a single squashed patch on `origin/for-next` — the one
+that gets submitted — so step 2 is normally an amend rather than a new commit.
+
+`--uncommitted` restores copy-then-build for quick iteration. It says so
+loudly, and the manifest records `kernel_driver_dirty: true`, so such a build
+stays distinguishable afterwards. It should not be what a recorded test result
+came from.
+
+The manifest carries both halves of the answer, because both can move
+independently:
+
+| Field | What it identifies |
+|---|---|
+| `git_hash`, `git_describe`, `dirty` | the driver source — this repository |
+| `kernel_git_hash`, `kernel_git_describe`, `kernel_driver_dirty` | the tree that supplied headers, config and `Module.symvers` |
+| `kernel_release`, `srcversion`, `build_id` | the binary itself |
+
 ## How source moves
 
 One direction only, by copy, never by symlink:
@@ -119,6 +161,9 @@ One direction only, by copy, never by symlink:
 ```
 dev sandbox  --(tests/build/sync-driver.sh)-->  ~/sound  and  ~/sound-build
 ```
+
+`build_kernel.sh` still syncs (it builds whole kernels, where the driver is
+one file among thousands); `build_module.sh` no longer does.
 
 `sync-driver.sh` holds **the one list of driver source files**. Adding a new
 source file means adding it there, or the build silently omits it.
@@ -141,7 +186,7 @@ warning on the next sync.
 | `tests/build/sync-driver.sh <tree>` | dev box | The file list. Copies sandbox → kernel tree. |
 | `tests/build/build_jockey3.sh` | dev box | L1 gates in `~/sound`: checkpatch, `W=12`, kernel-doc, codespell, rst, module size. Produces a verdict. |
 | `tests/build/build_kernel.sh <target>` | dev box | Builds a target kernel + `.deb`s: `~/sound-build` → `~/kbuild/<target>`. |
-| `tests/build/build_module.sh <target>` | dev box | Builds a **loadable** module for a target. Refuses to emit one whose `vermagic` does not match. `--manifest` records build-id → git. |
+| `tests/build/build_module.sh <target>` | dev box | Builds a **loadable** module for a target, from the sources committed on `feature/jockey3`. Refuses if the branch does not match this repository, or if `vermagic` does not match the target. `--manifest` records build-id → git. |
 | `tests/build/write-manifest.sh` | dev box | build-id → git revision, into the Seafile-synced manifests dir. |
 | `tests/codec/run_kunit.sh` | dev box | KUnit under UML/QEMU, via `~/sound-kunit`. |
 | `tests/codec/codecbench.py` | dev box | User-space codec correctness and benchmarking. |
