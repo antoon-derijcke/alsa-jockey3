@@ -23,7 +23,7 @@ set -u
 
 RATE=${1:-44100}
 SECONDS_PER_CH=${2:-2}
-DEVICE=${JT_DEVICE:-hw:Jockey3}
+DEVICE=${JT_DEVICE:-hw:RJ3}
 
 command -v sox  >/dev/null || { echo "sox not installed" >&2;  exit 3; }
 command -v aplay >/dev/null || { echo "aplay not installed" >&2; exit 3; }
