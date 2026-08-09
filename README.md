@@ -55,6 +55,13 @@ make
 sudo insmod snd-reloop-jockey3.ko
 ```
 
+> **Developing on this driver?** The source exists in several trees at once —
+> the sandbox you edit, an upstream tree for patch preparation, and per-target
+> build trees — and mixing them up produces modules that will not load and test
+> results attributed to the wrong revision. See
+> **[docs/environments.md](docs/environments.md)** for the map and for which
+> build tool answers which question.
+
 TODO add suggestions on usage (audio, midi)
 
 

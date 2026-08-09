@@ -6,7 +6,13 @@ Everything used to test this driver, in three parts.
 |---|---|
 | `codec/` | Codec correctness and benchmarking. Runs anywhere, needs no hardware. Guide: **[../docs/codec_testing.md](../docs/codec_testing.md)** |
 | `hw/` | The test runner, catalog and cases that exercise the driver against real hardware. Guide: **[../docs/test_strategy.md](../docs/test_strategy.md)** |
+| `build/` | Syncing sources into a kernel tree, the L1 gates, and building target kernels and modules. Guide: **[../docs/environments.md](../docs/environments.md)** |
 | `scripts-alsa-dev/` | Archive of the ad-hoc scripts this suite grew out of. Kept for reference; not maintained. |
+
+Before building anything, read **[../docs/environments.md](../docs/environments.md)**:
+the driver lives in five trees at once, and which one you build in decides
+whether you get a verdict, a loadable module, or a module that silently will
+not insert.
 
 ---
 
@@ -62,16 +68,22 @@ that way.
 | `checklist.py` | Renders manual cases to a checklist and reads the answers back. |
 | `ledger.py` | What has been tested, on what, how recently — and metric trends. |
 | `selftest.py` | Tests for the framework itself. No hardware, no root. |
+| `priv/` | The suite's entire privileged surface: one root-owned helper, one sudoers entry. Guide: **[priv/README.md](hw/priv/README.md)** |
 | `results/` | Generated; git-ignored. |
 
 ```sh
 cd tests/hw
+sudo priv/install.sh                      # once per machine; the only password
 ./runner.py --list                        # cases and profiles
 ./runner.py --profile smoke --dry-run     # what would run here
-sudo ./runner.py --profile smoke          # run it
+./runner.py --profile smoke               # run it -- as an ordinary user
 ./ledger.py                               # coverage and staleness
 ./selftest.py                             # check the framework itself
 ```
+
+The runner is **not** run under sudo. Playback, capture, MIDI and sysfs need no
+privilege; the few operations that do go through `priv/jockey3-testctl`. The
+test user needs to be in the `audio` group, and nothing more.
 
 The runner executes **on the machine with the hardware attached**, not on a
 build host. That is what lets the same suite run on a Raspberry Pi you plugged
