@@ -6,21 +6,29 @@ Manual and automated cases live in the same catalog and the same profiles, so
 that coverage is one picture rather than two. What differs is only how the
 verdict is obtained.
 
-The normal flow is to point it at the run you just did, which takes the
-profile and target from the run record so the checklist cannot describe
-something other than what was run:
+Nothing needs a path:
 
-    ./runner.py --profile smoke                       # leaves manual cases pending
-    ./checklist.py --run <run.json> > checklist.md    # go and do them
-    ./checklist.py --import checklist.md --run <run.json>
+    ./runner.py --profile smoke              # leaves manual cases pending
+    ./checklist.py --profile smoke > /tmp/checklist.md
+    $EDITOR /tmp/checklist.md                # do the tests, record verdicts
+    ./checklist.py --import /tmp/checklist.md
 
-Without --run it renders from the profile you name, for the target this
-machine is running -- detected the same way runner.py detects it, never
-assumed.
+The target is detected from the running kernel, exactly as runner.py detects
+it, and the run is the most recent one for that target and profile. The
+rendered checklist carries the run it belongs to, so importing needs no
+arguments beyond the file -- and cannot silently land in a different run than
+the one it was written for, which is what passing paths by hand invites.
+
+`--import -` reads from standard input, so a checklist can arrive over a pipe.
 
 The generated file is plain markdown with a small machine-readable block per
 case. Editing it in any text editor is the intended workflow -- a manual test
 that requires a tool to record is a manual test that does not get recorded.
+
+On import the completed checklist is copied into the run directory beside
+dmesg.txt. The verdicts land in run.json, but the operator's comments and the
+steps they actually followed are evidence too, and evidence belongs with the
+run rather than in /tmp.
 """
 
 import argparse
@@ -45,6 +53,15 @@ ANSWER_RE = re.compile(
     r"result:\s*(?P<result>pass|fail|skip|blocked|\?)\s*\|\s*"
     r"comment:\s*(?P<comment>.*?)\s*$",
     re.M | re.I)
+
+# Which run a checklist belongs to, carried in the file itself. An HTML comment
+# because it must survive a round trip through a markdown editor without
+# rendering, and because deleting it is then an obvious act rather than an
+# accident. Stored relative to the results root, so a checklist filled in on
+# one machine still resolves on another -- the roots differ, the run does not.
+RUN_RE = re.compile(r"<!--\s*jockey3-run:\s*(?P<path>\S+)\s*-->")
+
+STALE_SECONDS = 24 * 3600
 
 
 def load(name):
@@ -73,16 +90,22 @@ def manual_cases(profile, target, cases, profiles):
     return out
 
 
-def render(profile, target, items):
+def render(profile, target, items, run_rel=None):
     lines = [
         f"# Manual checklist -- {profile} on {target}",
         "",
+    ]
+    if run_rel:
+        lines += [f"<!-- jockey3-run: {run_rel} -->", ""]
+    lines += [
         "Fill in `result:` for each case (pass / fail / skip / blocked) and add",
         "a comment where it helps. Then import this file into the run record:",
         "",
         "```",
-        f"./checklist.py --import <this file> --run <path to run.json>",
+        "./checklist.py --import <this file>",
         "```",
+        "",
+        "The run this belongs to is recorded above, so no path is needed.",
         "",
         "A comment on a passing case is not wasted effort -- \"slight crackle on",
         "headphone right, only at 96k\" is how the next bug gets found early.",
@@ -112,9 +135,52 @@ def render(profile, target, items):
     return "\n".join(lines) + "\n"
 
 
-def import_answers(path, run_path):
+def humanize(seconds):
+    if seconds < 3600:
+        return f"{seconds // 60} min"
+    if seconds < 86400:
+        return f"{seconds // 3600} h"
+    return f"{seconds // 86400} d"
+
+
+def resolve_run(root, target, profile):
+    """The run a checklist belongs to: the newest for this target and profile.
+
+    An absent run is an error rather than an empty checklist. Answering cases
+    against a run that does not exist produces verdicts with nothing to attach
+    them to, and the operator finds out after doing the work rather than before.
+    """
+    path, age = results.find_latest_run(root, target, profile)
+    if not path:
+        sys.exit(
+            f"no '{profile}' run recorded for target '{target}' under {root}\n"
+            f"run it first:  ./runner.py --profile {profile}")
+    if age is not None and age > STALE_SECONDS:
+        print(f"checklist: WARNING the newest '{profile}' run for {target} is "
+              f"{humanize(age)} old ({os.path.basename(path)}).\n"
+              f"           Manual verdicts would be attached to that run. "
+              f"Consider ./runner.py --profile {profile} first.",
+              file=sys.stderr)
+    return path, age
+
+
+def read_text(path):
+    if path == "-":
+        return sys.stdin.read()
     with open(path, "r", encoding="utf-8") as f:
-        text = f.read()
+        return f.read()
+
+
+def run_from_checklist(text, root):
+    """Find the run a completed checklist names, if it still names one."""
+    m = RUN_RE.search(text)
+    if not m:
+        return None
+    cand = os.path.join(root, m.group("path"))
+    return cand if os.path.exists(os.path.join(cand, "run.json")) else None
+
+
+def import_answers(text, run_path, source_name):
     answers = {}
     for m in ANSWER_RE.finditer(text):
         verdict = m.group("result").lower()
@@ -125,7 +191,8 @@ def import_answers(path, run_path):
     if not answers:
         raise SystemExit("no completed answers found -- every result is still '?'")
 
-    run = results.read(run_path)
+    run_json = os.path.join(run_path, "run.json")
+    run = results.read(run_json)
     by_id = {}
     for r in run["results"]:
         by_id.setdefault(r["id"], []).append(r)
@@ -167,94 +234,106 @@ def import_answers(path, run_path):
         else:
             run["outcome"] = results.RUN_PASS
 
-    tmp = run_path + ".tmp"
+    tmp = run_json + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(run, f, indent=2)
         f.write("\n")
-    os.replace(tmp, run_path)
+    os.replace(tmp, run_json)
+
+    # The completed checklist is evidence in its own right: the verdicts are in
+    # run.json, but the comments and the steps actually followed are not, and a
+    # month later "slight crackle on headphone right" is the useful part.
+    kept = os.path.join(run_path, "checklist.md")
+    with open(kept, "w", encoding="utf-8") as f:
+        f.write(text if text.endswith("\n") else text + "\n")
 
     print(f"applied {applied} answer(s), added {added} new; "
           f"outcome now {run['outcome'].upper()}")
+    print(f"run:       {run_path}")
+    print(f"checklist: {os.path.relpath(kept, os.getcwd())}"
+          + ("" if source_name == "-" else f"  (from {source_name})"))
     still = [r["id"] for r in run["results"] if r["status"] == results.PENDING]
     if still:
         print("still pending: " + ", ".join(sorted(set(still))))
 
 
-def resolve(args, targets):
-    """Work out which profile and target this checklist is for.
+def resolve_target(args, targets):
+    """The target is detected, never defaulted to a literal.
 
-    Precedence: explicit flags, then the run record, then detection. The
-    target is never defaulted to a literal -- it selects the per-target
-    overrides in profiles.yaml, so guessing it silently renders the wrong
-    cases with the wrong parameters. On armhf-prod, for instance, the audio
-    cases run at two rates rather than four, and a checklist naming four
-    would have the operator testing something the profile excludes.
+    It selects the per-target overrides in profiles.yaml, so guessing it
+    silently renders the wrong cases with the wrong parameters -- on
+    armhf-prod the audio cases run at two sample rates rather than four, and a
+    checklist naming four would have the operator testing something the
+    profile deliberately excludes.
     """
-    profile, target, how = args.profile, args.target, []
-
-    if args.run and (not profile or not target):
-        try:
-            rec = results.read(args.run)
-        except (OSError, ValueError) as e:
-            sys.exit(f"cannot read {args.run}: {e}")
-        if not profile:
-            profile = rec.get("profile")
-            how.append(f"profile '{profile}' from the run record")
-        if not target:
-            target = rec.get("target")
-            how.append(f"target '{target}' from the run record")
-
-    if not target:
-        name, _spec, err = env.detect_target(targets)
-        if err:
-            sys.exit(f"{err}\n\nOr point at a run record with --run.")
-        target = name
-        how.append(f"target '{target}' detected from the running kernel")
-
-    if not profile:
-        profile = "functional"
-        how.append("profile 'functional' by default")
-
-    if how:
-        print("checklist: " + "; ".join(how), file=sys.stderr)
-    return profile, target
+    if args.target:
+        return args.target
+    name, _spec, err = env.detect_target(targets)
+    if err:
+        sys.exit(f"{err}\n\nOr name one with --target.")
+    print(f"checklist: target '{name}' detected from the running kernel",
+          file=sys.stderr)
+    return name
 
 
 def main():
     ap = argparse.ArgumentParser(description="Manual test checklists.")
-    ap.add_argument("--profile", "-p",
-                    help="profile to render (default: from --run, else "
-                         "'functional')")
+    ap.add_argument("--profile", "-p", default="functional",
+                    help="profile to render (default: functional)")
     ap.add_argument("--target", "-t",
-                    help="target (default: from --run, else detected from the "
-                         "running kernel)")
-    ap.add_argument("--import", dest="import_path",
-                    help="read a completed checklist back in")
+                    help="target (default: detected from the running kernel)")
+    ap.add_argument("--import", dest="import_path", nargs="?", const="-",
+                    help="read a completed checklist back in; '-' or no value "
+                         "reads standard input")
     ap.add_argument("--run",
-                    help="run.json to import into, and to take the profile "
-                         "and target from when rendering")
+                    help="run directory to use, overriding the newest one and "
+                         "whatever the checklist names")
+    ap.add_argument("--results-dir")
     args = ap.parse_args()
 
+    root = args.results_dir or results.results_root()
+    targets = load("targets.yaml")["targets"]
+
     if args.import_path:
-        if not args.run:
-            sys.exit("--import needs --run <path to run.json>")
-        import_answers(args.import_path, args.run)
+        text = read_text(args.import_path)
+        run_path = args.run or run_from_checklist(text, root)
+        if not run_path:
+            # The checklist named no run, or named one that is gone. Fall back
+            # to the same resolution the render used, rather than refusing:
+            # the answers have already been written by hand and should not be
+            # lost to a deleted comment line.
+            target = resolve_target(args, targets)
+            run_path, _age = resolve_run(root, target, args.profile)
+            print(f"checklist: no run recorded in the file; using the newest "
+                  f"'{args.profile}' run for {target}", file=sys.stderr)
+        run_path = run_path.rstrip("/")
+        if os.path.basename(run_path) == "run.json":
+            run_path = os.path.dirname(run_path)
+        import_answers(text, run_path, args.import_path)
         return 0
 
     catalog = load("catalog.yaml")
     profiles = load("profiles.yaml")
-    targets = load("targets.yaml")["targets"]
     cases = {c["id"]: c for c in catalog["cases"]}
 
-    profile, target = resolve(args, targets)
+    target = resolve_target(args, targets)
     if target not in targets:
         sys.exit(f"unknown target '{target}'; have: {', '.join(targets)}")
 
-    items = manual_cases(profile, target, cases, profiles)
+    if args.run:
+        run_path = args.run.rstrip("/")
+        if os.path.basename(run_path) == "run.json":
+            run_path = os.path.dirname(run_path)
+    else:
+        run_path, _age = resolve_run(root, target, args.profile)
+
+    items = manual_cases(args.profile, target, cases, profiles)
     if not items:
-        sys.exit(f"no manual cases in profile '{profile}' "
+        sys.exit(f"no manual cases in profile '{args.profile}' "
                  f"for target '{target}'")
-    sys.stdout.write(render(profile, target, items))
+    run_rel = os.path.relpath(run_path, root)
+    print(f"checklist: run {run_rel}", file=sys.stderr)
+    sys.stdout.write(render(args.profile, target, items, run_rel))
     return 0
 
 

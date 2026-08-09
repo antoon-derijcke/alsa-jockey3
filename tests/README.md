@@ -98,22 +98,37 @@ automated ones, so coverage is one picture rather than two — the runner marks
 them `PENDING` and moves on.
 
 `checklist.py` renders them to markdown, you fill it in, and it reads the
-answers back into the same run record:
+answers back into the same run record. No paths, in either direction:
 
 ```sh
 ./runner.py --profile smoke                      # JT-MIDI-002 -> PENDING
-./checklist.py --run results/.../run.json > /tmp/checklist.md
+./checklist.py --profile smoke > /tmp/checklist.md
 $EDITOR /tmp/checklist.md                        # do the tests, record verdicts
-./checklist.py --import /tmp/checklist.md --run results/.../run.json
+./checklist.py --import /tmp/checklist.md
 ```
 
-Pass `--run` and the profile and target come from the run record, so the
-checklist cannot describe something other than what was run. Without it, name
-a `--profile` (default `functional`) and the target is detected from the
-running kernel exactly as the runner detects it. It is never assumed: the
-target selects the per-target overrides in `profiles.yaml`, so a wrong one
-renders the wrong cases with the wrong parameters — on `armhf-prod` the audio
-cases run at two sample rates, not four.
+The target is detected from the running kernel, and the run is the most recent
+one for that target and profile. The rendered file records which run it belongs
+to, so `--import` needs nothing else — and answers cannot land in a different
+run than the one they were written for, which is exactly what typing paths
+invites. `--import -` reads standard input.
+
+Two things it refuses to do quietly:
+
+- **No matching run** is an error, not an empty checklist. Otherwise you find
+  out after doing the work rather than before.
+- **A run older than 24 hours** gets a warning naming its age, because manual
+  verdicts would be attached to it.
+
+The target is never assumed. It selects the per-target overrides in
+`profiles.yaml`, so a wrong one renders the wrong cases with the wrong
+parameters — on `armhf-prod` the audio cases run at two sample rates, not four.
+Override either with `--target` or `--run` when you need to.
+
+On import the completed checklist is copied into the run directory beside
+`dmesg.txt`. The verdicts go into `run.json`, but the comments and the steps
+actually followed are evidence too, and a month later "slight crackle on
+headphone right, only at 96 kHz" is the part worth having.
 
 Each case ends with one machine-readable line. Edit the `result:` and add a
 comment; everything else in the file is for you:

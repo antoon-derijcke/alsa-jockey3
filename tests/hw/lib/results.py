@@ -6,14 +6,21 @@ One run produces one directory:
     <results-root>/<target>/<UTC-stamp>-<profile>/
         run.json        the record -- environment, results, metrics
         dmesg.txt       full kernel log captured across the run
+        checklist.md    the completed manual checklist, if one was imported
         cases/          per-case stdout, stderr and artifacts
+
+The directory name is also the index: checklist.py finds the run a set of
+manual answers belongs to by reading the stamp and profile out of it, so the
+name is a small piece of API rather than decoration.
 
 run.json is the thing that is kept and aggregated. Everything beside it is
 evidence: useful while investigating, disposable afterwards, and never in git.
 """
 
+import calendar
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field, asdict
 
@@ -107,6 +114,57 @@ def results_root():
 
 def run_dir(root, target, profile, stamp):
     return os.path.join(root, target, f"{stamp}-{profile}")
+
+
+STAMP_FMT = "%Y%m%dT%H%M%SZ"
+_RUN_DIR_RE = re.compile(r"^(?P<stamp>\d{8}T\d{6}Z)-(?P<profile>.+)$")
+
+
+def parse_run_dir(name):
+    """Split a run directory name into (stamp seconds, profile), or None.
+
+    The directory name is the index. Reading every run.json to find the newest
+    would mean opening hundreds of files on a machine that has been soaking for
+    a week, and the name already carries both keys.
+    """
+    m = _RUN_DIR_RE.match(name)
+    if not m:
+        return None
+    try:
+        secs = calendar.timegm(time.strptime(m.group("stamp"), STAMP_FMT))
+    except ValueError:
+        return None
+    return secs, m.group("profile")
+
+
+def find_latest_run(root, target, profile):
+    """Most recent run directory for a target and profile.
+
+    Returns (path, age_seconds), or (None, None) when there is none. Sorted by
+    the stamp in the name rather than by mtime: a results directory that has
+    been synced between machines carries whatever mtimes the sync gave it, and
+    the run's own timestamp is the only ordering that means anything.
+    """
+    base = os.path.join(root, target)
+    best = None
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return None, None
+    for name in names:
+        parsed = parse_run_dir(name)
+        if not parsed:
+            continue
+        secs, prof = parsed
+        if prof != profile:
+            continue
+        if not os.path.exists(os.path.join(base, name, "run.json")):
+            continue
+        if best is None or secs > best[0]:
+            best = (secs, name)
+    if best is None:
+        return None, None
+    return os.path.join(base, best[1]), max(0, int(time.time()) - best[0])
 
 
 def write(run: Run, path):

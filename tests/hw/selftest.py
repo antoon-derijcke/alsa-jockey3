@@ -286,6 +286,57 @@ def test_results_roundtrip():
     check(len(back["results"]) == 2, "results survive the round trip")
 
 
+def test_run_resolution():
+    """Finding the run a manual checklist belongs to.
+
+    The failure this guards against is quiet: answers imported into the wrong
+    run, or into a run from last week, look exactly like answers imported
+    correctly.
+    """
+    print("\nrun resolution")
+    import checklist
+    with tempfile.TemporaryDirectory() as d:
+        base = os.path.join(d, "x86_64-debug")
+        os.makedirs(base)
+        for stamp in ("20260808T100000Z-smoke", "20260809T100000Z-smoke",
+                      "20260809T110000Z-functional"):
+            os.makedirs(os.path.join(base, stamp))
+            with open(os.path.join(base, stamp, "run.json"), "w") as f:
+                f.write("{}")
+        os.makedirs(os.path.join(base, "not-a-run"))
+
+        p, _age = results.find_latest_run(d, "x86_64-debug", "smoke")
+        check(os.path.basename(p) == "20260809T100000Z-smoke",
+              "the newest run for the profile wins", str(p))
+        p2, _ = results.find_latest_run(d, "x86_64-debug", "functional")
+        check(os.path.basename(p2) == "20260809T110000Z-functional",
+              "profiles do not bleed into each other")
+        check(results.find_latest_run(d, "x86_64-debug", "soak") == (None, None),
+              "an absent profile resolves to nothing, not to something else")
+        check(results.parse_run_dir("not-a-run") is None,
+              "a directory that is not a run is ignored")
+
+        # Age is computed from the stamp, not from mtime: these directories
+        # were created seconds ago but claim to be from 2026-08-08.
+        old, age = results.find_latest_run(d, "x86_64-debug", "functional")
+        check(age is not None and age >= 0, "age comes from the run stamp",
+              str(age))
+
+    # A rendered checklist must name its run, and that name must survive being
+    # read back -- otherwise --import silently falls back to guessing.
+    md = checklist.render("smoke", "x86_64-debug",
+                          [({"id": "JT-MIDI-002", "title": "t", "level": "L3",
+                             "area": "MIDI", "mode": "manual",
+                             "steps": ["do a thing"], "pass": "it works"}, {})],
+                          "x86_64-debug/20260809T182522Z-smoke")
+    m = checklist.RUN_RE.search(md)
+    check(m and m.group("path") == "x86_64-debug/20260809T182522Z-smoke",
+          "a rendered checklist carries the run it belongs to",
+          str(m and m.group("path")))
+    check(checklist.ANSWER_RE.search(md) is not None,
+          "and still carries a machine-readable answer line")
+
+
 def test_privilege_boundary():
     """The helper is the whole privileged surface, so drift in it is silent.
 
@@ -349,6 +400,7 @@ def main():
     test_build_id()
     test_catalog(catalog, targets, profiles)
     test_results_roundtrip()
+    test_run_resolution()
     test_privilege_boundary()
 
     print(f"\n{_checks - len(_failures)}/{_checks} checks passed")
