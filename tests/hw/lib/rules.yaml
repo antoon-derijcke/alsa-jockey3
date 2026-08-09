@@ -45,6 +45,19 @@ benign:
       after "deregistering interface driver".
       Deliberately matched by errno rather than by message: a resubmit failure
       with any OTHER error code is not teardown, and must stay a failure.
+  - pattern: 'loading out-of-tree module taints kernel'
+    metric: taint_out_of_tree
+    why: >
+      Every locally built module says this. build_module.sh compiles with M=,
+      so the result is intree:N where the packaged module was intree:Y -- which
+      means this appears from the moment a test build is deployed, and did not
+      appear before. Expected, and worth counting only to notice if a run was
+      unexpectedly made against a packaged module instead.
+  - pattern: 'module verification failed: signature and/or required key missing'
+    why: >
+      MODULE_SIG_FORCE is deliberately off on the test kernels -- see
+      tests/configs/README.md -- because locally built modules would otherwise
+      not load at all. The complaint is expected and carries no information.
   - pattern: 'usbcore: (?:registered new|deregistering) interface driver snd-reloop-jockey3'
     metric: module_lifecycle
     why: >
@@ -118,6 +131,14 @@ driver_fail:
       surfaced for review, but not a failure. The summary line does identify
       itself as ours, so it is what turns a codec regression on target into a
       red run.
+  - pattern: "unknown parameter '.*' ignored"
+    why: >
+      A module parameter the test framework passed was rejected. This is a
+      setup defect, and it has to fail loudly because modprobe does not: a
+      malformed dyndbg= query was accepted with exit status 0, the firmware
+      revision was silently never logged, and every run recorded "firmware
+      unknown" while otherwise passing. A run that quietly stops capturing
+      what it exists to capture is worse than one that fails.
   - pattern: 'Inconsistent URB in-flight count'
     why: A self-check assertion in the driver. If it fires, accounting is wrong.
   - pattern: 'Timeout draining .* URB callbacks'

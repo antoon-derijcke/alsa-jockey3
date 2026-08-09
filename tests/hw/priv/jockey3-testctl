@@ -42,9 +42,22 @@ MODULE=snd-reloop-jockey3
 MODULE_U=snd_reloop_jockey3
 DYNDBG=/sys/kernel/debug/dynamic_debug/control
 
-# The one dev_dbg carrying the firmware revision. Matched by format string so
-# the log is not flooded by every other dev_dbg in the driver during a run.
-FW_FORMAT='Firmware 0x%02x'
+# The one dev_dbg carrying the firmware revision, in ploytec_proto.c:
+#
+#     dev_dbg(&intf->dev, "Firmware 0x%02x v%d.%d.%d\n", ...)
+#
+# Matched by format string so the log is not flooded by every other dev_dbg in
+# the driver for the whole run -- which is what the blunt "dyndbg=+p" would do.
+#
+# Deliberately a single space-free word rather than the full format. dynamic
+# debug matches this as a substring, so "Firmware" selects exactly the one
+# callsite, and being space-free it needs no quoting inside the query. That
+# matters on the modprobe path: the kernel's parse_args splits a parameter
+# value at the first space, so "dyndbg=format \"Firmware 0x%02x\" +p" arrived
+# as the fragment 'format "Firmware' -- which the tokenizer rejected with
+# "unclosed quote" -- plus a junk parameter. modprobe still exited 0, so the
+# only visible symptom was every run recording "firmware unknown".
+FW_MATCH='Firmware'
 
 die() { echo "jockey3-testctl: $*" >&2; exit 2; }
 
@@ -89,9 +102,12 @@ load)
 	# Writing the control file cannot work here for two reasons: the callsite
 	# does not exist while the module is unloaded, and dynamic_debug discards
 	# a module's rules when it unloads, so a rule set once per test case is
-	# gone after the first unload/reload. That is why the first hardware runs
-	# recorded "firmware unknown" for every run.
-	exec modprobe "$MODULE" "dyndbg=format \"$FW_FORMAT\" +p"
+	# gone after the first unload/reload.
+	#
+	# The inner double quotes are part of the value, not shell syntax:
+	# parse_args splits a parameter value at whitespace unless the value is
+	# quoted, and this query has spaces between its keywords.
+	exec modprobe "$MODULE" "dyndbg=\"format $FW_MATCH +p\""
 	;;
 
 unload)
@@ -124,8 +140,10 @@ dyndbg-firmware)
 	*)   die "dyndbg-firmware takes on or off" ;;
 	esac
 	[ -e "$DYNDBG" ] || die "debugfs dynamic_debug not available"
-	# The format string is fixed in this file, never taken from the caller.
-	printf 'format "%s" %s\n' "$FW_FORMAT" "$flag" > "$DYNDBG" \
+	# The match string is fixed in this file, never taken from the caller.
+	# No quoting needed here: this path goes straight to the dynamic debug
+	# tokenizer with no parse_args in between, and the match is space-free.
+	printf 'format %s %s\n' "$FW_MATCH" "$flag" > "$DYNDBG" \
 		|| die "cannot write $DYNDBG"
 	exit 0
 	;;
