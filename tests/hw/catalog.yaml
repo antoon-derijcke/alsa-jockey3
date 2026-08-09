@@ -331,30 +331,69 @@ cases:
     title: Simultaneous playback and capture
     area: PCM
     level: L3
-    mode: automated
-    status: planned
-    requires: [device, sox]
+    mode: manual
+    status: implemented
+    requires: [device, sox, human]
     params:
       rates: [44100, 96000]
     metrics: [xruns_playback, xruns_capture]
     pass: Both directions run concurrently without xruns.
+    steps:
+      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
+      - >
+        Start capture in one shell:
+        arecord -D hw:$CARD,0 -f S24_3LE -c 6 -r 44100 -d 20 /tmp/fdx.wav
+      - >
+        While it runs, start playback in another:
+        actions/play_channel_sweep.sh 44100
+      - Confirm both run to completion and neither reports an xrun or an error.
+      - Repeat at 96000.
     notes: >
       Full duplex is the normal DJ case and stresses both URB rings and the
       lock ordering at once.
+
+      hw: rather than plughw: on purpose -- plughw would silently convert and
+      the test would exercise the conversion plugin instead of the driver.
+
+      Worth automating: the verdict is "no xruns, both ran", which needs no
+      human judgement. Manual only until someone writes the case.
 
   - id: JT-PCM-006
     title: Unsupported hw_params are refused
     area: PCM
     level: L3
-    mode: automated
-    status: planned
-    requires: [device]
+    mode: manual
+    status: implemented
+    requires: [device, human]
     pass: >
       Wrong channel counts, unsupported formats and unsupported rates are
       rejected at hw_params rather than accepted and then misbehaving.
+    steps:
+      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
+      - >
+        Each of these must FAIL with an error, not play:
+        aplay -D hw:$CARD,0 -f S24_3LE -c 2 -r 44100 /dev/zero
+        (wrong channel count -- playback is 4)
+      - >
+        aplay -D hw:$CARD,0 -f S16_LE -c 4 -r 44100 /dev/zero
+        (unsupported format -- only S24_3LE)
+      - >
+        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 22050 /dev/zero
+        (unsupported rate -- 44100/48000/88200/96000 only)
+      - >
+        As a control, this must SUCCEED:
+        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 44100 /dev/zero
+      - Confirm no message in dmesg suggests the driver accepted and then coped.
     notes: >
       Channels are fixed (4 playback, 6 capture) and the only format is
       S24_3LE, so this is a short, cheap and genuinely useful case.
+
+      The control step is the one that makes it a test rather than a
+      formality: four commands that all fail prove nothing if the fifth would
+      have failed too.
+
+      Use hw: and never plughw: -- plughw exists precisely to convert these
+      away, and would turn every case here into a pass.
 
   - id: JT-PCM-007
     title: Achievable latency sweep
@@ -404,16 +443,37 @@ cases:
     title: Sample-rate change under full duplex
     area: RATE
     level: L3
-    mode: automated
-    status: planned
-    requires: [device, sox]
+    mode: manual
+    status: implemented
+    requires: [device, sox, human]
     metrics: [stalls, stalls_recovered, resets_full, failures]
-    pass: Same criterion as JT-RATE-001, with capture open throughout.
+    pass: >
+      Same criterion as JT-RATE-001, with capture open throughout: a stall
+      that recovers is a PASS and is counted; a stall still present after a
+      full USB reset is a FAIL.
+    steps:
+      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
+      - Clear the log boundary; note the time so dmesg can be read from here.
+      - >
+        Start a long capture and leave it running:
+        arecord -D hw:$CARD,0 -f S24_3LE -c 6 -r 44100 -d 120 /tmp/fdx.wav
+      - >
+        With capture still open, run bash
+        ../scripts-alsa-dev/test_rate_change_fdx.sh, or step the playback rate
+        by hand through 44100, 96000, 48000, 88200 -- not in ascending order.
+      - >
+        In dmesg, confirm every stall was followed by a recovery and that none
+        reached "hardware may need power-cycling".
+      - Confirm the capture ran to completion and the file is the expected size.
     notes: >
       From scripts-alsa-dev/test_rate_change_fdx.sh. Materially different from
       JT-RATE-001 because the recovery path is direction-aware: a capture stall
       triggers a reset only when a capture substream is open, and defers
-      otherwise.
+      otherwise. So this is the case that exercises the immediate-reset branch,
+      while JT-RATE-001 mostly exercises the deferred one.
+
+      Descending switches are the worst case, which is why the order above is
+      deliberately not sorted.
 
   - id: JT-RATE-003
     title: Rate change endurance
@@ -612,19 +672,35 @@ cases:
     title: Suspend during playback
     area: PM
     level: L3
-    mode: automated
-    status: planned
-    requires: [device, root, rtc-wake]
+    mode: manual
+    status: implemented
+    requires: [device, root, rtc-wake, human]
     metrics: [recovery_ms]
     pass: >
-      Playback stops with -ESTRPIPE and can be restarted after re-preparing the
-      stream.
-    expect_dmesg:
-      - 'PCM trigger.*cmd 5'
+      Playback stops with an error and can be restarted after re-preparing the
+      stream. An application dying here is the correct outcome, not a failure.
+    steps:
+      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
+      - >
+        Start playback and leave it running:
+        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 44100 /dev/urandom
+      - >
+        Suspend for 15 seconds:
+        sudo /usr/local/sbin/jockey3-testctl rtcwake-mem 15
+      - >
+        Confirm the machine resumes, and that aplay exited with an error rather
+        than hanging or continuing silently.
+      - Confirm the card is still present in /proc/asound/cards.
+      - Start playback again and confirm audio is restored without reloading
+        the driver.
+      - Check dmesg for an oops, a hung task, or a stuck reference count.
     notes: >
       SNDRV_PCM_INFO_RESUME is deliberately not advertised because the device
       loses stream sync, so aplay dying here is the CORRECT outcome. The
       failure would be a hang, a crash, or a stream that cannot be restarted.
+
+      This is the case most likely to leave the machine wedged, so run it when
+      the serial console is being captured.
 
   # ---------------------------------------------------------------- HOTPLUG
 
@@ -633,7 +709,7 @@ cases:
     area: HOTPLUG
     level: L3
     mode: manual
-    status: planned
+    status: implemented
     requires: [device, human]
     pass: >
       Playback terminates with an error, the card disappears, and the module
@@ -652,34 +728,77 @@ cases:
     area: HOTPLUG
     level: L3
     mode: manual
-    status: planned
+    status: implemented
     requires: [device, human]
     pass: The device re-enumerates and is immediately usable.
+    steps:
+      - Starting from the state JT-HOTPLUG-001 left behind, plug the cable back in.
+      - Confirm the card reappears in /proc/asound/cards, with a playback and
+        a capture substream and one rawmidi device.
+      - Play a channel sweep and confirm audio works without reloading the driver.
+      - Run actions/blink_leds.sh and confirm MIDI OUT still reaches the device.
+      - >
+        Confirm the card index was reused rather than incremented without
+        bound -- a slot leak shows up here first.
 
   - id: JT-HOTPLUG-003
     title: Power cycle during playback
     area: HOTPLUG
     level: L3
     mode: manual
-    status: planned
+    status: implemented
     requires: [device, human]
     pass: >
       The driver recovers or fails cleanly; no crash, no hang, no stuck module
       reference.
+    steps:
+      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
+      - >
+        Start playback:
+        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 44100 /dev/urandom
+      - >
+        Cut power to the device at the mains without unplugging USB, wait five
+        seconds, and restore it.
+      - Confirm the application exited with an error rather than hanging.
+      - >
+        Check dmesg for the give-up message ("hardware may need
+        power-cycling"). Reaching it here is expected and is not a failure --
+        this is one of the few ways to reach that path at all.
+      - Confirm the device re-enumerates, and that the module still unloads
+        cleanly afterwards.
     notes: >
+      Distinct from JT-HOTPLUG-001 because USB stays connected while the
+      device stops responding, which is a different failure to a clean
+      disconnect: the URBs error without a disconnect() to tidy up after them.
+
       Becomes automated once a mains relay is wired up, which is also the only
-      way to reach the give-up path where the driver reports that the hardware
-      needs a power cycle.
+      way to reach the give-up path repeatably.
 
   - id: JT-HOTPLUG-004
     title: USB reset recovery
     area: HOTPLUG
     level: L3
-    mode: automated
-    status: planned
-    requires: [device, root]
+    mode: manual
+    status: implemented
+    requires: [device, root, human]
     metrics: [reset_ms, resets_attempted, resets_failed]
     pass: The device recovers after a queued reset and audio resumes.
+    steps:
+      - >
+        Note that JT-RATE-001 already triggers this path routinely -- check
+        dmesg there for "Resetting device to recover from stall after rate
+        change" before doing anything by hand.
+      - >
+        To force one: start playback, then trigger a rate change to a lower
+        rate while capture is open (see JT-RATE-002), which is the case most
+        likely to stall.
+      - >
+        Confirm dmesg shows the reset being queued and completing, with a
+        "waited N ms for reset completion" line.
+      - Confirm audio resumes afterwards without reloading the driver.
+      - >
+        Confirm no hung task and no lockdep report -- the deadlock this path
+        guards against would appear as a blocked task, not as an error return.
     notes: >
       The reset must be queued, never called synchronously from an ALSA ioctl:
       usb_reset_device() from ioctl context can reach disconnect() and then
@@ -687,21 +806,48 @@ cases:
       the ioctl still holds. post_reset() is also not guaranteed to run, since
       a failed reset unbinds instead. Both are the interesting cases here.
 
+      Manual for now because forcing a reset on demand is awkward; the stall
+      that provokes it is probabilistic. A dedicated case would need a way to
+      induce the stall rather than wait for one.
+
   # ------------------------------------------------------------------- SOAK
 
   - id: JT-SOAK-001
     title: Sustained playback
     area: SOAK
     level: L5
-    mode: automated
-    status: planned
-    requires: [device, sox]
+    mode: manual
+    status: implemented
+    requires: [device, sox, human]
     params:
       hours: 8
       rate: 44100
     metrics: [xruns_per_hour, stalls, memory_growth_kb]
     pass: No xrun accumulation, no memory growth, no degradation over the run.
-    notes: From test_44100_long.sh and test_96000_long.sh.
+    steps:
+      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
+      - 'Record the starting point: free -k and grep Slab /proc/meminfo.'
+      - >
+        Start playback for the configured duration, e.g.
+        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 44100 /dev/urandom
+        under nohup, and note the start time.
+      - Leave it running. Check back at the end rather than watching it.
+      - >
+        At the end: confirm playback is still running and has not silently
+        stopped, then compare free -k and Slab against the starting figures.
+      - >
+        Read dmesg for the whole window. Count stalls and confirm every one
+        recovered; any oops, hung task or KASAN report is a defect regardless
+        of the audio still working.
+    notes: >
+      From test_44100_long.sh and test_96000_long.sh.
+
+      /dev/urandom rather than a file so the run is not bounded by file
+      length, and so the codec sees varied data rather than a repeating
+      pattern that might mask a packing error.
+
+      Manual is a poor fit here -- the value is in the numbers at the two ends
+      and nobody should be awake for either. Worth automating early.
 
   - id: JT-SOAK-002
     title: Mixxx session

@@ -28,8 +28,13 @@ def main():
 
     kernel_src = os.environ.get("KERNEL_SRC") or os.path.expanduser("~/sound")
     if not os.path.isdir(os.path.join(kernel_src, "tools", "testing", "kunit")):
-        c.blocked(f"no kernel tree with kunit.py at {kernel_src} "
-                  f"(set KERNEL_SRC)")
+        # Skip rather than blocked -- see build_gate.py. Note the codec is not
+        # untested on a machine that skips this: with
+        # CONFIG_SND_USB_JOCKEY3_CODEC_KUNIT_TEST the suite runs at every
+        # module load, and JT-PROBE-001 records the result as
+        # kunit_cases_passed_on_target.
+        c.skip(f"no kernel tree with kunit.py at {kernel_src}: this is not a "
+               f"build host. Run the 'build' profile on one, or set KERNEL_SRC.")
 
     targets = sys.argv[1:] or ["um"]
     rc, out, err = c.run(["bash", script] + targets, timeout=3600)

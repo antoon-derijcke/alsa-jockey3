@@ -39,7 +39,13 @@ def main():
 
     kernel_src = os.environ.get("KERNEL_SRC") or os.path.expanduser("~/sound")
     if not os.path.isdir(os.path.join(kernel_src, "scripts")):
-        c.blocked(f"no kernel tree at {kernel_src} (set KERNEL_SRC)")
+        # Skip, not blocked. A machine with hardware attached and no kernel
+        # tree is a test machine, and a build gate is not its job -- the build
+        # host covers it. Blocked would say "we wanted to run this and could
+        # not", i.e. a coverage gap, and every hardware run would then carry
+        # four phantom gaps that no amount of testing here could close.
+        c.skip(f"no kernel tree at {kernel_src}: this is not a build host. "
+               f"Run the 'build' profile on one, or set KERNEL_SRC.")
 
     report = os.path.join(c.workdir, "gates.json")
     env = dict(os.environ)
