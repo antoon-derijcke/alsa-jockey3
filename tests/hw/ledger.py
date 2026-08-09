@@ -2,15 +2,24 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """What has been tested, on what, how recently -- and which way the numbers move.
 
-    ./ledger.py                  coverage table
-    ./ledger.py --metrics        metric trends per target
-    ./ledger.py --markdown       both, as markdown for publishing
+    ./ledger.py                        coverage table
+    ./ledger.py --target x86_64-debug  one target, and drop the target column
+    ./ledger.py --metrics              metric trends per target
+    ./ledger.py --markdown             as markdown for publishing
 
 The question this answers is "am I looking at stale data?". A pass from three
 weeks ago still means something; it just means less. Showing the age and the
 distance in commits keeps old results useful without letting them masquerade
 as current -- which is the failure mode of every dashboard that only shows a
 green tick.
+
+Every row carries the case's title, and in markdown its pass criterion as a
+"validates" column. A table of bare case IDs answers "is JT-PCM-006 covered?"
+only for a reader who already knows what JT-PCM-006 is -- which is nobody
+being shown a status report, and not the author either, three months later.
+The criterion is markdown-only because that is the form that gets published
+and read away from the catalog; in a terminal it would push the dates off the
+right edge, and the dates are what the table is for.
 
 Commit distance is measured across the whole repository on purpose. Attributing
 relevance per source file would be false precision in a driver where nearly
@@ -103,36 +112,70 @@ def build_index(runs):
     return idx
 
 
-def coverage(cases, targets, idx, markdown=False):
+def oneline(text, limit=None):
+    """Collapse a folded YAML block to one line, optionally truncated."""
+    s = " ".join(str(text or "").split())
+    if limit and len(s) > limit:
+        s = s[:limit - 1].rstrip() + "…"
+    return s
+
+
+TITLE_WIDTH = 44
+
+
+def coverage(cases, targets, idx, markdown=False, single_target=False):
+    """Which cases have passed where, and how long ago.
+
+    Carries each case's title, and in markdown its pass criterion too. A table
+    of bare IDs answers "is JT-PCM-006 covered" only for someone who already
+    knows what JT-PCM-006 is -- which is nobody reading a status report, and
+    not the author either three months later.
+
+    The pass criterion is markdown-only because that is the form that gets
+    published and read away from the catalog; on a terminal it would push the
+    dates off the right edge, and the dates are what the table is for.
+    """
     rows = []
     for tname in targets:
         for cid, case in cases.items():
+            title = oneline(case.get("title"),
+                            None if markdown else TITLE_WIDTH)
             slot = idx.get((tname, cid))
             if slot and slot["pass"]:
                 p = slot["pass"]
                 n = commits_since(p.get("hash"))
-                rows.append((tname, cid, case["level"], case["mode"],
-                             (p["when"] or "")[:10], p.get("rev") or "?",
-                             "?" if n is None else str(n),
-                             f"{age_days(p['when'])}d"))
+                cells = [(p["when"] or "")[:10], p.get("rev") or "?",
+                         "?" if n is None else str(n),
+                         f"{age_days(p['when'])}d"]
             elif slot and slot["last"]:
                 lst = slot["last"]
-                rows.append((tname, cid, case["level"], case["mode"],
-                             f"{lst['status']} {(lst['when'] or '')[:10]}",
-                             lst.get("rev") or "?", "-", "-"))
+                cells = [f"{lst['status']} {(lst['when'] or '')[:10]}",
+                         lst.get("rev") or "?", "-", "-"]
             else:
                 # Never run here. This is the row the table exists for.
-                status = ("planned" if case["status"] != "implemented"
-                          else "never run")
-                rows.append((tname, cid, case["level"], case["mode"],
-                             status, "-", "-", "-"))
+                cells = [("planned" if case["status"] != "implemented"
+                          else "never run"), "-", "-", "-"]
+            row = [cid, title, case["level"], case["mode"]] + cells
+            if markdown:
+                row.append(oneline(case.get("pass")) or "-")
+            if not single_target:
+                row.insert(0, tname)
+            rows.append(tuple(row))
 
-    head = ("target", "case", "lvl", "mode", "last pass", "driver",
-            "commits", "age")
+    head = ["case", "title", "lvl", "mode", "last pass", "driver",
+            "commits", "age"]
+    if markdown:
+        head.append("validates")
+    if not single_target:
+        head.insert(0, "target")
+    head = tuple(head)
+
     if markdown:
         out = ["| " + " | ".join(head) + " |",
                "|" + "|".join(["---"] * len(head)) + "|"]
-        out += ["| " + " | ".join(r) + " |" for r in rows]
+        # A pipe inside a cell would silently split the column.
+        out += ["| " + " | ".join(str(c).replace("|", "\\|") for c in r) + " |"
+                for r in rows]
         return "\n".join(out)
 
     widths = [max(len(str(r[i])) for r in ([head] + rows))
@@ -208,8 +251,10 @@ def main():
 
     if not args.metrics:
         if args.markdown:
-            print("## Coverage\n")
-        print(coverage(cases, targets, idx, args.markdown))
+            print(f"## Coverage — {args.target}\n" if args.target
+                  else "## Coverage\n")
+        print(coverage(cases, targets, idx, args.markdown,
+                       single_target=bool(args.target)))
         print()
 
     if args.markdown:
