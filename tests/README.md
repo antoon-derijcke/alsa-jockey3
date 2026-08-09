@@ -88,3 +88,46 @@ test user needs to be in the `audio` group, and nothing more.
 The runner executes **on the machine with the hardware attached**, not on a
 build host. That is what lets the same suite run on a Raspberry Pi you plugged
 in five minutes ago.
+
+### Manual cases
+
+Some cases need a human: nobody has wired a photodiode to the LEDs, and no
+metric catches "slight crackle on headphone right, only at 96 kHz" as well as
+an ear does. Those live in the same catalog and the same profiles as the
+automated ones, so coverage is one picture rather than two — the runner marks
+them `PENDING` and moves on.
+
+`checklist.py` renders them to markdown, you fill it in, and it reads the
+answers back into the same run record:
+
+```sh
+./runner.py --profile smoke                      # JT-MIDI-002 -> PENDING
+./checklist.py --run results/.../run.json > /tmp/checklist.md
+$EDITOR /tmp/checklist.md                        # do the tests, record verdicts
+./checklist.py --import /tmp/checklist.md --run results/.../run.json
+```
+
+Pass `--run` and the profile and target come from the run record, so the
+checklist cannot describe something other than what was run. Without it, name
+a `--profile` (default `functional`) and the target is detected from the
+running kernel exactly as the runner detects it. It is never assumed: the
+target selects the per-target overrides in `profiles.yaml`, so a wrong one
+renders the wrong cases with the wrong parameters — on `armhf-prod` the audio
+cases run at two sample rates, not four.
+
+Each case ends with one machine-readable line. Edit the `result:` and add a
+comment; everything else in the file is for you:
+
+```
+- id: JT-MIDI-002 | result: pass | comment: all LEDs lit, attract mode stopped
+```
+
+`result:` takes `pass`, `fail`, `skip` or `blocked`. Leave it as `?` and that
+case stays pending. On import the run's outcome is re-derived — with one
+exception: a run already marked `INVESTIGATE` stays that way, because a kernel
+defect outranks any number of manual passes. An answer for a case that was not
+in the run is appended rather than discarded, since coverage that happened is
+coverage.
+
+A comment on a *passing* case is not wasted effort. It is how the next bug gets
+found early.

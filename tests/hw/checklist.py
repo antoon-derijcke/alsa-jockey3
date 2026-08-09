@@ -6,8 +6,17 @@ Manual and automated cases live in the same catalog and the same profiles, so
 that coverage is one picture rather than two. What differs is only how the
 verdict is obtained.
 
-    ./checklist.py --profile functional > checklist.md   # go and do them
+The normal flow is to point it at the run you just did, which takes the
+profile and target from the run record so the checklist cannot describe
+something other than what was run:
+
+    ./runner.py --profile smoke                       # leaves manual cases pending
+    ./checklist.py --run <run.json> > checklist.md    # go and do them
     ./checklist.py --import checklist.md --run <run.json>
+
+Without --run it renders from the profile you name, for the target this
+machine is running -- detected the same way runner.py detects it, never
+assumed.
 
 The generated file is plain markdown with a small machine-readable block per
 case. Editing it in any text editor is the intended workflow -- a manual test
@@ -22,7 +31,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import results          # noqa: E402
+from lib import env, results     # noqa: E402
 
 try:
     import yaml
@@ -171,13 +180,59 @@ def import_answers(path, run_path):
         print("still pending: " + ", ".join(sorted(set(still))))
 
 
+def resolve(args, targets):
+    """Work out which profile and target this checklist is for.
+
+    Precedence: explicit flags, then the run record, then detection. The
+    target is never defaulted to a literal -- it selects the per-target
+    overrides in profiles.yaml, so guessing it silently renders the wrong
+    cases with the wrong parameters. On armhf-prod, for instance, the audio
+    cases run at two rates rather than four, and a checklist naming four
+    would have the operator testing something the profile excludes.
+    """
+    profile, target, how = args.profile, args.target, []
+
+    if args.run and (not profile or not target):
+        try:
+            rec = results.read(args.run)
+        except (OSError, ValueError) as e:
+            sys.exit(f"cannot read {args.run}: {e}")
+        if not profile:
+            profile = rec.get("profile")
+            how.append(f"profile '{profile}' from the run record")
+        if not target:
+            target = rec.get("target")
+            how.append(f"target '{target}' from the run record")
+
+    if not target:
+        name, _spec, err = env.detect_target(targets)
+        if err:
+            sys.exit(f"{err}\n\nOr point at a run record with --run.")
+        target = name
+        how.append(f"target '{target}' detected from the running kernel")
+
+    if not profile:
+        profile = "functional"
+        how.append("profile 'functional' by default")
+
+    if how:
+        print("checklist: " + "; ".join(how), file=sys.stderr)
+    return profile, target
+
+
 def main():
     ap = argparse.ArgumentParser(description="Manual test checklists.")
-    ap.add_argument("--profile", "-p", default="functional")
-    ap.add_argument("--target", "-t", default="x86_64-prod")
+    ap.add_argument("--profile", "-p",
+                    help="profile to render (default: from --run, else "
+                         "'functional')")
+    ap.add_argument("--target", "-t",
+                    help="target (default: from --run, else detected from the "
+                         "running kernel)")
     ap.add_argument("--import", dest="import_path",
                     help="read a completed checklist back in")
-    ap.add_argument("--run", help="run.json to import into")
+    ap.add_argument("--run",
+                    help="run.json to import into, and to take the profile "
+                         "and target from when rendering")
     args = ap.parse_args()
 
     if args.import_path:
@@ -188,12 +243,18 @@ def main():
 
     catalog = load("catalog.yaml")
     profiles = load("profiles.yaml")
+    targets = load("targets.yaml")["targets"]
     cases = {c["id"]: c for c in catalog["cases"]}
-    items = manual_cases(args.profile, args.target, cases, profiles)
+
+    profile, target = resolve(args, targets)
+    if target not in targets:
+        sys.exit(f"unknown target '{target}'; have: {', '.join(targets)}")
+
+    items = manual_cases(profile, target, cases, profiles)
     if not items:
-        sys.exit(f"no manual cases in profile '{args.profile}' "
-                 f"for target '{args.target}'")
-    sys.stdout.write(render(args.profile, args.target, items))
+        sys.exit(f"no manual cases in profile '{profile}' "
+                 f"for target '{target}'")
+    sys.stdout.write(render(profile, target, items))
     return 0
 
 
