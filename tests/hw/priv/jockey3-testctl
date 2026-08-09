@@ -74,6 +74,7 @@ usage() {
 #   dmesg-mark <token>     write a JT-MARK boundary token to /dev/kmsg
 #   dyndbg-firmware on|off enable/disable the firmware-revision probe message
 #   printk-console <1-8>   set the console loglevel
+#   xrun-debug 0|1        make the ALSA core log every xrun to the kernel log
 #   rtcwake-mem <1-3600>   suspend to RAM and wake after N seconds
 
 [ $# -ge 1 ] || usage
@@ -157,6 +158,27 @@ printk-console)
 		|| die "cannot read kernel.printk"
 	printf '%s\t%s\t%s\t%s\n' "$1" "$def" "$minl" "$defl" \
 		> /proc/sys/kernel/printk || die "cannot set kernel.printk"
+	exit 0
+	;;
+
+xrun-debug)
+	# /proc/asound/cardN/pcm*/xrun_debug is root-owned. Setting it makes the
+	# ALSA core log every xrun to the kernel log, which is the only route by
+	# which an xrun becomes visible to the classifier -- the per-substream
+	# counters in the status file vanish the moment the stream closes.
+	#
+	# Bit 0 logs the xrun. Higher bits add stack traces and period tracing,
+	# which are for a person staring at one failure, not for a suite.
+	[ $# -eq 1 ] || die "xrun-debug needs 0 or 1"
+	[[ $1 =~ ^[01]$ ]] || die "xrun-debug takes 0 or 1"
+	n=0
+	for f in /proc/asound/card*/pcm*/xrun_debug; do
+		[ -e "$f" ] || continue
+		printf '%s\n' "$1" > "$f" || die "cannot write $f"
+		n=$((n + 1))
+	done
+	[ "$n" -gt 0 ] || die "no xrun_debug controls found (CONFIG_SND_PCM_XRUN_DEBUG?)"
+	echo "xrun_debug=$1 on $n substream(s)"
 	exit 0
 	;;
 

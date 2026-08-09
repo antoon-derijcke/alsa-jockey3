@@ -10,6 +10,7 @@ import glob
 import os
 import re
 import subprocess
+import threading
 
 DRIVER_ID = "Jockey3"          # the card id the driver registers
 
@@ -62,8 +63,14 @@ def substreams(index):
     return out
 
 
-XRUN_RE = re.compile(r"^\s*xruns\s*:\s*(\d+)", re.M)
+# The field is "xrun_counter" in current kernels; "xruns" is accepted too in
+# case an older one spells it that way. Matching only "xruns" is how this
+# metric read zero on every run for a day: the regex never matched, and a
+# missing key defaulted to 0, which is indistinguishable from a clean run.
+XRUN_RE = re.compile(r"^\s*xrun(?:s|_counter)\s*:\s*(\d+)", re.M)
 STATE_RE = re.compile(r"^\s*state\s*:\s*(\S+)", re.M)
+AVAIL_MAX_RE = re.compile(r"^\s*avail_max\s*:\s*(\d+)", re.M)
+DELAY_RE = re.compile(r"^\s*delay\s*:\s*(-?\d+)", re.M)
 
 
 def pcm_status(index, pcm="pcm0p", sub="sub0"):
@@ -71,15 +78,22 @@ def pcm_status(index, pcm="pcm0p", sub="sub0"):
 
     Returns {} when the substream is closed -- the status file exists but
     reports 'closed', which is not an error condition.
+
+    IMPORTANT: everything here is readable only while the substream is OPEN.
+    Sampling before and after a playback command therefore reads 'closed'
+    twice and reports a difference of zero no matter what happened in
+    between. Use watch_pcm() to sample during.
     """
     path = f"/proc/asound/card{index}/{pcm}/{sub}/status"
     text = _read(path)
     if not text or text.startswith("closed"):
         return {}
     out = {}
-    m = XRUN_RE.search(text)
-    if m:
-        out["xruns"] = int(m.group(1))
+    for key, rx in (("xruns", XRUN_RE), ("avail_max", AVAIL_MAX_RE),
+                    ("delay", DELAY_RE)):
+        m = rx.search(text)
+        if m:
+            out[key] = int(m.group(1))
     m = STATE_RE.search(text)
     if m:
         out["state"] = m.group(1)
@@ -88,6 +102,45 @@ def pcm_status(index, pcm="pcm0p", sub="sub0"):
 
 def xruns(index, pcm="pcm0p", sub="sub0"):
     return pcm_status(index, pcm, sub).get("xruns", 0)
+
+
+class watch_pcm(threading.Thread):
+    """Sample a substream's status for as long as it stays open.
+
+    The counters vanish when the stream closes, so they have to be read while
+    it runs. Returns the last values seen rather than the first: xrun_counter
+    only rises, and avail_max is a high-water mark the kernel keeps for us.
+
+    avail_max is worth as much as the xrun count here. It is how close the
+    buffer came to running dry, so it distinguishes "comfortable" from "made
+    it by one period" -- and a run that never xruns but whose avail_max climbs
+    toward buffer_size is the one about to start crackling.
+    """
+
+    def __init__(self, index, pcm="pcm0p", sub="sub0", interval=0.02):
+        super().__init__(daemon=True)
+        self.index, self.pcm, self.sub = index, pcm, sub
+        self.interval = interval
+        self._stop = threading.Event()
+        self.samples = 0
+        self.xruns = 0
+        self.avail_max = 0
+        self.saw_open = False
+
+    def run(self):
+        while not self._stop.is_set():
+            st = pcm_status(self.index, self.pcm, self.sub)
+            if st:
+                self.saw_open = True
+                self.samples += 1
+                self.xruns = max(self.xruns, st.get("xruns", 0))
+                self.avail_max = max(self.avail_max, st.get("avail_max", 0))
+            self._stop.wait(self.interval)
+
+    def stop(self):
+        self._stop.set()
+        self.join(timeout=2)
+        return self
 
 
 def rawmidi_device(index):

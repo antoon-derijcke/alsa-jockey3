@@ -62,23 +62,40 @@ def main():
     device = c.device or alsa.device_name(c.card)
 
     total_xruns = 0
+    unobserved = []
     for rate in rates:
-        before = alsa.xruns(c.card, "pcm0p")
+        # Sampled while the stream runs, not before and after it. The status
+        # file reports "closed" whenever the substream is not open, so the
+        # old before/after difference was always zero -- the metric could not
+        # report a problem even in principle.
+        watch = alsa.watch_pcm(c.card, "pcm0p")
+        watch.start()
         rc, err, elapsed = play(device, rate, seconds, c.workdir)
-        after = alsa.xruns(c.card, "pcm0p")
-        delta = max(0, after - before)
-        total_xruns += delta
+        watch.stop()
+
+        total_xruns += watch.xruns
+        if not watch.saw_open:
+            # Never caught the stream open. The verdict below would otherwise
+            # be "no xruns", which is a statement about nothing.
+            unobserved.append(str(rate))
 
         if rc != 0:
             c.fail(f"{rate} Hz: aplay exited {rc}: "
                    f"{(err or '').strip().splitlines()[-1][:120] if err else ''}")
-        elif delta:
-            c.fail(f"{rate} Hz: {delta} xrun(s)")
+        elif watch.xruns:
+            c.fail(f"{rate} Hz: {watch.xruns} xrun(s)")
         if elapsed is not None:
             c.metric(f"elapsed_s_{rate}", elapsed)
+        # How close the buffer came to running dry. A run with no xruns whose
+        # avail_max keeps climbing is the one about to start crackling, and
+        # that trend is invisible to a pass/fail verdict.
+        c.metric(f"avail_max_{rate}", watch.avail_max)
 
     c.metric("xruns", total_xruns)
     c.metric("rates_tested", len(rates))
+    if unobserved:
+        c.note("stream never observed open at: " + ", ".join(unobserved)
+               + " -- xrun figures for those rates mean nothing")
     c.done()
 
 

@@ -53,9 +53,14 @@ def main():
     device = c.device or alsa.device_name(c.card)
 
     total_xruns = 0
+    unobserved = []
     for rate in rates:
         raw = os.path.join(c.workdir, f"capture_{rate}.raw")
-        before = alsa.xruns(c.card, "pcm0c")
+        # Sampled during, not before and after: the status file reports
+        # "closed" whenever the substream is shut, so a before/after
+        # difference is always zero. See lib/alsa.watch_pcm.
+        watch = alsa.watch_pcm(c.card, "pcm0c")
+        watch.start()
         try:
             p = subprocess.run(
                 ["arecord", "-D", device, "-d", str(seconds), "-f", FORMAT,
@@ -64,16 +69,18 @@ def main():
             rc, err = p.returncode, p.stderr
         except subprocess.TimeoutExpired:
             rc, err = 124, "arecord did not finish"
-        after = alsa.xruns(c.card, "pcm0c")
-        delta = max(0, after - before)
-        total_xruns += delta
+        watch.stop()
+        total_xruns += watch.xruns
+        if not watch.saw_open:
+            unobserved.append(str(rate))
+        c.metric(f"avail_max_{rate}", watch.avail_max)
 
         if rc != 0:
             c.fail(f"{rate} Hz: arecord exited {rc}: "
                    f"{(err or '').strip()[:120]}")
             continue
-        if delta:
-            c.fail(f"{rate} Hz: {delta} xrun(s)")
+        if watch.xruns:
+            c.fail(f"{rate} Hz: {watch.xruns} xrun(s)")
 
         got = os.path.getsize(raw) if os.path.exists(raw) else 0
         expect = rate * seconds * CHANNELS * BYTES_PER_SAMPLE
@@ -88,6 +95,9 @@ def main():
 
     c.metric("xruns", total_xruns)
     c.metric("rates_tested", len(rates))
+    if unobserved:
+        c.note("stream never observed open at: " + ", ".join(unobserved)
+               + " -- xrun figures for those rates mean nothing")
     c.done()
 
 
