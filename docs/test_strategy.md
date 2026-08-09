@@ -516,6 +516,70 @@ in a driver where nearly every change touches `jockey3.c`.
 
 ---
 
+## 11a. When the instrumentation runs out: wire-level tracing
+
+There is a hard boundary to everything above. `/proc/asound` can observe the
+driver up to the point where it hands bytes to usbcore, and no further. URB
+scheduling, host-controller behaviour, the timing of packets on the wire and
+the device's own FIFO are all past it.
+
+That boundary is not theoretical here, because this driver's URBs **run free**
+for the device's lifetime — playback must keep flowing since it carries MIDI
+OUT. So a late resubmission starves the *device* rather than underrunning the
+*ALSA buffer*, and produces a defect that is audible and completely unreported:
+`xrun_counter` stays at zero, `avail_max` does not move, and no message
+reaches the log. §4 records a measured instance of exactly this on
+`x86_64-debug`.
+
+**The escalation path is an OpenVizsla trace of the playback endpoint.** The
+tooling and the recipe are in
+[`re/usb/openvizsla/README.md`](../re/usb/openvizsla/README.md); this section
+is about when to reach for it and what it can settle.
+
+### When it is warranted
+
+Reach for a trace when **all** of these hold:
+
+- an audible or measured defect is reproducible;
+- `xrun_counter` is zero and `avail_max` is unremarkable, so ALSA supplied
+  everything on time;
+- removing userspace from the path (play from a file, not a `sox |` pipe)
+  does not change it;
+- and it happens on a **production** kernel.
+
+The last condition is what makes it worth the effort. On a debug kernel the
+explanation is already known and already actionable — KASAN inflates the
+completion handlers, quality verdicts move to `x86_64-prod`, and a trace would
+refine the mechanism without changing any decision. On a production kernel the
+same symptom means the driver is not keeping the ring fed under conditions
+users will meet, and the wire is the only place that answer exists.
+
+### What it can and cannot settle
+
+| Question | Trace answers it? |
+|---|---|
+| Were packets late, and by how much? | Yes — this is what it is for |
+| Did the ring drain, or did the host controller stall? | Yes, from the gap pattern |
+| Was the *data* correct? | No — that is loopback (JT-AUDIO-002) |
+| Is the codec packing right? | No — that is the KUnit suite and the bench |
+
+Timing and integrity are separate questions with separate instruments, and a
+trace answers only the first. Reaching for one to answer the second is how an
+afternoon disappears.
+
+### Why this is unusually available here
+
+Most driver work cannot do this at all. This project has an OpenVizsla, a
+parser that already reduces raw captures to transactions
+(`re/usb/parse_openvizsla.py`), and reference traces of the macOS and Windows
+drivers to compare against. The protocol was reverse-engineered this way in the
+first place, so the capability is proven rather than aspirational.
+
+That is a reason to keep it in mind, not a reason to use it. It is the last
+step, not the first.
+
+---
+
 ## 12. Roadmap
 
 **Now:** the catalog, the runner, and a small set of automated cases proving

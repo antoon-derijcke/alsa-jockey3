@@ -559,6 +559,13 @@ cases:
       it, in URBs resubmitted late under KASAN. Asking "did it sound clean?"
       there records a fail against the driver for the kernel's overhead.
 
+      If this fails on a PRODUCTION kernel, that reasoning does not apply and
+      it is a real defect. Check xrun_counter and avail_max first; if both are
+      clean, the cause is past where /proc/asound can see and the next step is
+      a wire-level trace -- see docs/test_strategy.md section 11a and
+      re/usb/openvizsla/README.md. Play from a decoded file rather than a
+      sox pipe before concluding anything, so userspace is out of the path.
+
   - id: JT-AUDIO-004
     title: Capture signal presence
     area: AUDIO
