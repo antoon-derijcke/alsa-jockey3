@@ -81,6 +81,34 @@ usage() {
 verb=$1
 shift
 
+# Every verb here needs root; that is the entire reason this file exists. Say
+# so once, clearly, rather than letting each verb fail in its own way further
+# down -- run without sudo, xrun-debug reported "Permission denied" against a
+# proc path, which reads like a bug in the tool rather than a missing sudo.
+if [ "$(id -u)" != 0 ]; then
+	echo "jockey3-testctl: must run as root -- try:" >&2
+	echo "    sudo $0 $verb $*" >&2
+	exit 4
+fi
+
+# The Jockey 3's proc directory, resolved by card ID rather than by index.
+# ALSA maintains /proc/asound/<id> as a symlink to the current cardN, and the
+# index is not stable: booting with the device already powered on made it
+# card0 where it had always been card1. Anything keyed on the number is wrong
+# the first time somebody leaves the controller switched on.
+card_proc() {
+	local d
+	for d in /proc/asound/RJ3 /proc/asound/Jockey3; do
+		[ -d "$d" ] && { printf '%s' "$d"; return 0; }
+	done
+	# Fall back to matching the driver name in /proc/asound/cards, in case the
+	# card id was overridden with the `id` module parameter.
+	local n
+	n=$(awk '/Jockey3|Reloop Jockey 3/ {print $1; exit}' /proc/asound/cards 2>/dev/null)
+	[ -n "$n" ] && [ -d "/proc/asound/card$n" ] || return 1
+	printf '/proc/asound/card%s' "$n"
+}
+
 case "$verb" in
 status)
 	echo "jockey3-testctl ok"
@@ -171,14 +199,18 @@ xrun-debug)
 	# which are for a person staring at one failure, not for a suite.
 	[ $# -eq 1 ] || die "xrun-debug needs 0 or 1"
 	[[ $1 =~ ^[01]$ ]] || die "xrun-debug takes 0 or 1"
+	# Only this card's substreams. Globbing /proc/asound/card*/ also reached
+	# the onboard HDA, whose logging is nobody's business here and whose xruns
+	# would land in the same kernel log the classifier reads.
+	proc=$(card_proc) || die "no Jockey 3 card found in /proc/asound"
 	n=0
-	for f in /proc/asound/card*/pcm*/xrun_debug; do
+	for f in "$proc"/pcm*/xrun_debug; do
 		[ -e "$f" ] || continue
 		printf '%s\n' "$1" > "$f" || die "cannot write $f"
 		n=$((n + 1))
 	done
-	[ "$n" -gt 0 ] || die "no xrun_debug controls found (CONFIG_SND_PCM_XRUN_DEBUG?)"
-	echo "xrun_debug=$1 on $n substream(s)"
+	[ "$n" -gt 0 ] || die "no xrun_debug under $proc (CONFIG_SND_PCM_XRUN_DEBUG?)"
+	echo "xrun_debug=$1 on $n substream(s) of $(basename "$(readlink -f "$proc")")"
 	exit 0
 	;;
 
