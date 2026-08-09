@@ -56,6 +56,35 @@ benign:
       ploytec_initialize_device(), which jockey3_set_rate() also calls, so the
       device re-reports on every rate change -- 63 times in one smoke run.
       Listing it only under JT-PROBE-001 failed every case that changes rate.
+  # ------------------------------------------------------------------------
+  # The driver's dev_dbg traces.
+  #
+  # These are silent unless someone turns dynamic debug up, which is a normal
+  # thing to do while investigating -- and the moment they did, every case
+  # that saw one failed, because an unrecognized message that looks like ours
+  # is a failure by default. A run should not turn red because the operator
+  # asked the driver to be talkative.
+  #
+  # Classified as a group rather than one rule per string: there are 25 of
+  # them, they are all traces, and this driver reports every actual problem
+  # through dev_warn or dev_err. Nothing here indicates a fault; the ones that
+  # do are in driver_fail below.
+  #
+  # A cleaner future fix is to classify on syslog priority -- KERN_DEBUG from
+  # our driver is by definition a trace -- which needs dmesg-read to emit raw
+  # priorities. lib/kmsg.PREFIX_RE already tolerates the "<7>" they come with.
+  - pattern: '(Starting|Stopping) all URBs'
+    metric: dbg_urb_lifecycle
+  - pattern: 'PCM (open|close|prepare|trigger|hw_params) '
+  - pattern: 'Setting (rate|new hardware rate)'
+  - pattern: 'Rate (set OK|verified as|changed to|already set to)'
+  - pattern: '(Current hardware rate|Hardware rate already at requested value)'
+  - pattern: 'USB (suspend, stopping URBs|resume, restoring device|reset resume, restoring device)'
+  - pattern: 'Using (32-bit optimized|64-bit optimized|portable) codec'
+  - pattern: '(Ploytec initialized successfully|Initialization complete)'
+  - pattern: 'Waiting for reset completion'
+  - pattern: 'Start Streaming: Status: 0x'
+  # ------------------------------------------------------------------------
   - pattern: 'loading out-of-tree module taints kernel'
     metric: taint_out_of_tree
     why: >
@@ -184,6 +213,25 @@ investigate:
   - pattern: 'list_add corruption'
   - pattern: 'refcount_t:'
 
+# DELIBERATELY NOT CLASSIFIED
+#
+#   ep_05: PM: parent 1-13:1.0 should not be sleeping
+#
+# Seen four times during JT-PM-001 on x86_64-prod, naming this device's own
+# interfaces (1-13:1.0 and 1-13:1.1) and its own endpoints -- 0x05 playback,
+# 0x86 capture, 0x83 MIDI in, plus ep_02. It is a dev_warn from the PM core
+# (drivers/base/power/main.c) meaning a child device was resumed while its
+# parent was still suspended.
+#
+# It is left unclassified on purpose, so it keeps being surfaced for review.
+# Adding it to `unrelated` would hide a message about our own device during
+# the one case that exercises suspend; adding it to `driver_fail` would assert
+# it is a driver defect, which has not been established -- the ordering may be
+# usbcore's rather than ours. Decide it with evidence, then move it.
+#
+# Note it does not match OURS: the lines say "ep_05" and "1-13:1.0", not the
+# module name. That is why it lands here rather than being attributed.
+
 # Known-unrelated noise from the rest of the system. Ignored entirely.
 #
 # Keep this list short and justified. The temptation is to add anything that
@@ -221,3 +269,33 @@ unrelated:
   - pattern: 'audit:'
   - pattern: 'perf: interrupt took too long'
   - pattern: 'pipewire|wireplumber|pulseaudio'
+  # Suspend and resume. JT-PM-001 suspends the machine, so the whole PM
+  # sequence lands in its window -- 52 lines of it in one functional run,
+  # every one of them the kernel doing exactly what the case asked for.
+  #
+  # Listed specifically rather than as a blanket "PM:" prefix, because a
+  # failure to suspend also announces itself through PM: and should stay
+  # visible.
+  - pattern: 'PM: suspend (entry|exit)'
+  - pattern: 'PM: Preparing system for|PM: Restoring platform'
+  - pattern: 'Restarting tasks: (Starting|Done)'
+  - pattern: 'random: crng reseeded on system resumption'
+  - pattern: 'efivarfs: (resyncing|finished resyncing) variable state'
+  - pattern: 'ata\d+: SATA link down'
+  - pattern: 'nvme nvme\d+: (D3 entry latency|\d+/\d+/\d+ default/read/poll queues)'
+  - pattern: 'i915 [0-9a-f:.]+: vgaarb: VGA decodes changed'
+  - pattern: 'serial \d+:\d+: activated'
+  - pattern: 'Freezing (user space processes|remaining freezable tasks)'
+  - pattern: 'Filesystems sync: '
+  - pattern: 'OOM killer (disabled|enabled)'
+  - pattern: 'printk: Suspending console'
+  - pattern: 'smpboot: CPU \d+ is now offline'
+  - pattern: 'smpboot: Booting Node \d+ Processor \d+'
+  - pattern: '(Disabling|Enabling) non-boot CPUs'
+  - pattern: 'CPU\d+ is up'
+  # Specific EC transitions rather than a blanket "ACPI: EC:", so a genuine
+  # embedded-controller complaint still surfaces.
+  - pattern: 'ACPI: EC: (interrupt (un)?blocked|event (un)?blocked|EC (stopped|started))'
+  - pattern: 'ACPI: PM: '
+  - pattern: 'serial \d+:\d+: disabled'
+  - pattern: 'e1000e: EEE TX LPI TIMER'
