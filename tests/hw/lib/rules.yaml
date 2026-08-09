@@ -45,6 +45,17 @@ benign:
       after "deregistering interface driver".
       Deliberately matched by errno rather than by message: a resubmit failure
       with any OTHER error code is not teardown, and must stay a failure.
+  - pattern: 'Firmware 0x[0-9a-f]{2} v\d+\.\d+\.\d+'
+    why: >
+      The firmware revision, which the runner parses out of the log because
+      there is no sysfs attribute for it and adding one would be a change to
+      the driver made for tests.
+
+      Global rather than a per-case expectation, because it is not emitted
+      once at probe as was long assumed: ploytec_get_firmware() sits inside
+      ploytec_initialize_device(), which jockey3_set_rate() also calls, so the
+      device re-reports on every rate change -- 63 times in one smoke run.
+      Listing it only under JT-PROBE-001 failed every case that changes rate.
   - pattern: 'loading out-of-tree module taints kernel'
     metric: taint_out_of_tree
     why: >

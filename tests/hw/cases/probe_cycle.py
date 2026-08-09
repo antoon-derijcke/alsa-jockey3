@@ -41,9 +41,11 @@ def main():
 
     iterations = int(c.params.get("iterations_per_run", 3))
 
-    # The firmware message is a dev_dbg emitted once at probe, and it is the
-    # only place the firmware revision appears -- there is no sysfs attribute,
-    # and adding one would be a change to the driver made for tests.
+    # The firmware message is a dev_dbg, and the only place the firmware
+    # revision appears -- there is no sysfs attribute, and adding one would be
+    # a change to the driver made for tests. It is emitted at probe and again
+    # on every rate change, because ploytec_get_firmware() sits inside
+    # ploytec_initialize_device(), which jockey3_set_rate() also calls.
     #
     # Nothing to enable here: priv.load_module() passes the rule as modprobe's
     # dyndbg= parameter on every load, which is the only way to have it in

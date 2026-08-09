@@ -202,11 +202,14 @@ cases:
     pass: >
       The card appears with a playback and a capture substream and one rawmidi
       device after every load, and unloads cleanly every time.
-    expect_dmesg:
-      - 'Firmware 0x[0-9a-f]{2} v\d+\.\d+\.\d+'
     notes: >
-      Also the case that captures srcversion and firmware revision for the run,
-      so it should run early in every profile.
+      Also the case that captures the build identity and firmware revision for
+      the run, so it should run early in every profile.
+
+      The firmware message needs no expect_dmesg entry here: it is emitted on
+      every rate change as well as at probe, so it lives in lib/rules.yaml as
+      a global rule. Listing it in both places would be two sources of truth
+      for one fact.
 
   - id: JT-PROBE-002
     title: Unbind and rebind stress

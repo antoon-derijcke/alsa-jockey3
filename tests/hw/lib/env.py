@@ -176,8 +176,10 @@ def enable_firmware_debug():
     it is next unloaded: dynamic_debug drops a module's rules when the module
     goes away, and the callsite does not exist at all while it is unloaded.
 
-    The firmware message is emitted once, at probe, so enabling it here can
-    never catch it. That is `priv.load_module()`'s job -- it passes the rule as
+    The message is emitted at probe -- which enabling it here cannot catch --
+    and again on every rate change, since ploytec_get_firmware() sits inside
+    ploytec_initialize_device() and jockey3_set_rate() calls that too. Catching
+    the probe-time one is `priv.load_module()`'s job: it passes the rule as
     modprobe's dyndbg= parameter, which applies before the module initializes.
     This function remains for turning the message on for an already-loaded
     module, and its counterpart for turning it off.

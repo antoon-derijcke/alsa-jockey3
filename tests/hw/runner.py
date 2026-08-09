@@ -437,8 +437,9 @@ def main():
     run_path = results.run_dir(root, target_name, args.profile, stamp)
     os.makedirs(os.path.join(run_path, "cases"), exist_ok=True)
 
-    # Must happen before the module is loaded: the firmware revision is
-    # emitted once, at probe, and only as a dev_dbg.
+    # Enables the firmware dev_dbg on a module that is already loaded. A load
+    # performed by the suite gets the rule from priv.load_module() instead,
+    # which is the only way to have it in place before probe runs.
     fw_ok, fw_err = env.enable_firmware_debug()
 
     stopped = alsa.stop_sound_server()
