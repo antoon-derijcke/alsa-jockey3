@@ -36,6 +36,37 @@ benign:
     why: >
       Routine on unplug -- all eight in-flight URBs error at once -- so this is
       the normal path into disconnect, not an exotic one.
+  - pattern: 'Failed to resubmit (?:playback|capture) URB: -(?:2|108)$'
+    metric: urb_resubmit_teardown
+    why: >
+      -ENOENT and -ESHUTDOWN mean the URB was killed while a completion was
+      already in flight, which is exactly what jockey3_stop_urbs() does. Every
+      one of the 49 seen on the first hardware run landed in the microseconds
+      after "deregistering interface driver".
+      Deliberately matched by errno rather than by message: a resubmit failure
+      with any OTHER error code is not teardown, and must stay a failure.
+  - pattern: 'usbcore: (?:registered new|deregistering) interface driver snd-reloop-jockey3'
+    metric: module_lifecycle
+    why: >
+      usbcore's own load/unload announcement. It carries the module name, so it
+      reads as ours and would otherwise fail every case that cycles the driver
+      -- which is what it did on the first hardware run.
+  # The documented capture-recovery escalation. Each step is expected on a
+  # healthy build and is tracked so the escalation rate is visible; only the
+  # final give-up (in driver_fail) is a failure.
+  - pattern: 'Capture URB stalled when opening capture stream; attempting recovery'
+    metric: capture_recovery_on_open
+    why: >
+      Deferred recovery arriving where it was designed to: a capture stall left
+      by an earlier rate change is picked up at the next capture open.
+  - pattern: 'Restarting URBs to recover stalled Capture stream'
+    metric: capture_urb_restart
+    why: The lightweight first step of recovery, before any USB reset.
+  - pattern: 'Capture stream still stalled after URB restart; queuing full USB reset'
+    metric: capture_restart_escalated
+    why: >
+      Escalation from URB restart to a full reset. Expected sometimes; a rising
+      proportion of restarts that escalate is the signal worth watching.
   # KUnit TAP scaffolding around the codec suite at module load. It is our
   # output, so it is classified here rather than as unrelated noise -- the
   # unrelated list is only consulted for lines that are not ours at all.
@@ -43,14 +74,33 @@ benign:
   # line below, failures are in driver_fail.
   - pattern: '^\s*# Subtest: ploytec'
   - pattern: '^\s*ok \d+ ploytec'
-  - pattern: '# ploytec-codec: pass:(\d+)'
-    metric: kunit_passed_on_target
+  - pattern: '^\s*# module: snd_reloop_jockey3'
+  # Pinned to the suite line. KUnit emits a summary per nesting level, and a
+  # '# ploytec\w*:' wildcard also swallows the two parameterized cases --
+  # recording [30, 26, 21] per module load instead of [21], i.e. a metric
+  # series mixing three different quantities.
+  - pattern: '^\s*# ploytec-codec: pass:(\d+) fail:\d+'
+    metric: kunit_cases_passed_on_target
     capture: 1
+  - pattern: '^\s*# ploytec\w+: pass:\d+ fail:\d+'
     why: >
       With CONFIG_SND_USB_JOCKEY3_CODEC_KUNIT_TEST the codec suite runs at
       every module load, so the driver validates its own codec on the real
-      hardware and real toolchain -- not just under QEMU. The pass count is
-      worth recording; a drop from 75 means the build regressed.
+      hardware and real toolchain -- not just under QEMU.
+
+      This counts the 21 top-level KUnit cases, which is NOT the 75 the
+      catalog quotes: the parameterized cases expand into 75 individual
+      results, and the kernel reports both --
+
+          # ploytec-codec: pass:21 fail:0 skip:0 total:21
+          # Totals: pass:75 fail:0 skip:0 total:75
+
+      The metric was originally named as though it held the second number
+      while reading the first. It has to read this line: "# Totals:" carries
+      nothing identifying it as ours, so the classifier never offers it to
+      these rules at all. Hence the deliberately specific name -- the two
+      numbers are both real and measure different things, and a metric series
+      is worthless if it silently changes which one it holds.
 
 # Messages from our driver that are never acceptable, whatever the case.
 driver_fail:
@@ -59,6 +109,15 @@ driver_fail:
       A codec KUnit case failed on the target. The codec is the one part of
       this driver that is provably correct or provably not, so this is never
       ambiguous.
+  - pattern: '# ploytec[\w-]*: pass:\d+ fail:[1-9]'
+    why: >
+      The suite's own summary reporting a non-zero failure count. This exists
+      because the line above cannot be relied on alone: a failing parameterized
+      case prints "not ok 5 zeros", which carries no ploytec or module name, so
+      the classifier never treats it as ours and it lands in unclassified --
+      surfaced for review, but not a failure. The summary line does identify
+      itself as ours, so it is what turns a codec regression on target into a
+      red run.
   - pattern: 'Inconsistent URB in-flight count'
     why: A self-check assertion in the driver. If it fires, accounting is wrong.
   - pattern: 'Timeout draining .* URB callbacks'
@@ -105,10 +164,26 @@ unrelated:
   # them, so they are framework noise rather than driver output.
   - pattern: '^\s*(KTAP|TAP) version \d'
   - pattern: '^\s*1\.\.\d+$'
+  # The codec suite's parameterized results: "ok 5 zeros", "ok 12 random00".
+  # They are ours, but nothing in the text says so, and the classifier only
+  # offers a line to the benign rules once it recognizes it as ours -- so
+  # unrelated is the only bucket that can hold them. At 75 per module load and
+  # ~20 loads in a smoke run they are the bulk of the log.
+  #
+  # Matched as 'ok' only, never 'not ok': a failing subtest must stay visible.
+  # It lands in unclassified and is flagged, and the suite summary line in
+  # driver_fail is what actually fails the run.
+  - pattern: '^\s*ok \d+ [\w.-]+$'
+  - pattern: '^\s*# (Subtest|Totals):'
+  - pattern: '^\s*# [\w.-]+: pass:\d+ fail:\d+ skip:\d+'
   - pattern: 'usb \d+-[\d.]+: new (high|full|super)-speed USB device'
   - pattern: 'usb \d+-[\d.]+: New USB device (found|strings)'
   - pattern: 'usb \d+-[\d.]+: (Product|Manufacturer|SerialNumber):'
   - pattern: 'usb \d+-[\d.]+: USB disconnect'
+  # usbcore announcing the reset the driver asked for. The driver's own
+  # account of the reset is classified above as ours; this is the hub's, and
+  # it carries nothing tying it to this device beyond the bus address.
+  - pattern: 'usb \d+-[\d.]+: reset (high|full|super)-speed USB device'
   - pattern: 'input: .* as /devices/'
   - pattern: 'systemd\['
   - pattern: 'audit:'

@@ -16,6 +16,8 @@ target is identified as what it actually is.
 
 import io
 import os
+import re
+import subprocess
 import sys
 import tempfile
 
@@ -55,16 +57,18 @@ def test_classifier(rules):
     print("\nkernel message classification")
     c = kmsg.Classifier(rules)
 
+    # Timestamped, as dmesg actually renders them -- see test_kunit_on_target.
+    T = "[ 5870.058393] "
     lines = [
-        DRIVER + "Capture URB has stalled.",
-        DRIVER + "jockey3_pcm_prepare waited 336 ms for reset completion.",
-        DRIVER + "jockey3_pcm_prepare waited 1012 ms for reset completion.",
-        DRIVER + "Inconsistent URB in-flight count: playback=2 != 0",
-        DRIVER + "Some message nobody has ever seen",
-        "usb 1-3: new high-speed USB device number 7 using xhci_hcd",
-        "wlan0: authenticate with aa:bb:cc:dd:ee:ff",
-        "BUG: unable to handle kernel NULL pointer dereference at 0000",
-        DRIVER + "Playback URB has stalled.",
+        T + DRIVER + "Capture URB has stalled.",
+        T + DRIVER + "jockey3_pcm_prepare waited 336 ms for reset completion.",
+        T + DRIVER + "jockey3_pcm_prepare waited 1012 ms for reset completion.",
+        T + DRIVER + "Inconsistent URB in-flight count: playback=2 != 0",
+        T + DRIVER + "Some message nobody has ever seen",
+        T + "usb 1-3: new high-speed USB device number 7 using xhci_hcd",
+        T + "wlan0: authenticate with aa:bb:cc:dd:ee:ff",
+        T + "BUG: unable to handle kernel NULL pointer dereference at 0000",
+        T + DRIVER + "Playback URB has stalled.",
     ]
     b, m = c.classify(lines, [r"Capture URB has stalled\."])
     got = kmsg.summarize(b)
@@ -94,23 +98,46 @@ def test_classifier(rules):
 
 
 def test_kunit_on_target(rules):
+    """Verbatim transcript of a module load, timestamps and all.
+
+    These fixtures used to be bare message text. Every anchored rule therefore
+    matched in the selftest and none of them matched a real dmesg line, which
+    is how 1602 lines came back unclassified from the first hardware run
+    against a rule set that had always looked correct. The prefixes below are
+    the point of the test as much as the messages are.
+    """
     print("\ncodec KUnit output at module load")
     c = kmsg.Classifier(rules)
     b, m = c.classify([
-        "    KTAP version 1",
-        "    # Subtest: ploytec-codec",
-        "    ok 1 ploytec_test_encode_known_vectors",
-        "    1..75",
-        "    # ploytec-codec: pass:75 fail:0 skip:0 total:75",
-        "    ok 1 ploytec-codec",
+        "[ 5871.543119]     KTAP version 1",
+        "[ 5871.543120]     # Subtest: ploytec-codec",
+        "[ 5871.543121]     # module: snd_reloop_jockey3",
+        "[ 5871.543122]     ok 1 ploytec_test_encode_known_vectors",
+        "[ 5871.543123]     ok 5 zeros",
+        "[ 5871.543124]     ok 12 random00",
+        "[ 5871.543125]     1..75",
+        "[ 5872.282635]     # ploytec-codec: pass:21 fail:0 skip:0 total:21",
+        "[ 5872.290143]     # Totals: pass:75 fail:0 skip:0 total:75",
+        "[ 5872.296836]     ok 1 ploytec-codec",
     ], [])
     check(not b[kmsg.UNEXPECTED] and not b[kmsg.UNCLASSIFIED],
           "a passing suite does not pollute the run", str(kmsg.summarize(b)))
-    check(m.get("kunit_passed_on_target") == [75],
-          "the pass count is recorded as a metric", str(m))
+    check(m.get("kunit_cases_passed_on_target") == [21],
+          "the top-level case count is recorded as a metric", str(m))
 
-    b2, _ = c.classify(["    not ok 3 ploytec_test_encode_is_linear"], [])
+    b2, _ = c.classify(
+        ["[ 5872.1] not ok 3 ploytec_test_encode_is_linear"], [])
     check(len(b2[kmsg.UNEXPECTED]) == 1, "a failing codec case fails the run")
+
+    # A parameterized failure carries nothing identifying it as ours, so the
+    # suite summary is what has to catch it.
+    b3, _ = c.classify([
+        "[ 5872.2]     not ok 5 zeros",
+        "[ 5872.3]     # ploytec-codec: pass:20 fail:1 skip:0 total:21",
+    ], [])
+    check(len(b3[kmsg.UNEXPECTED]) == 1,
+          "a failing parameterized case fails the run via the suite summary",
+          str(kmsg.summarize(b3)))
 
 
 # ------------------------------------------------------------ target model
@@ -259,6 +286,57 @@ def test_results_roundtrip():
     check(len(back["results"]) == 2, "results survive the round trip")
 
 
+def test_privilege_boundary():
+    """The helper is the whole privileged surface, so drift in it is silent.
+
+    None of this needs root: it compares the repository's helper against the
+    Python that drives it. The failure these catch is a verb renamed on one
+    side only, which shows up at runtime as a case that is blocked or, worse,
+    as log slicing that quietly stops working.
+    """
+    print("\nprivilege boundary")
+    helper = os.path.join(HERE, "priv", "jockey3-testctl")
+    check(os.path.exists(helper), "the helper exists in the repository")
+    if not os.path.exists(helper):
+        return
+    src = open(helper, encoding="utf-8").read()
+
+    rc = subprocess.run(["bash", "-n", helper], capture_output=True)
+    check(rc.returncode == 0, "the helper is syntactically valid",
+          rc.stderr.decode()[:120])
+
+    # Verbs the script implements, taken from the case labels of its dispatch.
+    implemented = set(re.findall(r"^([a-z][a-z-]*)\)$", src, re.M))
+    called = set(re.findall(r'call\(\s*"([a-z][a-z-]*)"',
+                            open(os.path.join(HERE, "lib", "priv.py"),
+                                 encoding="utf-8").read()))
+    check(called <= implemented, "every verb priv.py calls is implemented",
+          f"missing: {sorted(called - implemented)}")
+
+    # The marker token is generated in kmsg.py and validated in the helper.
+    # If those two drift, markers are silently rejected and every case gets
+    # classified against the entire boot log instead of its own slice.
+    pat = re.search(r"=~ (\^JT-MARK.*?) \]\]", src)
+    check(pat is not None, "the helper validates the marker token")
+    if pat:
+        token = kmsg.Marker("JT-PROBE-001#1").token
+        rx = pat.group(1).replace("\\ ", " ")
+        check(re.match(rx, token) is not None,
+              "a generated marker token passes the helper's validation",
+              f"token={token!r} pattern={rx!r}")
+
+    # Nothing outside priv.py may reach for root on its own.
+    strays = []
+    for sub in ("lib", "cases"):
+        for name in sorted(os.listdir(os.path.join(HERE, sub))):
+            if not name.endswith(".py") or name == "priv.py":
+                continue
+            body = open(os.path.join(HERE, sub, name), encoding="utf-8").read()
+            if re.search(r'["\[]\s*"sudo"|geteuid\(\)\s*!=\s*0', body):
+                strays.append(f"{sub}/{name}")
+    check(not strays, "only priv.py reaches for privilege", str(strays))
+
+
 def main():
     rules = load(os.path.join("lib", "rules.yaml"))
     catalog = load("catalog.yaml")
@@ -271,6 +349,7 @@ def main():
     test_build_id()
     test_catalog(catalog, targets, profiles)
     test_results_roundtrip()
+    test_privilege_boundary()
 
     print(f"\n{_checks - len(_failures)}/{_checks} checks passed")
     if _failures:

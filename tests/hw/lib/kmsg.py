@@ -18,6 +18,8 @@ import re
 import subprocess
 import uuid
 
+from lib import priv
+
 KMSG = "/dev/kmsg"
 MARKER_PREFIX = "JT-MARK"
 
@@ -45,24 +47,39 @@ class Marker:
         self.written = False
 
     def write(self):
+        # Direct write when we already have the privilege, helper otherwise.
+        # Trying it first rather than always going through sudo keeps a
+        # root-run suite working on a machine where the helper was never
+        # installed.
         try:
             with open(KMSG, "w", encoding="utf-8") as f:
                 f.write(self.token + "\n")
             self.written = True
+            return self.written
         except OSError:
-            # Not fatal: without a marker we fall back to capturing the whole
-            # log, which is noisier but not wrong. Needs root.
-            self.written = False
+            pass
+        # Not fatal if this fails too: without a marker we fall back to
+        # capturing the whole log, which is noisier but not wrong.
+        self.written = priv.dmesg_mark(self.token)
         return self.written
 
 
 def read_log():
+    """The kernel log, by whatever route is available.
+
+    dmesg is readable unprivileged only when kernel.dmesg_restrict is 0, which
+    it is not on the test machines, so this normally goes through the helper.
+    Tried directly first so the function still works on a box where dmesg is
+    unrestricted and no helper is installed.
+    """
     try:
         out = subprocess.run(["dmesg", "--color=never"], capture_output=True,
                              text=True, timeout=30)
-        return out.stdout.splitlines()
+        if out.returncode == 0:
+            return out.stdout.splitlines()
     except (OSError, subprocess.SubprocessError):
-        return []
+        pass
+    return priv.dmesg_read()
 
 
 def slice_since(lines, marker):
@@ -82,6 +99,24 @@ def _compile(rules, key):
     return out
 
 
+# dmesg prefixes every line with a timestamp, and may prefix a facility level
+# as well. Patterns are written against the message, so the prefix is stripped
+# before matching.
+#
+# This is not cosmetic. Several rules are anchored -- '^\s*# Subtest: ploytec',
+# '^\s*(KTAP|TAP) version \d' -- and against a real dmesg line those anchors
+# can never match, because the line starts with "[ 5871.543119] ". The rules
+# looked correct and classified nothing: the first hardware run produced 1602
+# unclassified and 680 wrongly-unexpected lines, which failed every case that
+# unloaded the module. The selftest did not catch it because its fixtures were
+# bare message text, so the fixtures now carry timestamps too.
+PREFIX_RE = re.compile(r'^(?:<\d+>)?\s*(?:\[\s*\d+\.\d+\]\s*)?')
+
+
+def strip_prefix(line):
+    return PREFIX_RE.sub("", line, count=1)
+
+
 class Classifier:
     def __init__(self, rules):
         self.benign = _compile(rules, "benign")
@@ -94,21 +129,26 @@ class Classifier:
 
         expect_patterns are the case's own `expect_dmesg` entries: messages
         that are normal *for this case* and would be suspicious elsewhere.
+
+        Matching is done on the message with the dmesg prefix removed; the
+        buckets keep the original line, because a timestamp is most of what
+        makes a reported message useful.
         """
         expect = [re.compile(p) for p in (expect_patterns or [])]
         buckets = {EXPECTED: [], UNEXPECTED: [], UNRELATED: [],
                    UNCLASSIFIED: [], INVESTIGATE: []}
         metrics = {}
 
-        for line in lines:
-            if MARKER_PREFIX in line:
+        for raw in lines:
+            if MARKER_PREFIX in raw:
                 continue
+            line = strip_prefix(raw)
 
             # Defects first: an oops inside an otherwise expected message is
             # still an oops, and ordering here is a correctness property.
             hit = self._first(self.investigate, line)
             if hit:
-                buckets[INVESTIGATE].append(line)
+                buckets[INVESTIGATE].append(raw)
                 continue
 
             ours = bool(OURS.search(line))
@@ -116,7 +156,7 @@ class Classifier:
             if ours:
                 hit = self._first(self.driver_fail, line)
                 if hit:
-                    buckets[UNEXPECTED].append(line)
+                    buckets[UNEXPECTED].append(raw)
                     continue
 
                 rx, entry = self._first_pair(self.benign, line)
@@ -128,20 +168,20 @@ class Classifier:
                     # count, so it becomes a metric and the case decides. A
                     # rate case fails when stalls do not recover; a MIDI case
                     # simply records that one happened.
-                    buckets[EXPECTED].append(line)
+                    buckets[EXPECTED].append(raw)
                     continue
 
                 if any(e.search(line) for e in expect):
-                    buckets[EXPECTED].append(line)
+                    buckets[EXPECTED].append(raw)
                 else:
-                    buckets[UNEXPECTED].append(line)
+                    buckets[UNEXPECTED].append(raw)
                 continue
 
             if self._first(self.unrelated, line):
-                buckets[UNRELATED].append(line)
+                buckets[UNRELATED].append(raw)
                 continue
 
-            buckets[UNCLASSIFIED].append(line)
+            buckets[UNCLASSIFIED].append(raw)
 
         return buckets, metrics
 
