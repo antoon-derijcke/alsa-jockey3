@@ -92,50 +92,11 @@ if [ "$UNCOMMITTED" = 1 ]; then
 	# silently omits a newly added source file.
 	"$HERE/sync-driver.sh" "$BUILD_TREE" >/dev/null
 else
-	SHA=$(git -C "$KERNEL_SRC" rev-parse --verify "$BUILD_REF" 2>/dev/null) || {
-		echo "no ref '$BUILD_REF' in $KERNEL_SRC" >&2; exit 2; }
-
-	# Does the branch actually hold what is being tested? Comparing the files
-	# rather than trusting a workflow: the whole point is that the module can
-	# be rebuilt from this commit and come out the same.
-	drift=""
-	while IFS= read -r f; do
-		a=$(git -C "$KERNEL_SRC" show "$SHA:$DST/$f" 2>/dev/null | sha256sum | cut -d' ' -f1)
-		b=$(sha256sum "$REPO/$f" 2>/dev/null | cut -d' ' -f1)
-		[ "$a" = "$b" ] || drift="$drift $f"
-	done <<-'FILES'
-	jockey3.c
-	ploytec_proto.c
-	ploytec_proto.h
-	ploytec_codec.c
-	ploytec_codec.h
-	ploytec_midi.c
-	ploytec_midi.h
-	ploytec_codec_kunit.c
-	ploytec_codec_test_vectors.h
-	FILES
-
-	if [ -n "$drift" ]; then
-		echo "the driver in $BUILD_REF does not match this repository:" >&2
-		for f in $drift; do echo "    $f" >&2; done
-		echo >&2
-		echo "commit the driver into the kernel branch first, so the build is" >&2
-		echo "reproducible and the manifest names a revision that contains it:" >&2
-		echo >&2
-		echo "    tests/build/sync-driver.sh $KERNEL_SRC" >&2
-		echo "    git -C $KERNEL_SRC add $DST" >&2
-		echo "    git -C $KERNEL_SRC commit --amend --no-edit   # or a new commit" >&2
-		echo >&2
-		echo "or pass --uncommitted to build them as they are." >&2
-		exit 3
-	fi
-
-	# The build worktree is disposable scratch whose only job is to hold the
-	# committed source, so it is reset rather than merged. --force discards
-	# leftovers from previous --uncommitted builds; untracked build output is
-	# left in place so the rebuild stays incremental.
-	git -C "$BUILD_TREE" checkout --detach --force --quiet "$SHA"
-	echo "building $BUILD_REF at $(git -C "$KERNEL_SRC" rev-parse --short "$SHA")"
+	# Shared with build_kernel.sh: verify the branch holds what is here, then
+	# point the worktree at that commit. The file list lives in
+	# sync-driver.sh, so a new source file is covered the moment it is added
+	# there rather than in three places.
+	echo "building $("$HERE/use-committed.sh" "$KERNEL_SRC" "$BUILD_TREE" "$BUILD_REF")"
 fi
 
 make -C "$BUILD_TREE" -j"$(nproc)" O="$OBJ" M=$DST modules

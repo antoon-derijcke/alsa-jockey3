@@ -90,13 +90,37 @@ def age_days(iso):
     return int((time.time() - t) / 86400)
 
 
+def driver_rev(git):
+    """How to label the driver a run tested.
+
+    git_describe carries a "-dirty" suffix taken from the whole repository,
+    which is the wrong question. This repository holds the test framework as
+    well as the driver, so editing a classification rule marks a build dirty
+    even though the driver sources compiled into it were exactly the committed
+    ones -- which is how a prod kernel came to be reported as "2f9ac17-dirty"
+    when its driver was verbatim c543cf70efd1.
+
+    kernel_driver_dirty answers the question actually being asked: were there
+    uncommitted changes under sound/usb/jockey3 in the tree this was built
+    from. Prefer it, and fall back to the repository-wide flag for manifests
+    written before it existed.
+    """
+    rev = git.get("git_describe") or git.get("git_hash")
+    if not rev:
+        return None
+    base = rev[:-len("-dirty")] if rev.endswith("-dirty") else rev
+    if "kernel_driver_dirty" in git:
+        return base + ("-dirty" if git["kernel_driver_dirty"] else "")
+    return rev
+
+
 def build_index(runs):
     """Latest pass and latest attempt per (target, case)."""
     idx = {}
     for run in runs:
         target = run.get("target", "?")
         git = ((run.get("env") or {}).get("driver") or {}).get("build") or {}
-        rev = git.get("git_describe") or git.get("git_hash")
+        rev = driver_rev(git)
         for r in run.get("results", []):
             key = (target, r["id"])
             slot = idx.setdefault(key, {"pass": None, "last": None})

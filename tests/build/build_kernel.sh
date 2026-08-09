@@ -129,15 +129,20 @@ if [ "${free_gb:-0}" -lt "$MIN_FREE_GB" ]; then
 fi
 
 # --------------------------------------------------------- source worktree
-# Created once and reused. Never built in-tree, which is what keeps `O=`
-# working for every target.
-if [ ! -d "$BUILD_TREE" ]; then
-	echo "== creating build worktree =="
-	git -C "$KERNEL_SRC" worktree add --detach "$BUILD_TREE" "$BUILD_REF"
-fi
-
-echo "== syncing driver sources =="
-"$HERE/sync-driver.sh" "$BUILD_TREE"
+# Never built in-tree, which is what keeps `O=` working for every target.
+#
+# It used to be created once at $BUILD_REF and then left alone, with the
+# working tree copied over the top on every build. That meant the worktree sat
+# at whatever commit it had last been left on -- possibly by build_module.sh --
+# while the driver files on top of it came from wherever this repository
+# happened to be, committed or not. A kernel built that way is not
+# reproducible from anything, and its manifest said only whether this
+# repository was clean.
+#
+# use-committed.sh checks the branch against this repository and moves the
+# worktree to that commit, so the package is built from a revision that exists.
+echo "== source =="
+"$HERE/use-committed.sh" "$KERNEL_SRC" "$BUILD_TREE" "$BUILD_REF"
 
 # ---------------------------------------------------------------- configure
 if [ "$CLEAN" -eq 1 ] && [ -d "$O" ]; then
