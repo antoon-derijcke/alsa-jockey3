@@ -448,32 +448,57 @@ cases:
     requires: [device, sox, human]
     metrics: [stalls, stalls_recovered, resets_full, failures]
     pass: >
-      Same criterion as JT-RATE-001, with capture open throughout: a stall
-      that recovers is a PASS and is counted; a stall still present after a
-      full USB reset is a FAIL.
+      A second stream at the same rate is accepted; at a different rate it is
+      refused by the ALSA core, without the driver's own -EBUSY check firing.
+      After both close, a rate change works and any capture stall recovers.
     steps:
       - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
-      - Clear the log boundary; note the time so dmesg can be read from here.
       - >
         Start a long capture and leave it running:
-        arecord -D hw:$CARD,0 -f S24_3LE -c 6 -r 44100 -d 120 /tmp/fdx.wav
+        arecord -D hw:$CARD,0 -f S24_3LE -c 6 -r 44100 -d 60 /tmp/fdx.wav
       - >
-        With capture still open, run bash
-        ../scripts-alsa-dev/test_rate_change_fdx.sh, or step the playback rate
-        by hand through 44100, 96000, 48000, 88200 -- not in ascending order.
+        While it runs, confirm playback at the SAME rate is accepted:
+        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 44100 /dev/urandom
       - >
-        In dmesg, confirm every stall was followed by a recovery and that none
-        reached "hardware may need power-cycling".
-      - Confirm the capture ran to completion and the file is the expected size.
+        And that a DIFFERENT rate is refused, by the ALSA core rather than by
+        the hardware failing:
+        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 96000 /dev/urandom
+        should exit immediately with an invalid-argument error.
+      - >
+        Confirm dmesg does NOT contain "Cannot change rate while other stream
+        is active". That message is the driver's own sanity check; reaching it
+        means the open-time constraint failed to do its job first.
+      - Stop both streams.
+      - >
+        Now change the rate with nothing running, then immediately open
+        capture at the new rate:
+        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 96000 -d 2 /dev/urandom ;
+        arecord -D hw:$CARD,0 -f S24_3LE -c 6 -r 96000 -d 5 /tmp/after.wav
+      - >
+        In dmesg, confirm any capture stall was followed by a recovery, and
+        that none reached "hardware may need power-cycling".
     notes: >
-      From scripts-alsa-dev/test_rate_change_fdx.sh. Materially different from
-      JT-RATE-001 because the recovery path is direction-aware: a capture stall
-      triggers a reset only when a capture substream is open, and defers
-      otherwise. So this is the case that exercises the immediate-reset branch,
-      while JT-RATE-001 mostly exercises the deferred one.
+      REWRITTEN 2026-08-10 after an operator marked the previous version
+      invalid, which it was. It said to hold capture open at 44100 and sweep
+      the playback rate. That cannot happen: jockey3_pcm_open() applies
+      snd_pcm_hw_constraint_single(RATE, current_rate) while another stream is
+      open, so the ALSA core refuses the second stream at any other rate
+      before the driver is ever consulted. The device has one global rate.
 
-      Descending switches are the worst case, which is why the order above is
-      deliberately not sorted.
+      What is left is worth testing, and is what the case now does: that the
+      constraint is real and enforced in the right place. The driver also
+      carries its own -EBUSY sanity check for more than one active stream, and
+      that message appearing would mean the constraint had failed first --
+      which is why its ABSENCE is a step.
+
+      Note this no longer reaches a "capture stall while playback changes
+      rate" case, because that state is unreachable by construction. The
+      direction-aware recovery is exercised where it actually occurs: capture's
+      own hw_params, which JT-PCM-004 already records as
+      capture_recovery_on_open.
+
+      The predecessor scripts-alsa-dev/test_rate_change_fdx.sh should be read
+      with the same suspicion before being trusted.
 
   - id: JT-RATE-003
     title: Rate change endurance

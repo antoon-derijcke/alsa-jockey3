@@ -21,9 +21,19 @@ The criterion is markdown-only because that is the form that gets published
 and read away from the catalog; in a terminal it would push the dates off the
 right edge, and the dates are what the table is for.
 
+Build and component cases (L1/L2) are reported once, under the target
+"(source)", rather than per target. They test the source: checkpatch does not
+have a different opinion depending on which machine is plugged into the DJ
+controller, and repeating an identical verdict under six targets says nothing
+six times. Their skips on a hardware machine are discarded rather than treated
+as the latest word -- a hardware run skips them by design, and letting that
+stand reported "skip" for a gate that had passed on the build host an hour
+earlier.
+
 Commit distance is measured across the whole repository on purpose. Attributing
 relevance per source file would be false precision in a driver where nearly
-every change touches jockey3.c.
+every change touches jockey3.c. It is only computable where the git repository
+is, so it reads "?" on a test machine, which has the results but no checkout.
 """
 
 import argparse
@@ -114,25 +124,47 @@ def driver_rev(git):
     return rev
 
 
-def build_index(runs):
-    """Latest pass and latest attempt per (target, case)."""
+BUILD_LEVELS = ("L1", "L2")
+
+
+def build_index(runs, cases=None):
+    """Latest pass and latest attempt per (target, case).
+
+    Build and component cases are indexed under the pseudo-target "*" as well
+    as their own, because they are properties of the SOURCE, not of a target.
+    checkpatch does not have a different opinion depending on which machine is
+    plugged into the DJ controller.
+
+    Their skips are dropped entirely. A hardware run skips them by design --
+    that is not this machine's job -- and letting "skip" stand as the latest
+    word made the coverage table report "skip 2026-08-10" for a gate that had
+    actually passed on the build host an hour earlier.
+    """
+    cases = cases or {}
     idx = {}
     for run in runs:
         target = run.get("target", "?")
         git = ((run.get("env") or {}).get("driver") or {}).get("build") or {}
         rev = driver_rev(git)
         for r in run.get("results", []):
-            key = (target, r["id"])
-            slot = idx.setdefault(key, {"pass": None, "last": None})
             when = run.get("started")
-            entry = {"when": when, "rev": rev,
+            entry = {"when": when, "rev": rev, "target": target,
                      "hash": git.get("git_hash"), "status": r["status"],
                      "run": run["_path"]}
-            if slot["last"] is None or (when or "") > (slot["last"]["when"] or ""):
-                slot["last"] = entry
-            if r["status"] == results.PASS:
-                if slot["pass"] is None or (when or "") > (slot["pass"]["when"] or ""):
-                    slot["pass"] = entry
+            level = (cases.get(r["id"]) or {}).get("level")
+            keys = [(target, r["id"])]
+            if level in BUILD_LEVELS:
+                if r["status"] == results.SKIP:
+                    continue
+                keys.append(("*", r["id"]))
+            for key in keys:
+                slot = idx.setdefault(key, {"pass": None, "last": None})
+                if slot["last"] is None or (when or "") > (slot["last"]["when"] or ""):
+                    slot["last"] = entry
+                if r["status"] == results.PASS:
+                    if (slot["pass"] is None
+                            or (when or "") > (slot["pass"]["when"] or "")):
+                        slot["pass"] = entry
     return idx
 
 
@@ -160,31 +192,43 @@ def coverage(cases, targets, idx, markdown=False, single_target=False):
     dates off the right edge, and the dates are what the table is for.
     """
     rows = []
+
+    def row_for(cid, case, lookup, label):
+        title = oneline(case.get("title"),
+                        None if markdown else TITLE_WIDTH)
+        slot = idx.get((lookup, cid))
+        if slot and slot["pass"]:
+            p = slot["pass"]
+            n = commits_since(p.get("hash"))
+            cells = [(p["when"] or "")[:10], p.get("rev") or "?",
+                     "?" if n is None else str(n),
+                     f"{age_days(p['when'])}d"]
+        elif slot and slot["last"]:
+            lst = slot["last"]
+            cells = [f"{lst['status']} {(lst['when'] or '')[:10]}",
+                     lst.get("rev") or "?", "-", "-"]
+        else:
+            # Never run here. This is the row the table exists for.
+            cells = [("planned" if case["status"] != "implemented"
+                      else "never run"), "-", "-", "-"]
+        row = [cid, title, case["level"], case["mode"]] + cells
+        if markdown:
+            row.append(oneline(case.get("pass")) or "-")
+        if not single_target:
+            row.insert(0, label)
+        return tuple(row)
+
+    # Build and component cases once, not once per target: they test the
+    # source, and repeating an identical checkpatch verdict under six targets
+    # says nothing six times. Hardware cases are per target, where the target
+    # is the whole point.
+    for cid, case in cases.items():
+        if case.get("level") in BUILD_LEVELS:
+            rows.append(row_for(cid, case, "*", "(source)"))
     for tname in targets:
         for cid, case in cases.items():
-            title = oneline(case.get("title"),
-                            None if markdown else TITLE_WIDTH)
-            slot = idx.get((tname, cid))
-            if slot and slot["pass"]:
-                p = slot["pass"]
-                n = commits_since(p.get("hash"))
-                cells = [(p["when"] or "")[:10], p.get("rev") or "?",
-                         "?" if n is None else str(n),
-                         f"{age_days(p['when'])}d"]
-            elif slot and slot["last"]:
-                lst = slot["last"]
-                cells = [f"{lst['status']} {(lst['when'] or '')[:10]}",
-                         lst.get("rev") or "?", "-", "-"]
-            else:
-                # Never run here. This is the row the table exists for.
-                cells = [("planned" if case["status"] != "implemented"
-                          else "never run"), "-", "-", "-"]
-            row = [cid, title, case["level"], case["mode"]] + cells
-            if markdown:
-                row.append(oneline(case.get("pass")) or "-")
-            if not single_target:
-                row.insert(0, tname)
-            rows.append(tuple(row))
+            if case.get("level") not in BUILD_LEVELS:
+                rows.append(row_for(cid, case, tname, tname))
 
     head = ["case", "title", "lvl", "mode", "last pass", "driver",
             "commits", "age"]
@@ -271,7 +315,7 @@ def main():
         print("run ./runner.py --profile smoke to create one")
         return 0
 
-    idx = build_index(runs)
+    idx = build_index(runs, cases)
 
     if not args.metrics:
         if args.markdown:
