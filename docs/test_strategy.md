@@ -585,12 +585,48 @@ step, not the first.
 **Now:** the catalog, the runner, and a small set of automated cases proving
 the plumbing end to end.
 
+### Open findings awaiting a decision
+
+These are not roadmap items. They are things the suite has already surfaced and
+nobody has resolved, recorded here so they are not quietly forgotten.
+
+**`PM: parent 1-13:1.0 should not be sleeping`** — seen four times per run,
+during `JT-PM-001`, on **two separate runs on a production kernel**
+(2026-08-09 and 2026-08-10). The lines name this device's own interfaces
+(`1-13:1.0`, `1-13:1.1`) and its own endpoints — `ep_05` playback, `ep_86`
+capture, `ep_83` MIDI in, plus `ep_02`. It is a `dev_warn` from
+`drivers/base/power/main.c`, emitted when a child device is resumed while its
+parent is still suspended.
+
+It is deliberately left **unclassified** in `lib/rules.yaml` so it keeps being
+surfaced. Putting it in `unrelated` would hide a message about our own device
+during the one case that exercises suspend; putting it in `driver_fail` would
+assert a driver defect nobody has established — the ordering may be usbcore's
+rather than ours. What is needed is a look at the suspend and resume callbacks
+against the USB PM model, and then a decision: fix, or allowlist with a reason.
+Note it does not match the "ours" pattern, since the lines say `ep_05` rather
+than the module name, which is why it is not attributed automatically.
+
+**Nothing yet proves data integrity.** Every automated case measures timing or
+liveness. `xrun_counter`, `avail_max`, byte counts and stall counts all say
+whether audio flowed on time; none says whether the bits arriving were the bits
+sent. `JT-AUDIO-002` below is the first case that would, which is why it heads
+the list.
+
 **Next, in rough priority order:**
 
 1. **Audio loopback** — master out into In 1, headphone out into In 2, using the
    device's own I/O. An RMS check per channel confirms audio is actually being
    produced on the expected channel at each rate, and validates the playback
-   channel map. No extra hardware needed.
+   channel map. No extra hardware needed beyond one cable.
+
+   Worth building it around a **deterministic pattern** — a sample counter or
+   LFSR — rather than a tone. With a tone the verdict is "sounds about right";
+   with a ramp a dropped, repeated or reordered packet is localizable and
+   countable, and the same measurement works identically on a debug and a
+   production kernel, so the comparison in §4 becomes quantitative. It is also
+   the only instrument that distinguishes a timing fault from a corruption
+   fault, which §11a cannot.
 2. **Non-interactive MIDI flood** — `miditest.py` already measures throughput
    and running-status handling; it needs a scripted mode.
 3. **Networked serial console logger** — so an overnight crash is captured to a

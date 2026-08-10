@@ -24,7 +24,19 @@ Unlike most modern DJ controllers, the Reloop Jockey 3 does not use a class-comp
 - Rate switching
 
 **Pending / In Progress**
-- Capture-endpoint restart reliability after sample-rate changes (still fails in some cases; direction-aware stall detection and recovery added, awaiting on-hardware validation)
+- Capture-endpoint restart reliability after sample-rate changes. Now measured
+  rather than anecdotal: on `x86_64-debug`, 20 rate changes produce 15–19
+  capture stalls, **all of which recover, with zero failures**. The mitigation
+  works; the stall rate itself is still unexplained.
+- `PM: parent 1-13:1.0 should not be sleeping` — emitted for all four of this
+  device's endpoints during suspend/resume, on a production kernel, in two
+  separate runs. A `dev_warn` from the PM core meaning a child was resumed
+  while its parent was still suspended. Needs the suspend/resume callbacks
+  checked against the USB PM model; unresolved, and not yet known to be a
+  defect in this driver rather than in the ordering usbcore imposes.
+- No test yet proves **data integrity** — every automated case measures timing
+  or liveness, not whether the bits arriving are the bits sent. Loopback with a
+  deterministic pattern is the next thing to build (`JT-AUDIO-002`).
 - Long-term stability testing
 - Confirmation of other Reloop Jockey 3 hardware
 - Kernel tree integration (eventual goal)

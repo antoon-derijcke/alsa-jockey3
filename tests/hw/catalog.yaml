@@ -705,7 +705,22 @@ cases:
     pass: >
       The system suspends and resumes, and the device is usable afterwards
       without reloading the driver.
-    notes: From suspend_resume_test_plan.md.
+    notes: >
+      From suspend_resume_test_plan.md.
+
+      This case reliably surfaces four unclassified lines, and they are
+      expected to keep appearing until somebody resolves them:
+
+        ep_05: PM: parent 1-13:1.0 should not be sleeping
+
+      One per endpoint, naming this device's own interfaces. A dev_warn from
+      the PM core meaning a child was resumed while its parent was still
+      suspended. Seen on a production kernel in two separate runs. It is
+      deliberately not classified either way -- see the note above the
+      `unrelated` list in lib/rules.yaml, and docs/test_strategy.md section 12.
+
+      So a review flag on this case is not necessarily a new problem. Check
+      whether the unclassified lines are these four before treating it as one.
 
   - id: JT-PM-002
     title: Suspend during playback
