@@ -133,8 +133,16 @@ if want build || want size; then
 	# Filter the two known-benign shadow warnings so the count means
 	# something. Silencing them in the source would be worse: they are
 	# correct observations about idiomatic code.
-	benign=$(grep -c -E "shadowed declaration|declaration of 'index' shadows|'__ret' shadows" \
-		"$buildlog" 2>/dev/null)
+	#
+	# Match warning lines only, and match the quotes as a wildcard: gcc
+	# prints U+2018/U+2019 around identifiers, not ASCII apostrophes, so
+	# patterns written with ' never fired. Counting the "shadowed
+	# declaration is here" note instead happened to balance the arithmetic
+	# only while an incremental build left jockey3.o alone -- a full rebuild
+	# of untouched sources reported one warning, because a built-in shadowed
+	# by 'index' has no previous declaration to point a note at.
+	benign=$(grep -E '\bwarning:' "$buildlog" 2>/dev/null |
+		grep -c -E "declaration of .index. shadows|declaration of .__ret. shadows")
 	warns=${warns:-0}
 	benign=${benign:-0}
 	METRICS[build_warnings]=$(( warns > benign ? warns - benign : 0 ))
