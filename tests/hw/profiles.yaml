@@ -62,6 +62,7 @@ profiles:
       - {id: JT-CODEC-002, iterations: 1}
       - {id: JT-PROBE-001, iterations: 5}
       - {id: JT-PROBE-002, iterations: 1}
+      - {id: JT-PROBE-003, iterations: 1}
       - {id: JT-PCM-001,   iterations: 1}
       - {id: JT-PCM-002,   iterations: 1}
       - {id: JT-PCM-004,   iterations: 1}
@@ -90,6 +91,10 @@ profiles:
         JT-CODEC-001: {iterations: 0}
         JT-CODEC-002: {iterations: 0}
         JT-PROBE-002: {iterations: 0}
+        # Power-cycling is slow on a Pi 1B and re-enumeration is the slowest
+        # part of it. Three cycles still catches a slot leak, which increments
+        # every cycle; ten would only catch it three times over.
+        JT-PROBE-003: {params: {iterations_per_run: 3}}
         JT-PCM-001:   {params: {iterations_per_run: 20}}
         JT-PCM-002:   {params: {rates: [44100, 48000], seconds: 2}}
         JT-PCM-004:   {params: {rates: [44100, 48000], seconds: 2}}

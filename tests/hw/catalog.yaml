@@ -232,14 +232,51 @@ cases:
     title: Card slot reuse across repeated unplug and replug
     area: PROBE
     level: L3
-    mode: semi-automated
-    status: planned
-    requires: [device, root, usb-switch]
-    metrics: [slots_used]
-    pass: The card index is released and reused; no slot leak after many cycles.
+    mode: automated
+    status: implemented
+    requires: [device, usb-switch]
+    exec: cases/hotplug_cycle.py
+    params:
+      iterations_per_run: 10
+      off_seconds: 2
+      settle_seconds: 8
+    metrics: [slots_used, card_index_first, card_index_last, enumerate_ms,
+              teardown_ms, switch_ms, cycles]
+    pass: >
+      The device re-enumerates after every power cycle, with a playback and a
+      capture substream and one rawmidi device, and the card index is reused
+      rather than climbing. No slot leak after many cycles.
+    expect_dmesg:
+      - 'Failed to resubmit (?:playback|capture|MIDI IN) URB: -19$'
+    steps:
+      - >
+        Note the current card index:
+        awk '/RJ3/{print $1}' /proc/asound/cards
+      - Unplug the USB cable, confirm the card disappears from /proc/asound/cards.
+      - Plug it back in, confirm the card reappears.
+      - >
+        Repeat about ten times, and confirm the card index is REUSED rather
+        than incrementing each cycle -- a climbing index is the slot leak
+        this case exists to catch.
+      - Confirm each replug still has a playback and a capture substream and
+        one rawmidi device.
     notes: >
-      Slot allocation is a bitmap under a mutex. Needs programmable USB port
-      switching to be worth automating; until then it is a manual spot check.
+      Slot allocation is a bitmap under a mutex, so the failure is an index
+      that climbs until it runs out rather than anything louder.
+
+      Automated via per-port power switching on a ppps-capable USB hub
+      (uhubctl), which the privileged helper drives through `usb-power`. On a
+      machine without such a hub the case demotes to the manual steps above
+      and is offered by checklist.py -- the coverage is worth having either
+      way, and only the labor differs.
+
+      A port power-off is NOT equivalent to pulling the cable. It is a clean,
+      immediate VBUS drop: the device vanishes at once, resubmits fail
+      synchronously with -19, and the -71 (EPROTO) burst a real unplug
+      produces never happens. Measured 2026-08-10, idle and under active
+      playback alike. That is fine for THIS case, which is about enumeration
+      and slot reuse -- but it means the URB error give-up path is not
+      exercised here. See JT-HOTPLUG-001 and JT-HOTPLUG-003.
 
   - id: JT-PROBE-004
     title: Reject a device with missing or malformed endpoints
@@ -777,6 +814,19 @@ cases:
       All eight in-flight URBs error at once here, so this is the routine way
       into the error give-up path rather than an exotic one.
 
+      DELIBERATELY NOT AUTOMATED WITH uhubctl, even though the ppps hub makes
+      it easy and JT-PROBE-003 does exactly that. Measured 2026-08-10, idle
+      and under active playback: a port power-off produces no -71 (EPROTO)
+      burst at all. The device vanishes at once, resubmits fail synchronously
+      with -19, and "stopped after N consecutive URB errors; deferring
+      recovery" is never reached -- which is the one thing this case exists
+      to exercise. Automating it that way would turn a green run into
+      evidence for something it never tested.
+
+      The -71 accumulation needs a disconnect that DEGRADES: a hand on the
+      cable, or the mains relay of JT-HOTPLUG-003. Until that relay exists,
+      this stays a manual cable pull.
+
   - id: JT-HOTPLUG-002
     title: Replug and reuse
     area: HOTPLUG
@@ -827,6 +877,13 @@ cases:
 
       Becomes automated once a mains relay is wired up, which is also the only
       way to reach the give-up path repeatably.
+
+      That relay is now the ONLY route to the -71 (EPROTO) accumulation and
+      the consecutive-error give-up, short of a person pulling the cable. The
+      ppps hub added in 2026-08 does not reach it: a port power-off is a
+      clean, instant VBUS drop and the errors arrive as -19 instead. So this
+      case is not a more thorough duplicate of JT-HOTPLUG-001 -- between them
+      they are the only coverage of that branch, and both are manual today.
 
   - id: JT-HOTPLUG-004
     title: USB reset recovery
