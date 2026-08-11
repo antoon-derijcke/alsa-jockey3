@@ -176,6 +176,17 @@ def test_watchdog(rules):
     check(len(b[kmsg.EXPECTED]) == 1 and m.get("urb_stall_onset_ms"),
           "an expected onset is still measured")
 
+    # The common ending, and the reason it exists. The first hardware run with
+    # the watchdog recorded 103 onsets and zero recoveries: every recovery path
+    # goes through a URB stop/start, so the restart got there first every time
+    # and used to clear the flag silently, leaving every onset unpaired.
+    restart = T + DRIVER + "Capture URB stream restarted after stalling for 1219 ms"
+    b, m = c.classify([restart], [])
+    check(len(b[kmsg.EXPECTED]) == 1, "a restart closing an outage is counted",
+          str(kmsg.summarize(b)))
+    h = kmsg.histogram(m.get("urb_stall_restarted_ms", []))
+    check(h and h["max"] == 1219, "with the outage it ended", str(h))
+
 
 def test_error_handling(rules):
     """Signatures added with the issue #26 error-handling work.
@@ -201,6 +212,21 @@ def test_error_handling(rules):
     check(len(b[kmsg.UNEXPECTED]) == len(lines),
           "every new error signature fails the run", str(kmsg.summarize(b)))
     check(not b[kmsg.UNCLASSIFIED], "and none of them is merely surfaced")
+
+    # Verbatim from the 2026-08-11 16:01 functional run, where these fired five
+    # times on an ordinary rmmod. The driver is bound to two interfaces and the
+    # USB core unbinds them one at a time, so the first one's endpoints are
+    # flushed while the other is still bound; the URBs came back -ESHUTDOWN with
+    # no teardown flag set yet. Kept as a fixture because the message is only
+    # worth having if it stays silent on a normal unload.
+    unload = [
+        T + DRIVER + "MIDI IN URB cancelled without a driver-initiated stop: -108",
+        T + DRIVER + "Playback URB cancelled without a driver-initiated stop: -108",
+    ]
+    b, _ = c.classify(unload, [])
+    check(len(b[kmsg.UNEXPECTED]) == 2,
+          "an unsolicited cancellation still fails if the driver ever emits one",
+          str(kmsg.summarize(b)))
 
     # The dev_dbg counterpart is a trace, not a fault: nothing to start because
     # the device had already gone.

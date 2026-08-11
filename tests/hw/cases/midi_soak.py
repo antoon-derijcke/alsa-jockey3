@@ -69,11 +69,15 @@ from lib.case import Case          # noqa: E402
 from lib import alsa, kmsg         # noqa: E402
 
 ONSET_RE = re.compile(r"URB stream stalled: no completion for \d+ ms")
-RECOVERY_RE = re.compile(r"URB stream recovered after \d+ ms")
+# The two ways an outage ends. A stall almost always ends in a restart rather
+# than recovering on its own, because every recovery path in the driver goes
+# through a URB stop/start -- so counting only recoveries would read every
+# handled stall as an unresolved one.
+CLOSED_RE = re.compile(r"URB stream (?:recovered after|restarted after stalling for) \d+ ms")
 
 
 def stall_counts():
-    """(onsets, recoveries) currently in the kernel log.
+    """(onsets, closed) currently in the kernel log.
 
     Counted over the whole log and differenced around the soak rather than
     sliced from a marker: the runner owns the marker for this case, and writing
@@ -86,7 +90,7 @@ def stall_counts():
     if not lines:
         return None, None
     return (sum(1 for ln in lines if ONSET_RE.search(ln)),
-            sum(1 for ln in lines if RECOVERY_RE.search(ln)))
+            sum(1 for ln in lines if CLOSED_RE.search(ln)))
 
 # The driver's MIDI OUT ceiling, from the leaky-bucket limiter in
 # jockey3_get_next_midi_out_byte(). Bytes per second.
@@ -140,7 +144,7 @@ def main():
                f"~{CEILING_BPS * load:.0f} B/s "
                f"({burst_bytes} bytes every {interval * 1000:.0f} ms)")
 
-    onsets_before, recoveries_before = stall_counts()
+    onsets_before, closed_before = stall_counts()
     if onsets_before is None:
         c.note("kernel log unreadable; stall detection is left entirely to the "
                "runner's classifier, which cannot see a stall that outlives "
@@ -211,22 +215,23 @@ def main():
         c.fail(f"{write_failures} of {bursts} MIDI OUT writes failed during "
                f"the soak")
 
-    onsets_after, recoveries_after = stall_counts()
+    onsets_after, closed_after = stall_counts()
     if onsets_before is not None and onsets_after is not None:
         onsets = onsets_after - onsets_before
-        recoveries = recoveries_after - recoveries_before
+        closed = closed_after - closed_before
         c.metric("urb_stalls_seen", onsets)
-        c.metric("urb_stalls_recovered", recoveries)
-        # An onset paired with a recovery is a stream that came back; the pair
-        # is worth recording but is not what this case is hunting. An onset
-        # left over at the end is a stall that never ended -- which is the
-        # wedge, and is the one thing here that must not pass quietly.
-        if onsets > recoveries:
-            c.fail(f"{onsets - recoveries} URB stall(s) never recovered during "
+        c.metric("urb_stalls_closed", closed)
+        # An onset with a matching close is a stream that came back, whether on
+        # its own or via a restart. That is worth recording but is not what
+        # this case is hunting. An onset left over at the end is a stall that
+        # never ended -- the wedge, and the one thing here that must not pass
+        # quietly.
+        if onsets > closed:
+            c.fail(f"{onsets - closed} URB stall(s) never ended during "
                    f"{elapsed:.0f}s of MIDI traffic -- see the onset timestamps "
                    f"in dmesg for when it started")
         elif onsets:
-            c.note(f"{onsets} URB stall(s) during the soak, all recovered")
+            c.note(f"{onsets} URB stall(s) during the soak, all resolved")
 
     if not card_lost:
         idx, _ = alsa.find_card()

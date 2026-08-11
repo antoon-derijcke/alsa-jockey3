@@ -1082,16 +1082,17 @@ cases:
       progress_interval_seconds: 60
     metrics:
       [elapsed_seconds, bytes_sent, bursts, write_failures, achieved_bps,
-       urb_stalls_seen, urb_stalls_recovered, urb_stall_onset_ms,
-       urb_stall_recovered_ms]
+       urb_stalls_seen, urb_stalls_closed, urb_stall_onset_ms,
+       urb_stall_recovered_ms, urb_stall_restarted_ms]
     pass: >
       Every MIDI OUT write is accepted, the card is still present with all three
       substream types at the end, and every URB stall that started during the
-      soak also ended. A stall that outlives the watchdog's one-minute heartbeat
+      soak also ended -- by recovering, or by a URB restart, which is how nearly
+      all of them end. A stall that outlives the watchdog's one-minute heartbeat
       is failed by the runner from lib/rules.yaml; the case counts onsets and
-      recoveries itself as well, because the heartbeat needs the watchdog to
-      still be ticking a minute later and a wedge near the end of the soak, or
-      one the device does not survive, never gets there.
+      closes itself as well, because the heartbeat needs the watchdog to still
+      be ticking a minute later and a wedge near the end of the soak, or one the
+      device does not survive, never gets there.
     notes: >
       Hunting the 2026-08-11 wedge, which appeared minutes after the two MIDI
       cases and went unnoticed for about fourteen minutes. MIDI load is the

@@ -182,8 +182,11 @@ MODULE_PARM_DESC(enable, "Enable " CARD_NAME " soundcard.");
  * @consec_errors: consecutive URB transport errors; @lock. Reset on any
  *	successful completion and by jockey3_start_urbs().
  * @stall_reported: the watchdog has logged the onset of the current stall;
- *	@lock. Edge flag, so a wedge produces one onset line and one recovery
- *	line rather than one per tick. Cleared by jockey3_start_urbs().
+ *	@lock. Edge flag, so a wedge produces one onset line and one closing
+ *	line rather than one per tick. Cleared either by the stream completing a
+ *	URB again, or by jockey3_watchdog_clear_stall() when a restart ends the
+ *	outage first -- which is the common case, since every recovery path goes
+ *	through jockey3_stop_urbs()/jockey3_start_urbs().
  * @stall_since: ktime the current stall was measured from; @lock. Only
  *	meaningful while @stall_reported is set, and used to report how long the
  *	outage lasted once the stream comes back.
@@ -994,6 +997,43 @@ static void jockey3_watchdog_arm(struct jockey3_chip *chip)
 			   msecs_to_jiffies(JOCKEY3_WATCHDOG_POLL_MS));
 }
 
+/**
+ * jockey3_watchdog_clear_stall() - close out a stall that a restart ended
+ * @chip: driver state
+ * @urb_stream: the affected direction
+ * @type: direction name, for the log message
+ *
+ * Every recovery path in this driver goes through jockey3_stop_urbs() and
+ * jockey3_start_urbs(), so a stalled stream is essentially always brought back
+ * by a restart rather than by starting to complete URBs again on its own. If
+ * the restart simply cleared the flag, the watchdog's onset line would never
+ * be paired with anything and the outage would have no recorded end -- which
+ * makes "stalls that ended" indistinguishable from "stalls still open" for
+ * anything reading the log afterwards.
+ *
+ * So the restart closes the outage explicitly. Together with the recovery line
+ * in jockey3_watchdog_check(), every onset now has exactly one counterpart.
+ */
+static void jockey3_watchdog_clear_stall(struct jockey3_chip *chip,
+					 struct jockey3_pcm_urb_stream *urb_stream,
+					 const char *type)
+{
+	u64 outage_ns = 0;
+	bool reported;
+
+	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+		reported = urb_stream->stall_reported;
+		if (reported)
+			outage_ns = ktime_get_mono_fast_ns() - urb_stream->stall_since;
+		urb_stream->stall_reported = false;
+	}
+
+	if (reported)
+		dev_warn(&chip->intf0->dev,
+			 "%s URB stream restarted after stalling for %llu ms\n",
+			 type, div_u64(outage_ns, NSEC_PER_MSEC));
+}
+
 /*
  * Stop the watchdog from the URB teardown path.
  *
@@ -1111,17 +1151,19 @@ static int jockey3_start_urbs(struct jockey3_chip *chip)
 	scoped_guard(spinlock_irqsave, &chip->playback.lock) {
 		chip->playback.stopping = false;
 		chip->playback.consec_errors = 0;
-		chip->playback.stall_reported = false;
 	}
 	scoped_guard(spinlock_irqsave, &chip->capture.lock) {
 		chip->capture.stopping = false;
 		chip->capture.consec_errors = 0;
-		chip->capture.stall_reported = false;
 	}
 	scoped_guard(spinlock_irqsave, &chip->midi_lock) {
 		chip->midi_stopping = false;
 		chip->midi_consec_errors = 0;
 	}
+
+	/* Report and clear any stall this restart is about to end */
+	jockey3_watchdog_clear_stall(chip, &chip->playback, "Playback");
+	jockey3_watchdog_clear_stall(chip, &chip->capture, "Capture");
 
 	/*
 	 * Stamp the start before submitting, not after: this is what the
@@ -2516,14 +2558,27 @@ static void jockey3_disconnect(struct usb_interface *intf)
 {
 	struct jockey3_chip *chip = usb_get_intfdata(intf);
 
-	if (chip && intf == chip->intf0) {
-		/*
-		 * Latch DISCONNECTED first. Every ALSA entry point tests it on the
-		 * way in, so setting it before anything else is torn down closes
-		 * the window where e.g. jockey3_pcm_hw_params() had already passed
-		 * its check and would go on to resubmit URBs we just killed.
-		 */
+	/*
+	 * Latch DISCONNECTED first, and for EITHER interface. Every ALSA entry
+	 * point tests it on the way in, so setting it before anything else is
+	 * torn down closes the window where e.g. jockey3_pcm_hw_params() had
+	 * already passed its check and would go on to resubmit URBs we just
+	 * killed.
+	 *
+	 * Doing it for interface 1 as well is what covers the unbind order. The
+	 * driver is bound to both interfaces and the USB core takes them down
+	 * one at a time, calling disconnect() and then usb_disable_interface()
+	 * for each, so whichever goes first has its endpoints flushed while the
+	 * other is still bound. Those URBs come back -ESHUTDOWN through the
+	 * ordinary completion path, and without this they are indistinguishable
+	 * from an endpoint torn down behind the driver's back. Losing either
+	 * interface means the card is going away regardless -- interface 1 owns
+	 * the capture endpoint -- so there is nothing to keep running for.
+	 */
+	if (chip)
 		set_bit(JOCKEY3_FLAG_DISCONNECTED, &chip->flags);
+
+	if (chip && intf == chip->intf0) {
 		clear_bit(JOCKEY3_FLAG_RESETTING, &chip->flags);
 		/*
 		 * Release anyone blocked in jockey3_wait_for_reset_completion():

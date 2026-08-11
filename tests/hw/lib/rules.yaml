@@ -151,10 +151,27 @@ benign:
     metric: urb_stall_recovered_ms
     capture: 1
     why: >
-      The stream came back on its own. Worth counting on its own terms: a
-      recovery that happens without any driver intervention says the stall was
-      transient, which is exactly the distinction the escalation work is
-      waiting on.
+      The stream came back on its own, with no restart in between. Worth
+      counting on its own terms: a stall that clears without any driver
+      intervention says it was transient, which is exactly the distinction the
+      escalation work is waiting on.
+
+      Rare in practice. Every recovery path in the driver goes through a URB
+      stop/start, so a stall is nearly always closed by the restart line below
+      instead -- the first hardware run with the watchdog recorded 103 onsets
+      and zero of these.
+  - pattern: '(?:Playback|Capture) URB stream restarted after stalling for (\d+) ms'
+    metric: urb_stall_restarted_ms
+    capture: 1
+    why: >
+      The other way an outage ends: a URB restart got there first. Paired with
+      the onset, it is what makes "stalled and dealt with" distinguishable from
+      "stalled and still stalled" after the fact.
+
+      This exists because the restart used to clear the watchdog's flag
+      silently, which left every onset unpaired and made the recovery metric
+      dead on arrival. An onset with neither this nor a recovery to match it is
+      a stall that never ended.
   # KUnit TAP scaffolding around the codec suite at module load. It is our
   # output, so it is classified here rather than as unrelated noise -- the
   # unrelated list is only consulted for lines that are not ours at all.
