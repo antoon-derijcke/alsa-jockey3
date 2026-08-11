@@ -94,8 +94,9 @@ Tests are worth writing where failure is plausible. For this driver that is:
 ## 3. Test levels
 
 Levels describe **the scope of what is exercised**, and nothing else. Whether a
-case is automated or performed by a human is a separate, orthogonal property —
-L3 contains both a scripted channel sweep and a human LED check.
+case is automated, needs a person mid-test, or is performed entirely by hand is
+a separate, orthogonal property — L3 contains both a scripted channel sweep and
+a human LED check. That property is the case's *mode*; see §7.
 
 | Level | Scope | Needs hardware? |
 |---|---|---|
@@ -270,9 +271,14 @@ Every case has a stable ID: **`JT-<AREA>-<nnn>`**.
 `BUILD` · `CODEC` · `PROBE` · `PCM` · `RATE` · `AUDIO` · `MIDI` · `PM` ·
 `HOTPLUG` · `SOAK`
 
-IDs never encode the level or whether the case is automated — both of those
-change over a case's life, and an ID that changes is worthless. `JT-MIDI-002`
-is the LED check whether a human watches the LEDs or a photodiode ever does.
+IDs never encode the level or the mode — both change over a case's life, and an
+ID that changes is worthless. `JT-MIDI-002` is the LED check whether a human
+watches the LEDs or a photodiode ever does.
+
+The mode is not even fixed for a given *run*: `JT-PROBE-003` runs automatically
+on a machine with a ppps hub and is done by hand on one without, and it is the
+same case with the same ID and the same pass criterion either way. What varies
+is who does the work — which is exactly what an identifier must not depend on.
 
 All cases live in `tests/hw/catalog.yaml`, including ones not yet implemented,
 marked `status: planned`. A catalog that only lists what already works cannot
@@ -299,10 +305,93 @@ moment a case needs to parse or correlate anything, because non-trivial bash
 becomes unmaintainable faster than any other language in common use. Cases may
 be written in either; the runner spawns a subprocess and does not care.
 
-Manual cases live in the same catalog and the same profiles. `checklist.py`
-renders them into a markdown checklist for a given profile and target; the
-answers are read back into the same result record, so one run produces one
-report regardless of who or what performed each case.
+### Three modes of execution
+
+A case's **mode** says how much of it a machine can do. It is orthogonal to its
+level: L3 holds both a scripted channel sweep and a human LED check.
+
+| Mode | What it means |
+|---|---|
+| `automated` | Runs start to finish with nobody present. Safe for CI and for an overnight profile. |
+| `semi-automated` | The machine does the setup, the actions and the bookkeeping; a person contributes the one thing it cannot — a finger on a fader, or a judgment about what came out. |
+| `manual` | A person performs it, with no support beyond written steps. |
+
+The line that matters is between the first two, because it decides whether a
+run can be left alone. `runner.py` is attended by default; `--unattended`
+withholds the `human` capability, so every semi-automated case is recorded as
+pending rather than blocking forever on an answer nobody is there to give.
+That requirement is **derived from the mode**, not listed per case — a case
+that forgot to declare it is precisely the case that would hang a nightly run.
+
+Semi-automated is not a diminished form of automated. `JT-MIDI-001` is the
+shape of it: the machine opens the port, prompts for a particular control to be
+moved, watches for the event and decides the verdict. What is left for the
+person is the physical act, which no amount of code supplies. The setup, the
+watching and the recording — most of the labor, and all of the tedium — are
+still gone.
+
+### Manual is also a fallback, not only a mode
+
+A case can be *written* as automated and still be *performed* by hand, because
+the equipment that automates it is not always attached. `JT-PROBE-003` cycles
+the device's power through a ppps-capable USB hub; on a machine without one,
+the same test is a person unplugging a cable ten times and watching the card
+index. The test does not change — only who does the unplugging.
+
+So capabilities are resolved for the machine at run time, and the runner takes
+the best available form:
+
+1. the automated or semi-automated implementation, when the hardware it needs
+   is present;
+2. otherwise the manual steps, recorded as pending and rendered by
+   `checklist.py`;
+3. otherwise blocked.
+
+Only the third loses coverage, and it is reserved for cases where a person
+genuinely cannot substitute. **The fallback applies to actuators only** — the
+hub, the mains relay: equipment that performs a physical action a human can
+perform instead. A missing controller or an unplugged loopback cable blocks,
+because there is nothing for an operator to do either, and a checklist politely
+asking somebody to test hardware that is not connected is worse than an honest
+gap.
+
+Manual cases, semi-automated cases and demoted ones all land in the same result
+record as the automated ones, so coverage is one picture rather than two.
+`checklist.py` renders whatever a run left pending and reads the answers back
+into that same record — carrying the reason a demoted case is being done by
+hand, so the operator knows the automation exists and did not run rather than
+assuming this is simply how it is done.
+
+### Capabilities belong to the machine, not the target
+
+A case declares what it needs from its surroundings in `requires`. Those tokens
+used to be listed per target, and that was keyed wrong: a target is a *build*,
+and `x86_64-debug` and `x86_64-prod` are the same EliteDesk booted differently,
+so a cable plugged into it had to be declared twice and kept in sync by hand.
+Worse, the volatile ones — is the loopback cable connected today? — do not
+belong in a file that is meant to be static.
+
+They are resolved instead from three sources:
+
+| Source | Examples | Where |
+|---|---|---|
+| **probed** | device, root, sox, qemu, rtcwake, the ppps hub | asked of the machine; nothing to maintain |
+| **declared** | speakers, loopback cable, signal source, mains relay, second unit, quiet machine | `~/.config/jockey3/capabilities.yaml` |
+| **invocation** | `human` | whether `--unattended` was passed |
+
+The declarations file sits outside the repository deliberately: the working
+tree is a Seafile share, so a file inside it would sync one machine's rig to
+every other. An absent file grants nothing, because a fresh machine silently
+claiming a loopback cable it does not have would record a meaningless pass.
+
+**A declaration can only ever take a capability away.** Setting `usb-switch:
+false` is a useful "the hub is there, but do not power-cycle today"; setting
+`loopback-cable: true` does not put a cable in the socket, and for anything
+probed the machine's answer wins.
+
+Which capabilities held is recorded in every run. Without that, a pass from a
+day the cable was connected reads identically to one taken with it coiled on
+the bench, and §11's staleness reporting cannot tell coverage from its absence.
 
 ### Privilege
 
@@ -311,12 +400,21 @@ no privilege at all: opening the card, playback, capture, MIDI, stopping the
 session's sound server, reading sysfs and `/proc/config.gz`. `/dev/snd/*` is
 `root:audio`, so membership of `audio` is the whole requirement.
 
-Seven operations do need root — loading and unloading the module, reading
-`dmesg` under `dmesg_restrict=1`, writing the boundary marker to `/dev/kmsg`,
-the dynamic-debug rule, the console loglevel, and `rtcwake`. All seven are
-verbs in one root-owned script, `tests/hw/priv/jockey3-testctl`, reached
-through a single sudoers entry. That script *is* the privilege boundary, and
-reading it tells you everything the suite can do as root.
+A handful of operations do need root — loading and unloading the module,
+reading `dmesg` under `dmesg_restrict=1`, writing the boundary marker to
+`/dev/kmsg`, the dynamic-debug rule, the console loglevel, the ALSA xrun-debug
+flag, `rtcwake`, and switching the device's hub port power. Every one is a verb
+in one root-owned script, `tests/hw/priv/jockey3-testctl`, reached through a
+single sudoers entry. That script *is* the privilege boundary, and reading it
+tells you everything the suite can do as root.
+
+The port-power verb shows the shape the boundary has to keep. It takes an
+**action** — `status`, `off`, `on`, `cycle` — and never a target: the hub and
+port are resolved inside the script from the Jockey 3's own USB ids, and only a
+port on a hub advertising `ppps` is accepted. A verb that accepted a hub
+location would grant the suite the right to cut power to any port on any hub,
+and on the test rig the hub one level up carries the keyboard, the mouse, and
+the hub the device itself hangs from.
 
 The suite used to require `sudo ./runner.py`, which made every case root for
 the benefit of a handful of operations and left result files owned by root.
@@ -520,7 +618,7 @@ in a driver where nearly every change touches `jockey3.c`.
 
 There is a hard boundary to everything above. `/proc/asound` can observe the
 driver up to the point where it hands bytes to usbcore, and no further. URB
-scheduling, host-controller behaviour, the timing of packets on the wire and
+scheduling, host-controller behavior, the timing of packets on the wire and
 the device's own FIFO are all past it.
 
 That boundary is not theoretical here, because this driver's URBs **run free**
