@@ -2775,6 +2775,21 @@ MODULE_DEVICE_TABLE(usb, jockey3_ids);
 
 static struct usb_driver jockey3_driver = {
 	.name = "snd-reloop-jockey3",
+	/*
+	 * Tear our own URBs down rather than having the core do it first.
+	 *
+	 * Without this, usb_unbind_interface() calls usb_disable_interface()
+	 * before jockey3_disconnect(), so on an ordinary module unload the whole
+	 * ring retires with -ESHUTDOWN while the driver still believes it is
+	 * running -- indistinguishable, from inside the completion handler, from
+	 * an endpoint torn down behind our back. jockey3_disconnect() already
+	 * kills every URB, which is exactly the contract this flag asks for.
+	 *
+	 * It applies only while the device is still attached; on a physical
+	 * unplug the core kills the URBs first regardless, which is why the
+	 * completion path also tests USB_STATE_NOTATTACHED.
+	 */
+	.soft_unbind = 1,
 	.probe = jockey3_probe,
 	.disconnect = jockey3_disconnect,
 	.pre_reset = jockey3_pre_reset,
