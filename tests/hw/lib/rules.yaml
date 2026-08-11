@@ -172,6 +172,25 @@ benign:
       silently, which left every onset unpaired and made the recovery metric
       dead on arrival. An onset with neither this nor a recovery to match it is
       a stall that never ended.
+  - pattern: 'Capture URB stream still stalled while idle: no completion for (\d+) ms'
+    metric: urb_stall_deferred_ms
+    capture: 1
+    why: >
+      The one stall the driver decides to live with. A capture stall while
+      nothing is recording is deliberately not acted on -- resetting the device
+      would glitch whatever playback is running for the sake of a direction
+      nobody is using -- and jockey3_pcm_prepare() picks it up at the next
+      capture open. It can persist indefinitely with nothing wrong.
+
+      Note the driver states this itself, in the message, rather than the
+      distinction being reconstructed here from direction and substream state.
+      The policy lives in one place, and this rule follows it instead of
+      duplicating it.
+
+      Counted because the frequency still matters: this is the M13 firmware
+      behavior, and how often it happens is the signal worth watching even
+      though each occurrence is expected. The first debug-kernel run recorded
+      103 capture stalls against one playback stall.
   # KUnit TAP scaffolding around the codec suite at module load. It is our
   # output, so it is classified here rather than as unrelated noise -- the
   # unrelated list is only consulted for lines that are not ours at all.
@@ -259,10 +278,15 @@ driver_fail:
   - pattern: '(?:Playback|Capture) URB stream still stalled: no completion for'
     why: >
       The watchdog's heartbeat: a direction that has been silent for a full
-      minute. Nothing legitimate looks like this. A deliberate power cut cannot
-      produce it either -- the driver is disconnected by then and the watchdog
-      has stopped -- which is why the onset above is only counted while this is
-      a failure.
+      minute with nothing dealing with it. A deliberate power cut cannot produce
+      it -- the driver is disconnected by then and the watchdog has stopped --
+      which is why the onset above is only counted while this is a failure.
+
+      Deliberately does NOT match the deferred variant, which reads "still
+      stalled WHILE IDLE" and is benign above. driver_fail is tested before
+      benign, so this pattern staying narrow is what lets the two coexist:
+      widen it to 'still stalled' and every deferred capture stall starts
+      failing runs, which on the first debug-kernel numbers is most of them.
   - pattern: 'Playback URB stalled when preparing playback stream'
     why: >
       .prepare confirmed, over a 50 ms poll, that playback is not running as an

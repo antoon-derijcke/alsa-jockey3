@@ -68,16 +68,17 @@ sys.path.insert(0, os.path.normpath(
 from lib.case import Case          # noqa: E402
 from lib import alsa, kmsg         # noqa: E402
 
-ONSET_RE = re.compile(r"URB stream stalled: no completion for \d+ ms")
+ONSET_RE = re.compile(r"(Playback|Capture) URB stream stalled: no completion for \d+ ms")
 # The two ways an outage ends. A stall almost always ends in a restart rather
 # than recovering on its own, because every recovery path in the driver goes
 # through a URB stop/start -- so counting only recoveries would read every
 # handled stall as an unresolved one.
-CLOSED_RE = re.compile(r"URB stream (?:recovered after|restarted after stalling for) \d+ ms")
+CLOSED_RE = re.compile(
+    r"(Playback|Capture) URB stream (?:recovered after|restarted after stalling for) \d+ ms")
 
 
 def stall_counts():
-    """(onsets, closed) currently in the kernel log.
+    """Per-direction (onsets, closed) currently in the kernel log.
 
     Counted over the whole log and differenced around the soak rather than
     sliced from a marker: the runner owns the marker for this case, and writing
@@ -86,11 +87,19 @@ def stall_counts():
     try:
         lines = kmsg.read_log()
     except Exception:       # noqa: BLE001 - diagnostics must not fail the soak
-        return None, None
+        return None
     if not lines:
-        return None, None
-    return (sum(1 for ln in lines if ONSET_RE.search(ln)),
-            sum(1 for ln in lines if CLOSED_RE.search(ln)))
+        return None
+    counts = {"Playback": [0, 0], "Capture": [0, 0]}
+    for ln in lines:
+        m = ONSET_RE.search(ln)
+        if m:
+            counts[m.group(1)][0] += 1
+            continue
+        m = CLOSED_RE.search(ln)
+        if m:
+            counts[m.group(1)][1] += 1
+    return counts
 
 # The driver's MIDI OUT ceiling, from the leaky-bucket limiter in
 # jockey3_get_next_midi_out_byte(). Bytes per second.
@@ -144,8 +153,8 @@ def main():
                f"~{CEILING_BPS * load:.0f} B/s "
                f"({burst_bytes} bytes every {interval * 1000:.0f} ms)")
 
-    onsets_before, closed_before = stall_counts()
-    if onsets_before is None:
+    before = stall_counts()
+    if before is None:
         c.note("kernel log unreadable; stall detection is left entirely to the "
                "runner's classifier, which cannot see a stall that outlives "
                "this case")
@@ -215,23 +224,31 @@ def main():
         c.fail(f"{write_failures} of {bursts} MIDI OUT writes failed during "
                f"the soak")
 
-    onsets_after, closed_after = stall_counts()
-    if onsets_before is not None and onsets_after is not None:
-        onsets = onsets_after - onsets_before
-        closed = closed_after - closed_before
-        c.metric("urb_stalls_seen", onsets)
-        c.metric("urb_stalls_closed", closed)
-        # An onset with a matching close is a stream that came back, whether on
-        # its own or via a restart. That is worth recording but is not what
-        # this case is hunting. An onset left over at the end is a stall that
-        # never ended -- the wedge, and the one thing here that must not pass
-        # quietly.
-        if onsets > closed:
-            c.fail(f"{onsets - closed} URB stall(s) never ended during "
-                   f"{elapsed:.0f}s of MIDI traffic -- see the onset timestamps "
-                   f"in dmesg for when it started")
-        elif onsets:
-            c.note(f"{onsets} URB stall(s) during the soak, all resolved")
+    after = stall_counts()
+    if before is not None and after is not None:
+        stalls = {d: after[d][0] - before[d][0] for d in before}
+        unended = {d: (after[d][0] - before[d][0]) - (after[d][1] - before[d][1])
+                   for d in before}
+        for d in ("Playback", "Capture"):
+            c.metric(f"urb_stalls_{d.lower()}", stalls[d])
+
+        # Only playback is asserted on, and the asymmetry is the driver's, not
+        # this file's. A capture stall while nothing is recording is left alone
+        # deliberately and is picked up at the next capture open -- which this
+        # case never performs, so such a stall stays legitimately unended for
+        # the whole soak and cannot be evidence of anything. Playback is never
+        # deferred: it carries MIDI OUT, so a playback stall that never ends is
+        # the wedge, and it is what killed MIDI on 2026-08-11.
+        if unended["Playback"] > 0:
+            c.fail(f"{unended['Playback']} playback URB stall(s) never ended "
+                   f"during {elapsed:.0f}s of MIDI traffic -- see the onset "
+                   f"timestamps in dmesg for when it started")
+        elif stalls["Playback"]:
+            c.note(f"{stalls['Playback']} playback URB stall(s), all resolved")
+        if unended["Capture"] > 0:
+            c.note(f"{unended['Capture']} capture URB stall(s) still open at "
+                   f"the end; expected if a rate change deferred one, since "
+                   f"nothing here opens capture to collect it")
 
     if not card_lost:
         idx, _ = alsa.find_card()

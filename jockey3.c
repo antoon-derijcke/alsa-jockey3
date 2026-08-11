@@ -1353,6 +1353,13 @@ static bool jockey3_check_urb_stream_alive(const struct jockey3_pcm_urb_stream *
  * threshold, because the onset timestamp is the point of the exercise and the
  * poll interval alone would only bound it to the width of one tick.
  *
+ * The heartbeat distinguishes the one stall this driver deliberately tolerates
+ * -- capture stalled while nothing is recording, whose recovery is deferred to
+ * the next capture open -- from every other, which means nothing is dealing
+ * with it. The distinction is drawn from the direction and whether a substream
+ * is open, both of which are already read here, rather than from a flag the
+ * rate-change path would have to keep in step.
+ *
  * Deliberately does not gate on urbs_in_flight: when the endpoints have been
  * disabled underneath the driver every submit fails and nothing is in flight,
  * which is exactly the case that must not go unnoticed. The count is reported
@@ -1424,7 +1431,27 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 			 type, div_u64(age_ns, NSEC_PER_MSEC),
 			 atomic_read(&urb_stream->urbs_in_flight),
 			 open ? "open" : "idle");
+	else if (log_heartbeat && direction == SNDRV_PCM_STREAM_CAPTURE && !open)
+		/*
+		 * The one stall this driver decides to live with, so it says so
+		 * rather than repeating an alarm about a state it chose. Capture
+		 * stalling while nothing is recording is left alone deliberately
+		 * -- resetting the device would glitch whatever playback is
+		 * running for the sake of a direction nobody is using -- and
+		 * jockey3_pcm_prepare() picks it up at the next capture open. It
+		 * can therefore persist indefinitely without anything being
+		 * wrong. See jockey3_pcm_hw_params().
+		 */
+		dev_warn(&chip->intf0->dev,
+			 "%s URB stream still stalled while idle: no completion for %llu ms; recovery deferred to next capture open\n",
+			 type, div_u64(age_ns, NSEC_PER_MSEC));
 	else if (log_heartbeat)
+		/*
+		 * Everything else. Playback always carries MIDI OUT and is never
+		 * deferred, and a capture stall with a stream open should already
+		 * have been reset, so a stall that survives this long means
+		 * nothing is dealing with it.
+		 */
 		dev_warn(&chip->intf0->dev,
 			 "%s URB stream still stalled: no completion for %llu ms\n",
 			 type, div_u64(age_ns, NSEC_PER_MSEC));

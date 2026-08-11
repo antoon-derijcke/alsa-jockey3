@@ -1082,17 +1082,23 @@ cases:
       progress_interval_seconds: 60
     metrics:
       [elapsed_seconds, bytes_sent, bursts, write_failures, achieved_bps,
-       urb_stalls_seen, urb_stalls_closed, urb_stall_onset_ms,
-       urb_stall_recovered_ms, urb_stall_restarted_ms]
+       urb_stalls_playback, urb_stalls_capture, urb_stall_onset_ms,
+       urb_stall_recovered_ms, urb_stall_restarted_ms, urb_stall_deferred_ms]
     pass: >
       Every MIDI OUT write is accepted, the card is still present with all three
-      substream types at the end, and every URB stall that started during the
-      soak also ended -- by recovering, or by a URB restart, which is how nearly
-      all of them end. A stall that outlives the watchdog's one-minute heartbeat
-      is failed by the runner from lib/rules.yaml; the case counts onsets and
-      closes itself as well, because the heartbeat needs the watchdog to still
-      be ticking a minute later and a wedge near the end of the soak, or one the
-      device does not survive, never gets there.
+      substream types at the end, and every PLAYBACK URB stall that started
+      during the soak also ended -- by recovering, or by a URB restart, which is
+      how nearly all of them end. A stall that outlives the watchdog's
+      one-minute heartbeat is failed by the runner from lib/rules.yaml; the case
+      pairs onsets against endings itself as well, because the heartbeat needs
+      the watchdog to still be ticking a minute later and a wedge near the end
+      of the soak, or one the device does not survive, never gets there.
+
+      Capture is counted but not asserted on. A capture stall while nothing is
+      recording is deferred by design to the next capture open, which this case
+      never performs, so it stays legitimately unended for the whole soak.
+      Playback is never deferred -- it carries MIDI OUT -- so it is the
+      direction a wedge shows up in, and it is what died on 2026-08-11.
     notes: >
       Hunting the 2026-08-11 wedge, which appeared minutes after the two MIDI
       cases and went unnoticed for about fourteen minutes. MIDI load is the

@@ -169,6 +169,27 @@ def test_watchdog(rules):
     check(len(b[kmsg.UNEXPECTED]) == 1, "a persistent stall fails the run",
           str(kmsg.summarize(b)))
 
+    # ...unless the driver says it deferred it on purpose. Capture stalling
+    # while nothing records is the documented M13 behavior and can persist
+    # indefinitely. driver_fail is tested before benign, so this only works
+    # while the pattern above stays narrower than this one.
+    deferred = (T + DRIVER + "Capture URB stream still stalled while idle: "
+                "no completion for 61631 ms; recovery deferred to next capture open")
+    b, m = c.classify([deferred], [])
+    check(len(b[kmsg.EXPECTED]) == 1,
+          "a deliberately deferred capture stall does not fail the run",
+          str(kmsg.summarize(b)))
+    h = kmsg.histogram(m.get("urb_stall_deferred_ms", []))
+    check(h and h["max"] == 61631, "but is still counted, with its age", str(h))
+
+    # Playback is never deferred -- it carries MIDI OUT -- so the idle wording
+    # must not be reachable for it. Guards against a future edit widening the
+    # benign rule to any direction.
+    b, _ = c.classify(
+        [T + DRIVER + "Playback URB stream still stalled: no completion for 61003 ms"], [])
+    check(len(b[kmsg.UNEXPECTED]) == 1,
+          "a persistent playback stall always fails", str(kmsg.summarize(b)))
+
     # The onset must stay countable even when a case declares it expected --
     # benign short-circuits before expect_dmesg, which is what makes
     # JT-RATE-004 possible at all.
