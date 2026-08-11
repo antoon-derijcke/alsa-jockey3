@@ -99,6 +99,38 @@ def test_classifier(rules):
           "escalation wins over an expected-message match")
 
 
+def test_wedged_device(rules):
+    """The 2026-08-11 lockup, replayed line for line.
+
+    Every message below was in the log of a device that had stopped answering
+    while still enumerated, and NONE of them could fail a run at the time.
+    The drain error was the earliest by several minutes and was invisible to
+    the classifier because it names the ALSA card, not the module.
+    """
+    print("\nwedged-device signatures")
+    c = kmsg.Classifier(rules)
+    T = "[20748.130875] "
+    lines = [
+        T + "sound midiC1D0: rawmidi drain error (avail = 4090, buffer_size = 4096)",
+        T + DRIVER + "Failed to initialize device to change rate: -110",
+        T + DRIVER + "Failed to submit playback URB 0: -2",
+        T + DRIVER + "Failed to submit MIDI IN URB: -2",
+    ]
+    b, _m = c.classify(lines, [])
+    check(len(b[kmsg.UNEXPECTED]) == 4,
+          "every symptom of the wedged device fails the run",
+          str(kmsg.summarize(b)))
+    check(not b[kmsg.UNCLASSIFIED],
+          "and none of them is merely flagged for someone to notice")
+
+    # The benign teardown message must NOT have been widened by any of this:
+    # a resubmit racing a deliberate stop is still normal.
+    b2, _ = c.classify([T + DRIVER + "Failed to resubmit playback URB: -2"], [])
+    check(len(b2[kmsg.EXPECTED]) == 1,
+          "while a resubmit lost to teardown stays benign -- a different "
+          "message and a different event", str(kmsg.summarize(b2)))
+
+
 def test_kunit_on_target(rules):
     """Verbatim transcript of a module load, timestamps and all.
 
@@ -258,10 +290,18 @@ def test_catalog(catalog, targets, profiles):
     check(not bad, "profiles reference only known cases and targets",
           str(bad[:3]))
 
+    import runner
     bad = [c["id"] for c in catalog["cases"]
-           if c["status"] == "implemented" and c["mode"] == "automated"
-           and not c.get("exec")]
-    check(not bad, "implemented automated cases name an executable", str(bad))
+           if c["status"] == "implemented"
+           and c["mode"] in runner.RUNNABLE_MODES and not c.get("exec")]
+    check(not bad, "implemented runnable cases name an executable", str(bad))
+
+    # A semi-automated case only runs when somebody is at the keyboard, so it
+    # needs a manual form for the nights when nobody is.
+    bad = [c["id"] for c in catalog["cases"]
+           if c["status"] == "implemented" and c["mode"] == "semi-automated"
+           and not c.get("steps")]
+    check(not bad, "semi-automated cases carry manual fallback steps", str(bad))
 
     bad = [c["id"] for c in catalog["cases"]
            if c.get("exec") and not os.path.exists(os.path.join(HERE, c["exec"]))]
@@ -276,7 +316,6 @@ def test_catalog(catalog, targets, profiles):
     # by hand, or the coverage simply vanishes on the machines without it.
     # HARDWARE is the subset that is genuinely rig-specific -- `device` and
     # `root` are not, since a hardware case is pointless without them.
-    import runner
     bad = [c["id"] for c in catalog["cases"]
            if c["status"] == "implemented"
            and runner.SUBSTITUTABLE & set(c.get("requires") or [])
@@ -425,7 +464,8 @@ def test_case_streaming():
 
         seen = []
         rc, out, err = runner.stream_case(
-            [sys.executable, path], dict(os.environ), 30, seen.append)
+            [sys.executable, path], dict(os.environ), 30,
+            lambda ln, transient=False: seen.append(ln))
         check(rc == 1, "the exit status survives streaming", str(rc))
         check(seen and seen[0] == "cycle 1/3",
               "progress is delivered line by line as it arrives", str(seen[:1]))
@@ -439,6 +479,37 @@ def test_case_streaming():
               "the reason is the LAST line, not the first progress line",
               runner.failure_reason(err, out, rc))
 
+        # THE ONE THAT MATTERS FOR INTERACTIVE CASES.
+        #
+        # Several lines written at once, then a long silence -- which is
+        # exactly a case reporting progress and then asking a question. Every
+        # line must arrive during the silence, not be held until the next
+        # write. A buffered readline() passes the test above, where each line
+        # is separated by a sleep, and fails this one: it returns the first
+        # line and leaves the rest in a buffer that select() cannot see, so
+        # the prompt stays invisible and the operator and the case wait for
+        # each other. Observed on hardware before it was pinned here.
+        with open(path, "w") as f:
+            f.write("import sys, time\n"
+                    "for i in (1, 2, 3):\n"
+                    "    print(f'blink {i}/3 sent', file=sys.stderr)\n"
+                    "print('?? did it blink? [y/n]', file=sys.stderr)\n"
+                    "sys.stderr.flush()\n"
+                    "time.sleep(3)\n")
+        seen, times = [], []
+        t0 = time.time()
+        runner.stream_case([sys.executable, path], dict(os.environ), 30,
+                           lambda ln, transient=False: (
+                               seen.append(ln), times.append(time.time() - t0)))
+        check(len(seen) == 4, "every line written in one burst is delivered",
+              str(seen))
+        check(seen and seen[-1].startswith("??"),
+              "including the prompt, which is the last thing written",
+              str(seen[-1:]))
+        check(times and times[-1] < 2.0,
+              "and it arrives while the case is still waiting, not after",
+              f"prompt shown after {times[-1] if times else -1:.1f}s of a 3s wait")
+
         # A case that wedges must be killed at the deadline, not waited on.
         with open(path, "w") as f:
             f.write("import time\ntime.sleep(60)\n")
@@ -451,6 +522,151 @@ def test_case_streaming():
 
     check(runner.mark(results.PASS) != runner.mark(results.FAIL),
           "pass and fail are visually distinct at a glance")
+
+
+def test_terminal():
+    """Styling is applied on the way to the screen and nowhere else.
+
+    The property worth defending is that no escape sequence ever reaches a
+    file. A coloured stderr.txt is unreadable a year later and defeats grep,
+    so cases emit plain text and only the runner paints it.
+    """
+    print("\nterminal styling")
+    from lib import term
+
+    plain, painted = term.Style(enabled=False), term.Style(enabled=True)
+    check(plain("hello", "bold", "red") == "hello",
+          "disabled, styling is the identity function")
+    check("\033[" in painted("hello", "bold", "red"),
+          "enabled, it emits SGR codes")
+
+    saved = os.environ.get("NO_COLOR")
+    try:
+        os.environ["NO_COLOR"] = "1"
+        check(not term.supported(io.StringIO()), "NO_COLOR is honoured")
+    finally:
+        if saved is None:
+            os.environ.pop("NO_COLOR", None)
+        else:
+            os.environ["NO_COLOR"] = saved
+    check(not term.supported(io.StringIO()),
+          "and a non-terminal is never painted")
+
+    check(term.visible_len(painted("abc", "bold", "red")) == 3,
+          "a styled string is measured by the columns it occupies, not bytes",
+          str(term.visible_len(painted("abc", "bold", "red"))))
+
+    check(term.decorate(plain, ">> do a thing") == "▶ do a thing",
+          "an instruction is marked by the prefix the case wrote",
+          term.decorate(plain, ">> do a thing"))
+    check(term.decorate(plain, "?? really?") == "◆ really?",
+          "and so is a question")
+
+    # A transient line redraws in place on a terminal...
+    out = io.StringIO()
+    live = term.Live(out=out, enabled=True, indent="  ")
+    live.write("counting 3", transient=True)
+    live.write("counting 2", transient=True)
+    live.write("done", transient=False)
+    text = out.getvalue()
+    check(text.count("\n") == 1,
+          "on a terminal, only the line that stays gets a newline", repr(text))
+    check(text.endswith("  done\n"), "and the last word is the one that stays",
+          repr(text[-20:]))
+
+    # ...and becomes ordinary lines anywhere else, because a log that
+    # overwrote itself is a log that lost its history.
+    out = io.StringIO()
+    live = term.Live(out=out, enabled=False, indent="  ")
+    live.write("counting 3", transient=True)
+    live.write("counting 2", transient=True)
+    live.write("done", transient=False)
+    check(out.getvalue() == "  counting 3\n  counting 2\n  done\n",
+          "redirected, every update is kept as its own line",
+          repr(out.getvalue()))
+
+
+def test_operator_prompts():
+    """Asking a person something, without deadlocking on them.
+
+    The prompt must end in a newline. The runner streams stderr with
+    readline(), so a prompt written without one is held in the pipe forever:
+    the operator waits for a question that never appears while the case waits
+    for an answer to a question never asked. It is invisible in isolation and
+    only shows up on hardware, which is exactly why it is pinned here.
+    """
+    print("\noperator prompts")
+    from lib.case import Case
+
+    saved_in, saved_err = sys.stdin, sys.stderr
+    saved_env = os.environ.get("JT_ATTENDED")
+    try:
+        os.environ["JT_ATTENDED"] = "1"
+        r, w = os.pipe()
+        os.write(w, b"y\n")
+        os.close(w)
+        sys.stdin = os.fdopen(r)
+        sys.stderr = io.StringIO()
+
+        c = Case()
+        answer = c.confirm("did the LEDs blink?", timeout=5)
+        written = sys.stderr.getvalue()
+        sys.stderr = saved_err
+
+        check(answer is True, "a yes is read back as True", str(answer))
+        check(written.endswith("\n"),
+              "every byte written to the operator ends a line -- an "
+              "unterminated prompt never leaves the pipe", repr(written[-30:]))
+        check("did the LEDs blink?" in written,
+              "and the question itself reaches them", repr(written))
+
+        # The answer is evidence and belongs in the record, not only on screen.
+        check(any("did the LEDs blink? -> y" in n for n in c._note),
+              "the answer is recorded, not just displayed", str(c._note))
+
+        # Unattended, asking must return at once rather than wait for a person
+        # who is not there -- the runner normally prevents this, but a case
+        # reached out of band must not hang the machine.
+        os.environ["JT_ATTENDED"] = "0"
+        sys.stderr = io.StringIO()
+        t0 = time.time()
+        c2 = Case()
+        unattended = c2.confirm("anybody there?", timeout=30)
+        sys.stderr = saved_err
+        check(unattended is None and time.time() - t0 < 1.0,
+              "unattended, a question is not asked and does not block",
+              f"{unattended} after {time.time() - t0:.1f}s")
+    finally:
+        sys.stdin, sys.stderr = saved_in, saved_err
+        if saved_env is None:
+            os.environ.pop("JT_ATTENDED", None)
+        else:
+            os.environ["JT_ATTENDED"] = saved_env
+
+
+def test_semi_automated_routing():
+    """A semi-automated case runs; without an operator it defers."""
+    print("\nsemi-automated routing")
+    import runner
+
+    check("semi-automated" in runner.RUNNABLE_MODES,
+          "the runner executes semi-automated cases rather than filing them "
+          "with the manual ones")
+
+    case = {"id": "X", "mode": "semi-automated", "level": "L3",
+            "requires": ["device"], "steps": ["do the thing"]}
+    attended = runner.capability_gap(case, {"device", "human"})
+    check(attended == [], "with an operator present it simply runs",
+          str(attended))
+
+    gap = runner.capability_gap(case, {"device"})
+    check(gap == ["human"], "without one, the gap is the person", str(gap))
+    check(runner.demotes_to_manual(case, gap),
+          "which DEFERS to the checklist rather than blocking -- an "
+          "unattended run postpones coverage, it does not lack it")
+
+    check(not runner.demotes_to_manual({"mode": "semi-automated"}, ["human"]),
+          "unless the case never wrote down its manual form")
 
 
 def test_manual_fallback():
@@ -613,6 +829,7 @@ def main():
     profiles = load("profiles.yaml")
 
     test_classifier(rules)
+    test_wedged_device(rules)
     test_kunit_on_target(rules)
     test_targets(targets)
     test_build_id()
@@ -620,6 +837,9 @@ def main():
     test_capabilities(targets)
     test_capability_gating()
     test_results_roundtrip()
+    test_terminal()
+    test_operator_prompts()
+    test_semi_automated_routing()
     test_case_streaming()
     test_manual_fallback()
     test_run_resolution()

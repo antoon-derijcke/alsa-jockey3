@@ -49,7 +49,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import alsa, capabilities, env, kmsg, priv, results    # noqa: E402
+from lib import alsa, capabilities, env, kmsg, priv, results, term  # noqa: E402
 
 try:
     import yaml
@@ -105,6 +105,12 @@ def resolve_plan(profile_name, target_name, cases, profiles):
 # Levels that test the source and the build rather than a running driver.
 BUILD_LEVELS = {"L1", "L2"}
 
+# Modes the runner executes itself. A semi-automated case IS run -- the
+# machine does the setup, the actions and the bookkeeping, and stops only for
+# the one thing it cannot do. Routing it to the checklist alongside the purely
+# manual cases, as this used to, threw all of that away.
+RUNNABLE_MODES = {"automated", "semi-automated"}
+
 
 def capability_gap(case, available):
     """Which of a case's requirements this machine cannot satisfy.
@@ -144,18 +150,27 @@ def capability_gap(case, available):
 # checklist politely asking somebody to test hardware that was not plugged in.
 SUBSTITUTABLE = {"usb-switch", "relay"}
 
+# `human` demotes too, but for a different reason, and conflating the two
+# would be a mistake worth naming. An actuator is missing EQUIPMENT that a
+# person can replace. `human` is the person themselves being absent -- an
+# unattended run -- and the answer is not to substitute anything but to leave
+# the case for somebody, pending, on the checklist. Blocking instead would
+# report a nightly run as having a coverage gap where it merely deferred one.
+DEFERRABLE = SUBSTITUTABLE | {"human"}
+
 
 def demotes_to_manual(case, gap):
     """Can this case fall back to being done by hand?
 
     Two conditions, and both are load-bearing. Every missing capability must
-    be one a person can stand in for, and somebody must have written down how
-    -- a case with no steps has no manual form, so it blocks rather than
-    quietly becoming an instruction to do something unspecified.
+    be one a person can stand in for or be waited on for, and somebody must
+    have written down how -- a case with no steps has no manual form, so it
+    blocks rather than quietly becoming an instruction to do something
+    unspecified.
     """
     if not case.get("steps"):
         return False
-    return set(gap) <= SUBSTITUTABLE
+    return set(gap) <= DEFERRABLE
 
 
 def needs_running_kernel(plan):
@@ -224,15 +239,65 @@ def stream_case(cmd, cenv, timeout, on_progress=None):
     Returns (rc, stdout, stderr), the same shape as before.
     """
     try:
+        # Unbuffered, and read with os.read() rather than readline().
+        #
+        # This is not a style choice. With a buffered reader, one readline()
+        # pulls a whole chunk off the pipe, returns its first line and keeps
+        # the rest in Python's buffer -- where select() cannot see it and
+        # reports the fd as not readable. Three progress lines arriving
+        # together therefore surfaced one line and stalled, and a case that
+        # then asked a question hung: the prompt sat in the buffer, the
+        # operator saw nothing, and the case waited for an answer to a
+        # question that had never been displayed. It came back only when the
+        # operator pressed Enter and the resulting output woke the selector.
         p = subprocess.Popen(cmd, env=cenv, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, text=True, bufsize=1)
+                             stderr=subprocess.PIPE, bufsize=0)
     except OSError as e:
         return 125, "", str(e)
 
-    out, err = [], []
+    whole = {"out": bytearray(), "err": bytearray()}
+    partial = bytearray()          # the unfinished trailing line of stderr
+
+    def emit(final=False):
+        """Hand every complete line of stderr to the printer.
+
+        A line ends at a newline, or at a CARRIAGE RETURN -- which a case uses
+        to mark a line as transient, something it is about to rewrite in
+        place, like a countdown. Splitting on both is what lets that work
+        through a pipe: the printer decides whether the terminal can honor it.
+        """
+        if not on_progress:
+            return
+        while True:
+            nl = partial.find(b"\n")
+            cr = partial.find(b"\r")
+            if nl < 0 and cr < 0:
+                break
+            if nl >= 0 and (cr < 0 or nl < cr):
+                idx, transient = nl, False
+            else:
+                idx, transient = cr, True
+            text = bytes(partial[:idx]).decode("utf-8", "replace")
+            del partial[:idx + 1]
+            # A CRLF is one ending, not a transient line followed by nothing.
+            if transient and partial[:1] == b"\n":
+                del partial[:1]
+                transient = False
+            on_progress(text, transient)
+        # At end of stream a trailing fragment is all there will ever be, so
+        # show it rather than swallow it.
+        if final and partial:
+            on_progress(bytes(partial).decode("utf-8", "replace"), False)
+            partial.clear()
+
+    def finish(rc, note=None):
+        return (rc, bytes(whole["out"]).decode("utf-8", "replace"),
+                note if note is not None
+                else bytes(whole["err"]).decode("utf-8", "replace"))
+
     sel = selectors.DefaultSelector()
-    sel.register(p.stdout, selectors.EVENT_READ, out)
-    sel.register(p.stderr, selectors.EVENT_READ, err)
+    sel.register(p.stdout, selectors.EVENT_READ, "out")
+    sel.register(p.stderr, selectors.EVENT_READ, "err")
     deadline = time.time() + timeout
     live = 2
     try:
@@ -241,26 +306,37 @@ def stream_case(cmd, cenv, timeout, on_progress=None):
             if left <= 0:
                 p.kill()
                 p.wait()
-                return 124, "".join(out), f"timed out after {timeout}s"
+                return finish(124, f"timed out after {timeout}s")
             # Woken at least once a second even in silence, so a hung case is
             # noticed at the deadline rather than whenever it next speaks.
             for key, _mask in sel.select(timeout=min(left, 1.0)):
-                line = key.fileobj.readline()
-                if not line:
+                chunk = os.read(key.fileobj.fileno(), 65536)
+                if not chunk:
                     sel.unregister(key.fileobj)
                     live -= 1
+                    if key.data == "err":
+                        emit(final=True)
                     continue
-                key.data.append(line)
-                if key.data is err and on_progress:
-                    on_progress(line.rstrip("\n"))
+                whole[key.data] += chunk
+                if key.data == "err":
+                    partial += chunk
+                    emit()
         p.wait(timeout=max(1.0, deadline - time.time()))
     except subprocess.TimeoutExpired:
         p.kill()
         p.wait()
-        return 124, "".join(out), f"timed out after {timeout}s"
+        return finish(124, f"timed out after {timeout}s")
+    except KeyboardInterrupt:
+        # Ctrl-C used to kill the runner and leave the case running, still
+        # holding the MIDI port or the audio device -- so the NEXT run failed
+        # for a reason that had nothing to do with the driver, and looked like
+        # a hang. Take the child with us.
+        p.kill()
+        p.wait()
+        raise
     finally:
         sel.close()
-    return p.returncode, "".join(out), "".join(err)
+    return finish(p.returncode)
 
 
 def failure_reason(err, out, rc):
@@ -284,9 +360,16 @@ MARKS = {results.PASS: "✓", results.FAIL: "✗",
          results.SKIP: "–", results.BLOCKED: "⊘",
          results.PENDING: "?"}
 
+MARK_STYLES = {results.PASS: ("bold", "green"), results.FAIL: ("bold", "red"),
+               results.SKIP: ("dim",), results.BLOCKED: ("yellow",),
+               results.PENDING: ("cyan",)}
 
-def mark(status):
-    return MARKS.get(status, " ")
+
+def mark(status, style=None):
+    glyph = MARKS.get(status, " ")
+    if style is None:
+        return glyph
+    return style(glyph, *MARK_STYLES.get(status, ()))
 
 
 def run_case(case, iteration, params, ctx):
@@ -324,10 +407,17 @@ def run_case(case, iteration, params, ctx):
         "JT_WORKDIR": workdir,
         "JT_RESULT_FILE": result_file,
         "JT_REPO": REPO,
+        "JT_ATTENDED": "0" if ctx.get("unattended") else "1",
     })
 
     cmd = [path] + list(case.get("args") or [])
-    rc, out, err = stream_case(cmd, cenv, ctx["timeout"], ctx.get("on_progress"))
+    # --quiet hides progress, but a semi-automated case asks questions on
+    # this channel. Suppressing it would leave the operator staring at a
+    # silent terminal while the case waits for an answer to a question they
+    # were never shown -- a deadlock, not a cosmetic loss.
+    show = not ctx.get("quiet") or case.get("mode") == "semi-automated"
+    rc, out, err = stream_case(cmd, cenv, ctx["timeout"],
+                               ctx["printer"] if show else None)
 
     with open(os.path.join(workdir, "stdout.txt"), "w", encoding="utf-8") as f:
         f.write(out or "")
@@ -422,7 +512,7 @@ def preflight(target_name, target_spec, plan, args):
             problems.append("no Jockey 3 card found in /proc/asound")
     needed = set()
     for case, iterations, _ in plan:
-        if iterations > 0 and case.get("mode") == "automated":
+        if iterations > 0 and case.get("mode") in RUNNABLE_MODES:
             if "sox" in (case.get("requires") or []):
                 needed.update(["sox", "aplay"])
             if case.get("area") in ("PCM", "AUDIO", "RATE"):
@@ -532,7 +622,7 @@ def main():
             note = "blocked: needs " + ", ".join(gap)
         elif case["status"] != "implemented":
             note = "planned -- not implemented yet"
-        elif case["mode"] != "automated":
+        elif case["mode"] not in RUNNABLE_MODES:
             note = "manual -- use checklist.py"
             manual += 1
         else:
@@ -591,6 +681,9 @@ def main():
     if not fw_ok:
         run.env["firmware_debug_error"] = fw_err
 
+    style = term.Style()
+    live = term.Live()
+
     ctx = {
         "run_path": run_path,
         "card": card,
@@ -601,8 +694,14 @@ def main():
         "unclassified": [],
         # Echoed live. Indented under the case header so a case's own account
         # of what it is doing is visibly subordinate to the runner's verdict.
-        "on_progress": None if args.quiet else
-                       (lambda line: print(f"      {line}", flush=True)),
+        # Styling happens HERE and not in the case: what reaches stderr.txt
+        # stays plain text.
+        "printer": lambda line, transient=False: live.write(
+            term.decorate(style, line) if not transient
+            else style(line, "dim"), transient),
+        "live": live,
+        "quiet": args.quiet,
+        "unattended": args.unattended,
     }
 
     run_json = os.path.join(run_path, "run.json")
@@ -632,8 +731,8 @@ def main():
                     # rates on the Pi 1B, where the profile says two.
                     params=params, started=results.utc_iso())
                 run.add(r)
-                print(f"  {mark(results.PENDING)} {case['id']:<16} PENDING  "
-                      f"manual fallback (no {', '.join(gap)})")
+                print(f"  {mark(results.PENDING, style)} {case['id']:<16} "
+                      f"PENDING  manual fallback (no {', '.join(gap)})")
                 continue
             r = results.CaseResult(
                 id=case["id"], mode=case.get("mode", ""),
@@ -641,17 +740,18 @@ def main():
                 status=results.BLOCKED, reason="needs " + ", ".join(gap),
                 started=results.utc_iso())
             run.add(r)
-            print(f"  {mark(results.BLOCKED)} {case['id']:<16} BLOCKED  "
-                  f"needs {', '.join(gap)}")
+            print(f"  {mark(results.BLOCKED, style)} {case['id']:<16} "
+                  f"BLOCKED  needs {', '.join(gap)}")
             continue
-        if case["mode"] != "automated":
+        if case["mode"] not in RUNNABLE_MODES:
             r = results.CaseResult(
                 id=case["id"], mode=case["mode"], level=case.get("level", ""),
                 area=case.get("area", ""), status=results.PENDING,
                 reason="manual -- answer via checklist.py",
                 params=params, started=results.utc_iso())
             run.add(r)
-            print(f"  {mark(results.PENDING)} {case['id']:<16} PENDING  manual")
+            print(f"  {mark(results.PENDING, style)} {case['id']:<16} "
+                  f"PENDING  manual")
             continue
 
         for i in range(1, iterations + 1):
@@ -663,13 +763,14 @@ def main():
             counter = f" ({i}/{iterations})" if iterations > 1 else ""
             # One character of prefix on both this line and the verdict, so
             # the case ids line up in a column and the marks read down it.
-            print(f"\n  ▶ {tag:<16} {oneline(case.get('title'))}{counter}",
-                  flush=True)
+            print(style(f"\n  ▶ {tag:<16}", "bold")
+                  + f" {oneline(case.get('title'))}{counter}", flush=True)
             r = run_case(case, i, params, ctx)
             run.add(r)
             extra = f"  {r.reason}" if r.reason else ""
-            print(f"  {mark(r.status)} {tag:<16} {r.status.upper():<8} "
-                  f"{r.duration_s:>6.1f}s{extra}")
+            live.close()
+            print(f"  {mark(r.status, style)} {tag:<16} "
+                  f"{r.status.upper():<8} {r.duration_s:>6.1f}s{extra}")
             results.write(run, run_json)
 
             if ctx["investigate"]:

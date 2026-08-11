@@ -17,8 +17,10 @@ because a case cannot be trusted to notice an oops it caused.
 
 import json
 import os
+import select
 import subprocess
 import sys
+import time
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
@@ -37,6 +39,10 @@ class Case:
         self.workdir = os.environ.get("JT_WORKDIR") or "."
         self.repo = os.environ.get("JT_REPO") or os.getcwd()
         self.result_file = os.environ.get("JT_RESULT_FILE")
+        # Whether anybody is at the keyboard. Set by the runner from its own
+        # --unattended flag, so a case never has to guess whether asking a
+        # question would be answered or would simply hang.
+        self.attended = os.environ.get("JT_ATTENDED") == "1"
         self.metrics = {}
         self._note = []
         self._failures = []
@@ -52,6 +58,60 @@ class Case:
     def note(self, text):
         self._note.append(str(text))
 
+    # ------------------------------------------------------- the operator
+
+    def instruct(self, text):
+        """Tell the operator to do something. No answer expected."""
+        self.progress(f">> {text}")
+
+    def ask(self, question, choices=("y", "n"), timeout=120):
+        """Ask the operator something, and return the letter they chose.
+
+        The prompt goes to stderr and the answer is read from stdin, which the
+        runner leaves connected to the terminal. Everything said here is
+        therefore captured in stderr.txt along with the rest of the case's
+        account of itself -- one channel, one transcript.
+
+        The prompt MUST end in a newline, and does. The runner streams this
+        channel with readline(), so a prompt written without one is held in
+        the pipe forever and the operator waits for a question that never
+        appears while the case waits for an answer to a question never asked.
+
+        Returns None on timeout or end of input. The timeout is the case's
+        own and is deliberately far shorter than the runner's hour: an
+        operator who walked away should cost a case, not an evening.
+        """
+        if not self.attended:
+            return None
+        opts = "/".join(choices)
+        deadline = time.time() + timeout
+        while True:
+            left = deadline - time.time()
+            if left <= 0:
+                self.progress(f"   (no answer within {timeout}s)")
+                return None
+            print(f"?? {question} [{opts}]", file=sys.stderr, flush=True)
+            ready, _w, _x = select.select([sys.stdin], [], [], left)
+            if not ready:
+                continue
+            line = sys.stdin.readline()
+            if not line:
+                self.progress("   (end of input -- nobody is there)")
+                return None
+            answer = line.strip().lower()
+            if answer in choices:
+                # Into the record, not just the terminal. A verdict a person
+                # gave is evidence, and a month later "n" against "did the
+                # LEDs blink" is the whole finding.
+                self.note(f"{question} -> {answer}")
+                return answer
+            print(f"   answer one of: {opts}", file=sys.stderr, flush=True)
+
+    def confirm(self, question, timeout=120):
+        """Yes or no. Returns True, False, or None if nobody answered."""
+        answer = self.ask(question, ("y", "n"), timeout)
+        return None if answer is None else answer == "y"
+
     def progress(self, text):
         """Say what is happening, now, while it happens.
 
@@ -65,6 +125,18 @@ class Case:
         progress can be as chatty as it likes without becoming the verdict.
         """
         print(text, file=sys.stderr, flush=True)
+
+    def status(self, text):
+        """A line the case is about to replace -- a countdown, a tally.
+
+        Ends in a carriage return rather than a newline, which the runner
+        reads as "transient" and redraws in place on a terminal. Anywhere
+        else -- a pipe, a log, CI -- each update becomes an ordinary line,
+        because a log that overwrote itself is a log that lost its history.
+
+        Use progress() for anything that should still be there afterwards.
+        """
+        print(text, end="\r", file=sys.stderr, flush=True)
 
     def fail(self, text):
         """Record a failure but keep going.
