@@ -17,6 +17,38 @@
  */
 
 /**
+ * ploytec_ctrl_ep_unresponsive - Has the control endpoint stopped answering?
+ * @err: error returned by an EP0 control transfer
+ *
+ * Distinguishes a device that answered -- even to refuse -- from one whose
+ * control endpoint has gone silent. A STALL (-EPIPE) or a short reply
+ * (-EREMOTEIO) both mean live firmware: the transfer completed and the device
+ * drove the bus. A timeout or a transport-level error means EP0 itself is gone,
+ * and every further control transfer will only burn another
+ * PLOYTEC_CTRL_TIMEOUT_MS before failing the same way.
+ *
+ * The list is affirmative rather than an exclusion, so an unfamiliar error
+ * counts as "device still there" and a new class has to be added deliberately.
+ *
+ * Return: true if EP0 has stopped responding.
+ */
+static bool ploytec_ctrl_ep_unresponsive(int err)
+{
+	switch (err) {
+	case -ETIMEDOUT:
+	case -ENODEV:
+	case -ESHUTDOWN:
+	case -ECONNRESET:
+	case -EPROTO:
+	case -EILSEQ:
+	case -ETIME:
+		return true;
+	default:
+		return false;
+	}
+}
+
+/**
  * ploytec_get_firmware - Read firmware version from the device
  * @intf: USB interface
  * @xfer_buf: Temporary transfer buffer (at least 3 bytes)
@@ -75,16 +107,43 @@ int ploytec_get_status(struct usb_interface *intf, void *xfer_buf, u8 *status)
  * @intf: USB interface
  * @xfer_buf: Temporary transfer buffer
  *
+ * Aborts early if EP0 stops responding, rather than continuing into the
+ * alt-setting sequence below; see the comment on the firmware read for why
+ * that distinction matters.
+ *
  * Return: 0 on success, negative errno on failure.
  */
 int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf)
 {
 	struct usb_device *dev = interface_to_usbdev(intf);
+	const unsigned int halt_pipes[] = {
+		usb_rcvbulkpipe(dev, PLOYTEC_EP_NUM_PCM_IN),
+		usb_sndbulkpipe(dev, PLOYTEC_EP_NUM_PCM_OUT),
+		usb_rcvbulkpipe(dev, PLOYTEC_EP_NUM_MIDI_IN),
+	};
 	u8 status;
+	unsigned int i;
 	int ret;
 
-	// USB trace shows we need to read firmware version after power-up
-	ploytec_get_firmware(intf, xfer_buf);
+	/*
+	 * USB trace shows we need to read firmware version after power-up. The
+	 * value itself is unused, but this is the first EP0 transfer of the
+	 * sequence and therefore the last point at which the usb_set_interface()
+	 * calls below can still be avoided -- which is what makes its return
+	 * load-bearing. usb_set_interface() disables the interface's endpoints
+	 * before it sends SET_INTERFACE and does not re-enable them if that
+	 * request fails, so calling it on a device whose control endpoint has
+	 * already gone silent leaves every endpoint of interface 0 permanently
+	 * disabled, and usb_submit_urb() returns -ENOENT until the device is
+	 * reset. A device that merely refuses the request is fine; one that has
+	 * stopped answering is not.
+	 */
+	ret = ploytec_get_firmware(intf, xfer_buf);
+	if (ret < 0) {
+		dev_warn(&intf->dev, "Firmware version read failed: %d\n", ret);
+		if (ploytec_ctrl_ep_unresponsive(ret))
+			return ret;
+	}
 
 	// Select Alt Setting 0 to deactivates the audio interface
 	ret = usb_set_interface(dev, 0, 0);
@@ -105,10 +164,23 @@ int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf)
 	if (ret < 0)
 		return ret;
 
-	// Clear Feature (ENDPOINT_HALT):
-	usb_clear_halt(dev, usb_rcvbulkpipe(dev, PLOYTEC_EP_NUM_PCM_IN));
-	usb_clear_halt(dev, usb_sndbulkpipe(dev, PLOYTEC_EP_NUM_PCM_OUT));
-	usb_clear_halt(dev, usb_rcvbulkpipe(dev, PLOYTEC_EP_NUM_MIDI_IN));
+	/*
+	 * Clear Feature (ENDPOINT_HALT). A failure here has never been fatal on
+	 * a device that is still answering, so only a silent EP0 aborts -- which
+	 * also avoids burning two more PLOYTEC_CTRL_TIMEOUT_MS on the remaining
+	 * pipes once the first one has timed out.
+	 */
+	for (i = 0; i < ARRAY_SIZE(halt_pipes); i++) {
+		ret = usb_clear_halt(dev, halt_pipes[i]);
+		if (ret < 0) {
+			dev_warn(&intf->dev, "Failed to clear halt on EP 0x%02x: %d\n",
+				 usb_pipeendpoint(halt_pipes[i]) |
+					(usb_pipein(halt_pipes[i]) ? USB_DIR_IN : 0),
+				 ret);
+			if (ploytec_ctrl_ep_unresponsive(ret))
+				return ret;
+		}
+	}
 
 	return ploytec_get_status(intf, xfer_buf, &status);
 }
