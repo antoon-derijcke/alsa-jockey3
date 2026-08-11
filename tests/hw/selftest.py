@@ -131,6 +131,90 @@ def test_wedged_device(rules):
           "message and a different event", str(kmsg.summarize(b2)))
 
 
+def test_watchdog(rules):
+    """The URB liveness watchdog's messages, and why they are bucketed as they are.
+
+    The watchdog exists because the 2026-08-11 wedge was a SILENCE: every error
+    path in the driver hangs off a URB completion, so when completions stopped,
+    nothing ran and nothing was logged for about fourteen minutes. These rules
+    are what turn that silence into a red run.
+
+    The split between the onset (counted) and the heartbeat (failure) is not a
+    severity judgement, it is forced by the classifier: driver_fail is tested
+    before a case's expect_dmesg, so a driver_fail pattern cannot be whitelisted
+    by the one case that provokes a stall deliberately.
+    """
+    print("\nURB liveness watchdog signatures")
+    c = kmsg.Classifier(rules)
+    T = "[21337.057880] "
+
+    onset = (T + DRIVER + "Playback URB stream stalled: no completion for 517 ms "
+             "(8 URBs in flight, substream open)")
+    recovery = T + DRIVER + "Capture URB stream recovered after 2043 ms"
+
+    b, m = c.classify([onset, recovery], [])
+    check(len(b[kmsg.EXPECTED]) == 2,
+          "a stall that recovered is counted, not failed", str(kmsg.summarize(b)))
+
+    h = kmsg.histogram(m.get("urb_stall_onset_ms", []))
+    check(h and h["n"] == 1 and h["max"] == 517,
+          "the measured onset age is captured, not the threshold", str(h))
+    h = kmsg.histogram(m.get("urb_stall_recovered_ms", []))
+    check(h and h["max"] == 2043, "and so is the outage duration", str(h))
+
+    # A minute of silence cannot be a power cut: the driver has disconnected by
+    # then and the watchdog has stopped.
+    b, _ = c.classify(
+        [T + DRIVER + "Capture URB stream still stalled: no completion for 61003 ms"], [])
+    check(len(b[kmsg.UNEXPECTED]) == 1, "a persistent stall fails the run",
+          str(kmsg.summarize(b)))
+
+    # The onset must stay countable even when a case declares it expected --
+    # benign short-circuits before expect_dmesg, which is what makes
+    # JT-RATE-004 possible at all.
+    b, m = c.classify([onset], [r"URB stream stalled"])
+    check(len(b[kmsg.EXPECTED]) == 1 and m.get("urb_stall_onset_ms"),
+          "an expected onset is still measured")
+
+
+def test_error_handling(rules):
+    """Signatures added with the issue #26 error-handling work.
+
+    The -ENOENT cascade these describe is driver-triggered and deterministic:
+    usb_set_interface() disables an interface's endpoints before sending
+    SET_INTERFACE and does not re-enable them when that request fails.
+    """
+    print("\nerror-handling signatures")
+    c = kmsg.Classifier(rules)
+    T = "[21588.823651] "
+    lines = [
+        T + DRIVER + "Firmware version read failed: -110",
+        T + DRIVER + "Failed to clear halt on EP 0x86: -110",
+        T + DRIVER + "Started only 5/8 playback and 8/8 capture URBs; ring will not refill",
+        T + DRIVER + "Endpoints are disabled after a failed rate change; "
+                     "the device needs a reset to restore them",
+        T + DRIVER + "Failed to start URBs during initialization: -19",
+        T + DRIVER + "Playback URB cancelled without a driver-initiated stop: -2",
+        T + DRIVER + "Playback URB stalled when preparing playback stream",
+    ]
+    b, _ = c.classify(lines, [])
+    check(len(b[kmsg.UNEXPECTED]) == len(lines),
+          "every new error signature fails the run", str(kmsg.summarize(b)))
+    check(not b[kmsg.UNCLASSIFIED], "and none of them is merely surfaced")
+
+    # The dev_dbg counterpart is a trace, not a fault: nothing to start because
+    # the device had already gone.
+    b, _ = c.classify(
+        [T + DRIVER + "Could not start URBs after a rate change: device is gone"], [])
+    check(len(b[kmsg.EXPECTED]) == 1,
+          "while an unplug during a restart stays benign", str(kmsg.summarize(b)))
+
+    # The .prepare message must not have been folded into the counted one.
+    b, m = c.classify([T + DRIVER + "Playback URB has stalled."], [])
+    check(len(b[kmsg.EXPECTED]) == 1 and m.get("stalls_playback") == 1,
+          "and the poll helper's own stall message stays a counted metric")
+
+
 def test_kunit_on_target(rules):
     """Verbatim transcript of a module load, timestamps and all.
 
@@ -830,6 +914,8 @@ def main():
 
     test_classifier(rules)
     test_wedged_device(rules)
+    test_watchdog(rules)
+    test_error_handling(rules)
     test_kunit_on_target(rules)
     test_targets(targets)
     test_build_id()

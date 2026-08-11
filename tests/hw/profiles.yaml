@@ -153,6 +153,7 @@ profiles:
       - {id: JT-PCM-007,   iterations: 1}
       - {id: JT-RATE-001,  iterations: 1, params: {iterations_per_run: 250}}
       - {id: JT-RATE-002,  iterations: 1, params: {iterations_per_run: 100}}
+      - {id: JT-RATE-004,  iterations: 1}
       - {id: JT-AUDIO-001, iterations: 1}
       - {id: JT-AUDIO-002, iterations: 1}
       - {id: JT-AUDIO-003, iterations: 1}
@@ -189,12 +190,14 @@ profiles:
       - {id: JT-SOAK-001,  iterations: 1}
       - {id: JT-RATE-003,  iterations: 1}
       - {id: JT-SOAK-003,  iterations: 1}
+      - {id: JT-SOAK-004,  iterations: 1, params: {duration_seconds: 14400}}
       - {id: JT-SOAK-002,  iterations: 1}
     overrides:
       armhf-prod:
         JT-SOAK-001: {params: {hours: 2, rate: 44100}}
         JT-RATE-003: {params: {iterations_per_run: 500}}
         JT-SOAK-003: {iterations: 0}
+        JT-SOAK-004: {params: {duration_seconds: 3600}}
         JT-SOAK-002: {iterations: 0}
       arm64-prod:
         JT-SOAK-001: {params: {hours: 4}}
@@ -203,4 +206,7 @@ profiles:
         # KASAN makes the machine slow enough that an 8-hour soak covers much
         # less ground; the point here is the memory checking, not the mileage.
         JT-SOAK-001: {params: {hours: 4}}
+        # The wedge this hunts is a device-side fault, so mileage on a fast
+        # prod kernel is worth more than memory checking on a slow one.
+        JT-SOAK-004: {params: {duration_seconds: 3600}}
         JT-SOAK-002: {iterations: 0}

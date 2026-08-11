@@ -84,6 +84,10 @@ benign:
   - pattern: '(Ploytec initialized successfully|Initialization complete)'
   - pattern: 'Waiting for reset completion'
   - pattern: 'Start Streaming: Status: 0x'
+  # A trace, not a fault: the counterpart of the driver_fail "Failed to start
+  # URBs ..." rules, for the one case that is expected -- the device was already
+  # detached, so there was nothing to start and disconnect is on its way.
+  - pattern: 'Could not start URBs after .*: device is gone'
   # ------------------------------------------------------------------------
   - pattern: 'loading out-of-tree module taints kernel'
     metric: taint_out_of_tree
@@ -120,6 +124,37 @@ benign:
     why: >
       Escalation from URB restart to a full reset. Expected sometimes; a rising
       proportion of restarts that escalate is the signal worth watching.
+  # ------------------------------------------------------------------------
+  # The URB liveness watchdog.
+  #
+  # Bucketed by PERSISTENCE, not by severity, and the reason is mechanical:
+  # kmsg.py tests driver_fail BEFORE a case's expect_dmesg, so a driver_fail
+  # pattern cannot be whitelisted per case. Putting the onset there would make
+  # JT-RATE-004 unconditionally red -- it cuts device power on purpose, and the
+  # watchdog can fire in the window between VBUS dropping and the hub reporting
+  # the disconnect. A stall that survives a full minute cannot be explained that
+  # way, so the heartbeat is what lives in driver_fail.
+  - pattern: '(?:Playback|Capture) URB stream stalled: no completion for (\d+) ms'
+    metric: urb_stall_onset_ms
+    capture: 1
+    why: >
+      The watchdog noticing that a direction stopped completing URBs. The value
+      is the measured age, which is the point of the message: a wedge used to be
+      found minutes later by whatever tripped over it next, and the onset could
+      only be bracketed to the nearest surrounding event.
+
+      Counted rather than failed, because a deliberate power cut produces one
+      too. An onset PAIRED with a recovery line is the stream coming back; an
+      onset that stands alone is a wedge, and the heartbeat in driver_fail is
+      what turns that into a red run.
+  - pattern: '(?:Playback|Capture) URB stream recovered after (\d+) ms'
+    metric: urb_stall_recovered_ms
+    capture: 1
+    why: >
+      The stream came back on its own. Worth counting on its own terms: a
+      recovery that happens without any driver intervention says the stall was
+      transient, which is exactly the distinction the escalation work is
+      waiting on.
   # KUnit TAP scaffolding around the codec suite at module load. It is our
   # output, so it is classified here rather than as unrelated noise -- the
   # unrelated list is only consulted for lines that are not ours at all.
@@ -204,6 +239,53 @@ driver_fail:
     why: >
       The EP0 control transfer did not complete. With -110 it timed out: the
       device is enumerated but no longer answering.
+  - pattern: '(?:Playback|Capture) URB stream still stalled: no completion for'
+    why: >
+      The watchdog's heartbeat: a direction that has been silent for a full
+      minute. Nothing legitimate looks like this. A deliberate power cut cannot
+      produce it either -- the driver is disconnected by then and the watchdog
+      has stopped -- which is why the onset above is only counted while this is
+      a failure.
+  - pattern: 'Playback URB stalled when preparing playback stream'
+    why: >
+      .prepare confirmed, over a 50 ms poll, that playback is not running as an
+      application was about to use it. Deliberately worded differently from the
+      benign "Playback URB has stalled." that jockey3_wait_urb_stream_started()
+      emits: that one is counted, and routing this through it would have left a
+      dead device producing nothing but benign-classified output.
+  - pattern: 'Started only \d+/\d+ playback and \d+/\d+ capture URBs'
+    why: >
+      The URB ring came up short. Only a completion handler resubmits a URB, so
+      the ones that failed here are never retried: the direction runs at reduced
+      depth for as long as the device stays bound, and nothing else would notice.
+  - pattern: 'Endpoints are disabled after .*; the device needs a reset'
+    why: >
+      -ENOENT from usb_submit_urb() with the driver still bound. This is the
+      2026-08-11 signature: usb_set_interface() disables an interface's
+      endpoints before it sends SET_INTERFACE and does not re-enable them when
+      that request fails, so a rate change against an unresponsive device leaves
+      interface 0 permanently dead until something resets it.
+  - pattern: 'Failed to start URBs (?:after|during|while)'
+    why: >
+      jockey3_start_urbs() failed for a reason other than the device having gone
+      away. The stream cannot recover on its own from here.
+  - pattern: '(?:Playback|Capture|MIDI IN) URB cancelled without a driver-initiated stop'
+    why: >
+      A URB came back -ENOENT/-ECONNRESET/-ESHUTDOWN while this driver's own
+      teardown fence was clear and the device was still attached, i.e. something
+      outside the driver flushed the endpoint. Defensive: no failure so far has
+      been traced to this path, and if it ever fires it is new information.
+  - pattern: 'Firmware version read failed'
+    why: >
+      The first EP0 transfer of the init handshake did not come back. Its value
+      is unused, but its failure is now what stops the driver walking into
+      usb_set_interface() on a device that has stopped answering -- so when this
+      appears, it should be followed by an abort, not by submit failures.
+  - pattern: 'Failed to clear halt on EP 0x'
+    why: >
+      A CLEAR_FEATURE(ENDPOINT_HALT) was refused or timed out during init. Not
+      fatal on a device that is still answering, but it has never been seen on a
+      healthy one either.
 
 # ---------------------------------------------------------------------------
 # NOT ours by name, but ours by device.

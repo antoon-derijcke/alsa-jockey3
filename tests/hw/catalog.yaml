@@ -552,6 +552,64 @@ cases:
       The long-running version of JT-RATE-001, historically run for ten hours
       at a time. The metric that matters is whether the stall rate drifts.
 
+  - id: JT-RATE-004
+    title: Rate change while the device is being removed
+    area: RATE
+    level: L3
+    mode: automated
+    status: implemented
+    requires: [device, root, usb-switch, sox]
+    exec: cases/rate_change_power_loss.py
+    params:
+      iterations_per_run: 6
+      rates: [44100, 48000, 96000]
+      seconds: 2
+      off_seconds: 2
+      settle_seconds: 8
+      race_ms_min: 20
+      race_ms_max: 120
+    metrics: [cycles, races_observed, enumerate_ms, card_index_first, card_index_last]
+    pass: >
+      The device re-enumerates after every cycle with all three substream types,
+      and a rate change still works afterwards. No submit failure and no
+      "Endpoints are disabled" anywhere in the log -- both are driver_fail in
+      lib/rules.yaml, so the runner enforces that part, not the case.
+    expect_dmesg:
+      - 'Failed to initialize device to change rate'
+      - 'Firmware version read failed'
+      - 'URB stream stalled: no completion for'
+    steps:
+      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
+      - >
+        Start a rate change and pull the cable roughly a tenth of a second
+        later: aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 96000 /dev/urandom
+      - Plug it back in and wait for the card to reappear.
+      - >
+        Confirm dmesg contains NO "Failed to submit ... URB: -2" and no
+        "Endpoints are disabled after ...". A -110 from "Failed to initialize
+        device to change rate" is acceptable; -2 on submit is not.
+      - >
+        Confirm a rate change still works:
+        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 44100 -d 2 /dev/urandom
+      - Repeat a few times.
+    notes: >
+      Regression cover for the 2026-08-11 -ENOENT cascade. usb_set_interface()
+      disables an interface's endpoints as its first action and does not
+      re-enable them when SET_INTERFACE fails, so a rate change against a device
+      that has stopped answering EP0 left interface 0 permanently dead --
+      EP 0x05 and EP 0x83 returning -2 on every submit while interface 1, never
+      reached, kept working. That asymmetry is what identified the mechanism.
+
+      This case CANNOT reproduce the original wedge, which needs a device that
+      is still enumerated but silent. It reaches the same code path the only way
+      a machine can on demand: the window between VBUS dropping and the kernel
+      marking the device NOTATTACHED, in which a control transfer is submitted
+      and never completes.
+
+      The window is narrow and not under our control, so races_observed is
+      recorded rather than asserted -- a run of zeroes means nothing was
+      provoked, which is different from a clean pass and must not read as one.
+
   # ------------------------------------------------------------------ AUDIO
 
   - id: JT-AUDIO-001
@@ -1007,3 +1065,47 @@ cases:
     metrics: [memory_growth_kb, failures]
     pass: No leak and no failure across thousands of cycles.
     notes: Only meaningful on a KASAN kernel. The long form of JT-PROBE-002.
+
+  - id: JT-SOAK-004
+    title: Sustained MIDI OUT, watched for a URB stall
+    area: SOAK
+    level: L5
+    mode: automated
+    status: implemented
+    requires: [device]
+    exec: cases/midi_soak.py
+    params:
+      duration_seconds: 1800
+      load_fraction: 0.9
+      messages_per_burst: 8
+      check_interval_seconds: 30
+      progress_interval_seconds: 60
+    metrics:
+      [elapsed_seconds, bytes_sent, bursts, write_failures, achieved_bps,
+       urb_stalls_seen, urb_stalls_recovered, urb_stall_onset_ms,
+       urb_stall_recovered_ms]
+    pass: >
+      Every MIDI OUT write is accepted, the card is still present with all three
+      substream types at the end, and every URB stall that started during the
+      soak also ended. A stall that outlives the watchdog's one-minute heartbeat
+      is failed by the runner from lib/rules.yaml; the case counts onsets and
+      recoveries itself as well, because the heartbeat needs the watchdog to
+      still be ticking a minute later and a wedge near the end of the soak, or
+      one the device does not survive, never gets there.
+    notes: >
+      Hunting the 2026-08-11 wedge, which appeared minutes after the two MIDI
+      cases and went unnoticed for about fourteen minutes. MIDI load is the
+      first suspect only because of when it appeared; the root cause is still
+      unknown.
+
+      Worth running even when it passes. With the URB liveness watchdog in place
+      a wedge is now reported within 1.5 s with a measured onset age, so this
+      case either produces that timestamp or, over a long enough clean run, says
+      the wedge is not reachable through MIDI load. The escalation work is gated
+      on one of those two answers.
+
+      Paced just UNDER the driver's ~3125 B/s ceiling on purpose. Overdriving it
+      backs up the rawmidi buffer and produces the "rawmidi drain error" that
+      lib/rules.yaml treats as a failure -- correctly, since on a healthy device
+      it means the URB ring has died. Provoking it deliberately would make the
+      case fail on its own doing and bury the one signature worth watching for.
