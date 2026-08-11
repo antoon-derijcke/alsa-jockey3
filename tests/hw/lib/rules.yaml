@@ -192,6 +192,46 @@ driver_fail:
     why: >
       The give-up path. Recovery escalated all the way through a full USB reset
       and the stream is still dead.
+  - pattern: 'Failed to submit (?:playback|capture|MIDI IN) URB'
+    why: >
+      Not the same message as the benign "Failed to RESUBMIT ... -2/-108"
+      above, and not the same event. That one is a completion racing a
+      deliberate teardown. This one is the ring failing to START, and -2 here
+      is ENOENT from usb_submit_urb() meaning usb_pipe_endpoint() returned
+      NULL -- the USB core has no such endpoint any more, while the driver
+      still believes it is bound.
+  - pattern: 'Failed to initialize device to change rate'
+    why: >
+      The EP0 control transfer did not complete. With -110 it timed out: the
+      device is enumerated but no longer answering.
+
+# ---------------------------------------------------------------------------
+# NOT ours by name, but ours by device.
+#
+# These carry the ALSA card's identity rather than the module's, so the OURS
+# regex never offers them to the rules above and they land in unclassified --
+# surfaced for a human, but unable to fail anything. That is wrong for the two
+# below, which are among the most diagnostic messages this driver can provoke.
+#
+# Matched by card-relative name (midiC<n>D<n>) rather than a fixed index,
+# because the card number is not stable -- booting with the controller already
+# powered on made it card0 where it had always been card1.
+driver_fail_by_device:
+  - pattern: 'sound midiC\d+D\d+: rawmidi drain error'
+    why: >
+      MIDI OUT bytes entered the rawmidi buffer and were never consumed, so
+      the drain timed out -- ten seconds per write, from ALSA's own timeout.
+      This driver multiplexes MIDI OUT into byte 480 of every playback packet,
+      so it can only drain while the playback URBs are flowing: a drain error
+      means the URB ring has died underneath a driver that still thinks it is
+      running.
+
+      Observed 2026-08-11 with avail=4090 of buffer_size=4096 -- exactly the
+      six bytes of one LED message -- repeating every 10.5 s. It was the
+      EARLIEST sign by several minutes, appearing long before any submit
+      failed or any control transfer timed out, and at the time nothing in
+      this file could fail on it. See the recovery-gap note in
+      implementation_plan.md.
 
 # Anything matching these is a defect, not a test failure. The run is marked
 # INVESTIGATE and the remaining profile is abandoned: the machine needs manual

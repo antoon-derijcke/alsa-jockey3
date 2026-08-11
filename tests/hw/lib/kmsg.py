@@ -121,6 +121,11 @@ class Classifier:
     def __init__(self, rules):
         self.benign = _compile(rules, "benign")
         self.driver_fail = _compile(rules, "driver_fail")
+        # Failures that identify themselves by the ALSA card rather than by
+        # the module, so OURS never matches them and the driver_fail list
+        # above is never consulted. Checked separately, and before the
+        # ownership test, or they would be unclassifiable by construction.
+        self.driver_fail_by_device = _compile(rules, "driver_fail_by_device")
         self.investigate = _compile(rules, "investigate")
         self.unrelated = _compile(rules, "unrelated")
 
@@ -149,6 +154,13 @@ class Classifier:
             hit = self._first(self.investigate, line)
             if hit:
                 buckets[INVESTIGATE].append(raw)
+                continue
+
+            # Ours by device rather than by name. Tested before ownership,
+            # because ownership is exactly what these lines fail to state.
+            hit = self._first(self.driver_fail_by_device, line)
+            if hit:
+                buckets[UNEXPECTED].append(raw)
                 continue
 
             ours = bool(OURS.search(line))
