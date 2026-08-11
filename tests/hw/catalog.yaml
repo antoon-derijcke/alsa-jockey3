@@ -648,17 +648,27 @@ cases:
     title: Control surface events reach userspace
     area: MIDI
     level: L3
-    mode: manual
+    mode: semi-automated
     status: implemented
-    requires: [device, human]
+    requires: [device, python-mido]
+    exec: cases/midi_controls.py
+    params:
+      watch_seconds: 30
+      button_events: 5
+      continuous_events: 20
+      answer_timeout: 120
+    metrics: [button_events, continuous_events]
     pass: >
       Button presses, fader and knob movements, and jog wheel rotation all
       produce MIDI events.
     steps:
       - Run scripts-alsa-dev/miditest/miditest.py and press 'd' for hexdump.
       - Press several buttons; confirm note events appear.
-      - Move a fader and a knob; confirm continuous controller events appear.
-      - Rotate both jog wheels; confirm a stream of events appears.
+      - >
+        Move a fader or knob, and rotate a jog wheel; confirm a stream of
+        events appears. Which control produced them does not matter -- the
+        driver's code path does not know, so any swept control proves the
+        same thing.
     notes: >
       Verifying every individual control is out of scope -- that tests Reloop's
       firmware. If the driver delivers one button and one jog movement it
@@ -668,9 +678,16 @@ cases:
     title: LEDs respond to MIDI OUT
     area: MIDI
     level: L3
-    mode: manual
+    mode: semi-automated
     status: implemented
-    requires: [device, human]
+    requires: [device]
+    exec: cases/midi_leds.py
+    params:
+      repeats: 3
+      interval_seconds: 0.2
+      countdown_seconds: 3
+      answer_timeout: 120
+    metrics: [write_failures, leds_seen]
     pass: The commanded LEDs light, and the startup attract pattern stops.
     steps:
       - Run actions/blink_leds.sh.
