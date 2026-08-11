@@ -45,6 +45,21 @@ drives the driver's consecutive-error give-up path. Measured 2026-08-10, idle
 and under active playback alike: that path is never reached this way. It is
 not a gap in this case -- slot reuse is what is being tested -- but it does
 mean this case cannot stand in for JT-HOTPLUG-001.
+
+WHY THE SUBSTREAM CHECK POLLS INSTEAD OF SNAPSHOTTING
+------------------------------------------------------
+2026-08-11: a 10-cycle run failed once with "no capture after
+re-enumeration". `enumerate_ms` for that cycle was 4035 ms against ~2 ms for
+all but one of the others, meaning `wait_for_card()`'s 50 ms poll loop had, on
+that cycle only, actually caught the card within its own polling granularity
+of first becoming visible in /proc/asound -- the other cycles finished their
+uhubctl settle first and saw a card that had already been up for seconds. A
+single `substreams()` snapshot right after `wait_for_card()` returns cannot
+tell "probe never created this device" apart from "probe hasn't gotten there
+yet", and only fires on cycles unlucky enough to observe the second. Now
+`wait_for_substreams()` polls the PCM/rawmidi proc entries with their own
+bounded timeout and reports how long it took as `pcm_settle_ms`, so the size
+of that window (if it exists at all) is measured rather than guessed at.
 """
 
 import os
@@ -68,6 +83,29 @@ def wait_for_card(present, timeout):
         time.sleep(0.05)
     idx, _ = alsa.find_card()
     return idx, None
+
+
+def wait_for_substreams(idx, timeout):
+    """Poll until playback/capture/rawmidi all appear, or timeout.
+
+    The card index becoming visible in /proc/asound and its PCM/rawmidi proc
+    entries existing are two different events. A single snapshot right after
+    wait_for_card() returns confuses "probe truly didn't create this device"
+    with "probe hadn't gotten there yet" -- and on a run where the poll loop
+    above happens to catch the card within milliseconds of it first appearing
+    (rather than the common case, where uhubctl's own multi-second settle
+    already covered re-enumeration), that window is real. Returns
+    (subs, elapsed_ms, missing); elapsed_ms is reported as a metric so the
+    window's size stays visible rather than silently swallowed by a retry.
+    """
+    t0 = time.time()
+    deadline = t0 + timeout
+    while True:
+        subs = alsa.substreams(idx)
+        missing = [w for w in ("playback", "capture", "rawmidi") if not subs[w]]
+        if not missing or time.time() >= deadline:
+            return subs, round((time.time() - t0) * 1000, 1), missing
+        time.sleep(0.02)
 
 
 def power_on(c, settle):
@@ -109,6 +147,7 @@ def main():
 
     start_idx, _ = alsa.find_card()
     slots, enumerate_ms, teardown_ms, switch_ms = set(), [], [], []
+    pcm_settle_ms = []
     if start_idx is not None:
         slots.add(start_idx)
     c.metric("card_index_first", start_idx)
@@ -151,11 +190,11 @@ def main():
             slots.add(idx)
             cycles += 1
 
-            subs = alsa.substreams(idx)
-            missing = [w for w in ("playback", "capture", "rawmidi")
-                       if not subs[w]]
+            subs, pcm_wait, missing = wait_for_substreams(idx, settle)
+            pcm_settle_ms.append(pcm_wait)
             for what in missing:
-                c.fail(f"iteration {i}: no {what} after re-enumeration")
+                c.fail(f"iteration {i}: no {what} after re-enumeration "
+                       f"(waited {pcm_wait:.0f} ms)")
 
             # The card index is the whole point, so it is what the progress
             # line leads with: a reader watching this scroll past sees the
@@ -163,7 +202,8 @@ def main():
             c.progress(
                 f"cycle {i}/{iterations}  down {teardown_ms[-1]:>5.0f} ms  "
                 f"up {ms:>5.0f} ms  card hw:{idx}"
-                f"   (hub {switch_ms[-2]:.0f}+{switch_ms[-1]:.0f} ms)"
+                f"   (hub {switch_ms[-2]:.0f}+{switch_ms[-1]:.0f} ms"
+                f"  pcm {pcm_wait:.0f} ms)"
                 + ("  MISSING " + ", ".join(missing) if missing else ""))
     finally:
         # Never leave the rig dark. A case that fails halfway and walks away
@@ -198,6 +238,12 @@ def main():
                                  "max": max(teardown_ms),
                                  "mean": round(sum(teardown_ms)
                                                / len(teardown_ms), 1)})
+    if pcm_settle_ms:
+        c.metric("pcm_settle_ms", {"n": len(pcm_settle_ms),
+                                   "min": min(pcm_settle_ms),
+                                   "max": max(pcm_settle_ms),
+                                   "mean": round(sum(pcm_settle_ms)
+                                                 / len(pcm_settle_ms), 1)})
     # Tool cost, kept out of the two metrics above so it cannot masquerade as
     # driver behavior. Worth recording rather than discarding: it is most of
     # the wall clock of this case, so it is what to attack if the cycle count

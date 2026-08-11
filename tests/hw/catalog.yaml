@@ -241,7 +241,7 @@ cases:
       off_seconds: 2
       settle_seconds: 8
     metrics: [slots_used, card_index_first, card_index_last, enumerate_ms,
-              teardown_ms, switch_ms, cycles]
+              teardown_ms, switch_ms, pcm_settle_ms, cycles]
     pass: >
       The device re-enumerates after every power cycle, with a playback and a
       capture substream and one rawmidi device, and the card index is reused
