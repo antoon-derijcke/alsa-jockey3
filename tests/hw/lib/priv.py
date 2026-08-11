@@ -114,6 +114,22 @@ def printk_console(level, timeout=20):
     return rc == 0, (err or "").strip()
 
 
+def usb_power(action, *args, timeout=60):
+    """Switch the hub port the Jockey 3 is plugged into.
+
+    The port is never named here. The helper resolves it from the device's own
+    USB ids, so no argument this side can widen what gets switched -- see the
+    usb-power verb for why that matters on a rig where the hub one level up
+    carries the keyboard and mouse.
+    """
+    return call("usb-power", action, *args, timeout=timeout)
+
+
+def usb_switch_available():
+    rc, _out, _err = call("usb-power", "status", timeout=30)
+    return rc == 0
+
+
 def rtcwake_mem(seconds, timeout=None):
     # The helper blocks for the whole suspend, so the timeout has to outlast
     # it by enough to cover a slow resume rather than by a fixed margin.

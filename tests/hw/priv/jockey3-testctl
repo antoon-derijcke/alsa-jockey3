@@ -59,6 +59,24 @@ DYNDBG=/sys/kernel/debug/dynamic_debug/control
 # only visible symptom was every run recording "firmware unknown".
 FW_MATCH='Firmware'
 
+# The Jockey 3's own USB ids, for per-port power switching. Fixed here for the
+# same reason FW_MATCH is: the caller names an ACTION, never a target. A verb
+# taking a hub location and port would grant the suite the right to cut power
+# to any port on any hub -- and on the test rig the hub one level up carries
+# the keyboard, the mouse, and the hub this device hangs off. Resolving the
+# port from the device's own vendor/product id means the only port that can
+# ever be switched is one with a Jockey 3 plugged into it.
+JOCKEY3_USB_IDS='200c:1037 200c:1009'      # Remix, Master Edition
+
+# Where the resolved port is remembered between `off` and `on`.
+#
+# Once the port is powered down the device is gone from the bus, so it can no
+# longer be found by its vendor/product id -- the location has to be carried
+# across. /run is tmpfs, so a stale entry cannot outlive a reboot, and it is
+# root-owned, so the record of which port to re-energize is not user-writable.
+USB_STATE_DIR=/run/jockey3-testctl
+USB_STATE=$USB_STATE_DIR/usb-port
+
 die() { echo "jockey3-testctl: $*" >&2; exit 2; }
 
 usage() {
@@ -76,6 +94,9 @@ usage() {
 #   printk-console <1-8>   set the console loglevel
 #   xrun-debug 0|1        make the ALSA core log every xrun to the kernel log
 #   rtcwake-mem <1-3600>   suspend to RAM and wake after N seconds
+#   usb-power status       report the ppps hub port the Jockey 3 is plugged into
+#   usb-power off|on       cut or restore power to that port
+#   usb-power cycle [1-30] off, wait N seconds (default 3), on
 
 [ $# -ge 1 ] || usage
 verb=$1
@@ -107,6 +128,46 @@ card_proc() {
 	n=$(awk '/Jockey3|Reloop Jockey 3/ {print $1; exit}' /proc/asound/cards 2>/dev/null)
 	[ -n "$n" ] && [ -d "/proc/asound/card$n" ] || return 1
 	printf '/proc/asound/card%s' "$n"
+}
+
+# Print "<hub-location> <port> <hub-id>" for the port a Jockey 3 is plugged
+# into, or fail.
+#
+# Only a port on a hub advertising `ppps` is accepted. Per-port power switching
+# is what this is for, and on a hub without it uhubctl reports success while
+# changing nothing -- a test that silently never disconnects the device would
+# pass while proving nothing, which is worse than refusing.
+usb_resolve() {
+	local id out found
+	for id in $JOCKEY3_USB_IDS; do
+		out=$(uhubctl --search "$id" 2>/dev/null) || continue
+		# uhubctl prints a "Current status for hub" header per hub, followed
+		# by the matching port lines beneath it, so the hub in force is
+		# whichever header was seen most recently.
+		# Matched without the closing bracket: uhubctl appends the device
+		# description when it can read one -- "[413c:2107 Dell USB Keyboard]"
+		# -- and the Jockey 3 prints bare "[200c:1037]" only because its
+		# strings are not readable while the driver holds it. Anchoring on
+		# "[<vid>:<pid>]" would therefore work until the day it did not.
+		# Product ids are always four hex digits, so a prefix cannot collide.
+		found=$(printf '%s\n' "$out" | awk -v want="[$id" '
+			/^Current status for hub / {
+				hub = $5
+				ppps = (index($0, "ppps") > 0)
+				hubid = ""
+				if (match($0, /\[[0-9a-f]+:[0-9a-f]+/))
+					hubid = substr($0, RSTART + 1, RLENGTH - 1)
+				next
+			}
+			/^[ \t]*Port [0-9]+:/ && ppps && index($0, want) > 0 {
+				port = $2
+				sub(/:$/, "", port)
+				print hub, port, hubid
+				exit
+			}')
+		[ -n "$found" ] && { printf '%s\n' "$found"; return 0; }
+	done
+	return 1
 }
 
 case "$verb" in
@@ -212,6 +273,79 @@ xrun-debug)
 	[ "$n" -gt 0 ] || die "no xrun_debug under $proc (CONFIG_SND_PCM_XRUN_DEBUG?)"
 	echo "xrun_debug=$1 on $n substream(s) of $(basename "$(readlink -f "$proc")")"
 	exit 0
+	;;
+
+usb-power)
+	# Per-port USB power switching, for the disconnect and replug cases. A
+	# clean VBUS drop, which is NOT the same event as pulling the cable: a
+	# real unplug degrades over several frames and the URBs accumulate -71
+	# before the disconnect lands, while this goes straight to -19. The messy
+	# variant needs the mains relay; see JT-HOTPLUG-003.
+	[ $# -ge 1 ] || die "usb-power needs status, off, on or cycle"
+	command -v uhubctl >/dev/null 2>&1 \
+		|| die "uhubctl is not installed -- apt install uhubctl"
+	action=$1
+	shift
+
+	delay=3
+	if [ "$action" = cycle ] && [ $# -eq 1 ]; then
+		[[ $1 =~ ^[0-9]{1,2}$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 30 ] \
+			|| die "cycle delay must be 1-30 seconds"
+		delay=$1
+		shift
+	fi
+	[ $# -eq 0 ] || die "usb-power $action takes no further arguments"
+
+	case "$action" in
+	status | off | cycle)
+		# Resolved fresh every time from the device's own ids. The port is
+		# never an input, so no argument can widen what this reaches.
+		resolved=$(usb_resolve) \
+			|| die "no Reloop Jockey 3 behind a ppps-capable hub port"
+		read -r hub port hubid <<< "$resolved"
+		;;
+	esac
+
+	case "$action" in
+	status)
+		echo "usb-power ok"
+		echo "hub=$hub port=$port hub_id=$hubid"
+		exit 0
+		;;
+	off)
+		mkdir -p "$USB_STATE_DIR" || die "cannot create $USB_STATE_DIR"
+		printf '%s %s %s\n' "$hub" "$port" "$hubid" > "$USB_STATE" \
+			|| die "cannot record the port in $USB_STATE"
+		exec uhubctl -l "$hub" -p "$port" -a off
+		;;
+	cycle)
+		exec uhubctl -l "$hub" -p "$port" -a cycle -d "$delay"
+		;;
+	on)
+		# The device is gone while the port is dark, so `on` works from what
+		# `off` recorded rather than from the bus. Everything read back is
+		# re-validated and re-checked against the hardware before acting: a
+		# recorded location is a hint about the past, and powering a port
+		# whose occupant is no longer known is the one thing this verb must
+		# never do.
+		[ -r "$USB_STATE" ] \
+			|| die "no port recorded -- run 'usb-power off' first (or the machine rebooted)"
+		read -r hub port hubid < "$USB_STATE" || die "cannot read $USB_STATE"
+		[[ $hub =~ ^[0-9]+-[0-9]+(\.[0-9]+)*$ ]] || die "malformed hub location in $USB_STATE"
+		[[ $port =~ ^[0-9]{1,2}$ ]] || die "malformed port in $USB_STATE"
+		cur=$(uhubctl -l "$hub" -p "$port" 2>/dev/null) \
+			|| die "hub $hub is no longer present"
+		printf '%s\n' "$cur" | grep -q "\[$hubid" \
+			|| die "the hub at $hub is not the one that was powered down"
+		printf '%s\n' "$cur" | grep -qE "Port $port: [0-9a-f]+ off" \
+			|| die "port $hub port $port is not powered off"
+		rm -f "$USB_STATE"
+		exec uhubctl -l "$hub" -p "$port" -a on
+		;;
+	*)
+		die "usb-power takes status, off, on or cycle"
+		;;
+	esac
 	;;
 
 rtcwake-mem)

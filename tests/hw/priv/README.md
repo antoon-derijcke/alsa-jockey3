@@ -24,7 +24,28 @@ sudo ./install.sh --remove
 | `dyndbg-firmware on\|off` | `/sys/kernel/debug` is mode 0700 root |
 | `printk-console <1-8>` | `/proc/sys/kernel/printk` is root-owned |
 | `rtcwake-mem <1-3600>` | suspend to RAM |
+| `usb-power status\|off\|on\|cycle` | per-port hub power, via `uhubctl` |
 | `status` | reports the helper is installed and reachable |
+
+### `usb-power` takes an action, never a target
+
+The hub location and port are **not** arguments. They are resolved inside the
+helper from the Jockey 3's own USB ids (`200c:1037`, `200c:1009`), and only a
+port on a hub advertising `ppps` is accepted. A verb that accepted `-l 1-3 -p 1`
+would grant the suite the right to cut power to any port on any hub — and on
+the test rig, hub `1-3` carries the keyboard, the mouse, and the hub the device
+itself hangs off. Same principle as `FW_MATCH`: the caller says what to do, the
+file says what to do it to.
+
+`off` records the resolved port to `/run/jockey3-testctl/usb-port`, because
+once the port is dark the device is gone from the bus and can no longer be
+found by its ids. `on` re-validates that record against the hardware — same hub
+id still present, port actually powered off — before acting, and refuses if the
+topology moved underneath it. `cycle` never needs the file.
+
+This is a clean VBUS drop, not a cable pull: no `-71` burst, straight to `-19`.
+See `JT-HOTPLUG-001` in the catalog for why that distinction decides which
+cases it can and cannot automate.
 
 Everything else runs as an ordinary user: opening the card, playback, capture,
 MIDI, stopping the session's sound server, reading sysfs and `/proc/config.gz`.
