@@ -52,6 +52,20 @@ class Case:
     def note(self, text):
         self._note.append(str(text))
 
+    def progress(self, text):
+        """Say what is happening, now, while it happens.
+
+        Goes to stderr and is flushed immediately: the runner streams this
+        channel straight to the terminal, so a case that takes eighty seconds
+        is not eighty seconds of silence. Everything is still captured to
+        stderr.txt, so nothing is lost by watching or by not watching.
+
+        For humans, not for records -- a metric belongs in metric(), and the
+        runner derives a failure reason from the LAST line of stderr, so
+        progress can be as chatty as it likes without becoming the verdict.
+        """
+        print(text, file=sys.stderr, flush=True)
+
     def fail(self, text):
         """Record a failure but keep going.
 

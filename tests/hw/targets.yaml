@@ -33,31 +33,56 @@
 # CONSISTENCY CHECK -- a kernel calling itself -alsa-prod with KASAN enabled is
 # a mislabeled build, and the runner says so -- not the identity test.
 #
-# `capabilities` are the tokens a case's `requires` list is checked against; a
-# case whose requirements are not met is recorded as blocked, never silently
-# dropped.
+# CAPABILITIES ARE NOT DECLARED HERE
+# ----------------------------------
+# They used to be, per target, and it was keyed wrong. A target is a BUILD;
+# x86_64-debug and x86_64-prod are the same EliteDesk booted differently, so a
+# loopback cable plugged into that machine had to be declared under both and
+# kept in sync by hand. Capabilities belong to the machine, and the volatile
+# ones change far too often to live in a file that is meant to be static.
+#
+# lib/capabilities.py resolves them at run time, from three sources:
+#
+#   probed       the machine is asked -- a missing package or an unplugged
+#                controller answers for itself, with nothing to maintain
+#   declared     ~/.config/jockey3/capabilities.yaml, for the handful of
+#                things no probe can settle. Outside the repository on
+#                purpose: the working tree is a Seafile share, so a file
+#                inside it would sync one machine's rig to every other.
+#   invocation   `human` comes from whether --unattended was passed
+#
+# A declaration can only ever take a capability AWAY. Declaring usb-switch
+# false is a useful opt-out; declaring loopback-cable true does not put a
+# cable in the socket.
+#
+# The list below is the VOCABULARY -- the tokens a case's `requires` may name,
+# and how each is settled. selftest.py checks it against capabilities.py, so
+# the two cannot drift.
 
 version: 1
 
 capabilities:
+  # probed
   device:           A Reloop Jockey 3 is attached and enumerated
   root:             The runner can load and unload modules
   kernel-tree:      A kernel source tree is available for L1/L2 gates
   cross-toolchains: Cross compilers for the other target architectures
   qemu:             QEMU system emulation for cross-architecture KUnit
   sox:              sox is installed, for tone generation
-  speakers:         Monitoring is connected and audible
-  human:            An operator is present to observe and answer
   mixxx:            Mixxx is installed and configured for the device
   rtc-wake:         rtcwake can suspend and wake the machine
   python-mido:      mido and python-rtmidi are available
+  usb-switch:       A ppps-capable hub port, switchable with uhubctl
+  gadget-emulation: USB gadget or dummy_hcd for malformed-descriptor tests
+  # declared locally
+  speakers:         Monitoring is connected and audible
   loopback-cable:   Outputs are cabled back into the device's own inputs
   signal-source:    A signal source is connected to the device's inputs
   two-devices:      Both Jockey 3 units are available to swap between
-  usb-switch:       Programmable USB port power/data switching
   relay:            Programmable mains relay for power cycling
-  gadget-emulation: USB gadget or dummy_hcd for malformed-descriptor tests
   quiet-machine:    The machine is otherwise idle, for trustworthy benchmarks
+  # from the invocation
+  human:            An operator is present to observe and answer
 
 # Canonical architecture tokens: x86_64, i386, armhf, arm64.
 # uname -m values are normalized onto these (armv6l/armv7l -> armhf,
@@ -74,9 +99,6 @@ targets:
     typical_machine: HP EliteDesk 800 G2 (tiny), i5, 64 GB RAM, 1 TB NVMe
     verify:
       kconfig_any: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
-    capabilities:
-      [device, root, kernel-tree, sox, speakers, human, mixxx, rtc-wake,
-       python-mido]
     role: >
       Primary target. Memory errors and lock inversions surface here or
       nowhere, so anything touching URB lifetime, locking or the reset path
@@ -107,9 +129,6 @@ targets:
     typical_machine: HP EliteDesk 800 G2 (tiny), i5, 64 GB RAM, 1 TB NVMe
     verify:
       kconfig_none: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
-    capabilities:
-      [device, root, kernel-tree, sox, speakers, human, mixxx, rtc-wake,
-       python-mido, quiet-machine]
     role: >
       Realistic timing. Latency figures, throughput metrics and long soaks
       belong here, because KASAN distorts every number worth recording.
@@ -122,7 +141,6 @@ targets:
     typical_machine: Raspberry Pi 4B, 2 GB
     verify:
       kconfig_none: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
-    capabilities: [device, root, sox, speakers, human, python-mido, mixxx]
     role: >
       Second architecture, and more importantly a second USB host controller.
       The Pi 4 uses dwc2 rather than xhci, which behaves differently under load
@@ -136,7 +154,6 @@ targets:
     typical_machine: Raspberry Pi 4B, 2 GB
     verify:
       kconfig_any: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
-    capabilities: [device, root, sox, speakers, human, python-mido]
     role: >
       Lock and memory checking on the dwc2 host controller. Slow on a Pi 4, so
       reserved for changes to URB lifetime or the reset path.
@@ -153,7 +170,6 @@ targets:
     typical_machine: Raspberry Pi 1B, 512 MB
     verify:
       kconfig_none: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
-    capabilities: [device, root, sox, speakers, human]
     role: >
       The 32-bit codec path on real hardware, uniprocessor and without
       preemption -- which makes sleeping in atomic context fatal here and
@@ -172,7 +188,6 @@ targets:
     typical_machine: Not yet set up -- planned as multi-boot on the EliteDesk
     verify:
       kconfig_none: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
-    capabilities: []
     role: >
       The 32-bit codec on a fast machine. Currently covered only by L1 and L2;
       hardware bring-up is planned before submission, not before it is

@@ -15,11 +15,13 @@ target is identified as what it actually is.
 """
 
 import io
+import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -270,6 +272,113 @@ def test_catalog(catalog, targets, profiles):
            and not c.get("steps")]
     check(not bad, "implemented manual cases have steps to follow", str(bad))
 
+    # A case that needs hardware not every machine has must say how to do it
+    # by hand, or the coverage simply vanishes on the machines without it.
+    # HARDWARE is the subset that is genuinely rig-specific -- `device` and
+    # `root` are not, since a hardware case is pointless without them.
+    import runner
+    bad = [c["id"] for c in catalog["cases"]
+           if c["status"] == "implemented"
+           and runner.SUBSTITUTABLE & set(c.get("requires") or [])
+           and not c.get("steps")]
+    check(not bad, "cases gated on an actuator carry manual fallback steps",
+          str(bad))
+
+
+def test_capabilities(targets):
+    """Resolution, and the rule that a declaration can only take away.
+
+    The dangerous direction is a declaration that GRANTS something absent: a
+    run would record a pass for a loopback measurement with no cable in the
+    socket, and nothing downstream could tell.
+    """
+    print("\ncapabilities")
+    from lib import capabilities as cap
+
+    check(set(cap.ALL) == set(targets["capabilities"]),
+          "targets.yaml documents exactly the known capabilities",
+          str(set(cap.ALL) ^ set(targets["capabilities"])))
+    check(not (set(cap.PROBED) & set(cap.DECLARED)),
+          "no capability is both probed and declared")
+
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "caps.yaml")
+
+        with open(path, "w") as f:
+            f.write("version: 1\ncapabilities:\n  speakers: true\n"
+                    "  loopback-cable: false\n")
+        declared, note = cap.load_declared(path)
+        check(declared == {"speakers": True, "loopback-cable": False},
+              "declarations are read", str(declared))
+        check(note is None, "a clean file produces no complaint")
+
+        # The veto direction: probed true, declared false -> unavailable.
+        avail, detail = cap.resolve(path=path, skip_probes=True)
+        check("speakers" in avail, "a declared capability is granted")
+        with open(path, "w") as f:
+            f.write("capabilities:\n  rtc-wake: false\n")
+        _avail, detail = cap.resolve(path=path, skip_probes=True)
+        check(detail["rtc-wake"]["available"] is False,
+              "a declaration can withhold a probed capability")
+
+        # The direction that must NOT work.
+        with open(path, "w") as f:
+            f.write("capabilities:\n  device: true\n  sox: true\n")
+        avail, detail = cap.resolve(path=path, skip_probes=True)
+        check("device" not in avail and "sox" not in avail,
+              "a declaration cannot grant a probed capability",
+              str(sorted(avail)))
+
+        with open(path, "w") as f:
+            f.write("capabilities:\n  nonsense: true\n")
+        _d, note = cap.load_declared(path)
+        check(note is not None and "nonsense" in note,
+              "an unknown capability name is reported, not silently obeyed")
+
+        check(cap.load_declared(os.path.join(d, "absent.yaml")) == ({}, None),
+              "an absent file grants nothing and is not an error")
+
+    avail, _detail = cap.resolve(attended=False, skip_probes=True)
+    check("human" not in avail, "--unattended withholds 'human'")
+    avail, _detail = cap.resolve(attended=True, skip_probes=True)
+    check("human" in avail, "and an attended run grants it")
+
+
+def test_capability_gating():
+    """Which cases run, which demote to manual, which block."""
+    print("\ncapability gating")
+    import runner
+
+    semi = {"id": "X", "mode": "semi-automated", "level": "L3",
+            "requires": ["device"]}
+    check(runner.capability_gap(semi, {"device"}) == ["human"],
+          "a semi-automated case needs a human without saying so",
+          str(runner.capability_gap(semi, {"device"})))
+    check(runner.capability_gap(semi, {"device", "human"}) == [],
+          "and runs when one is there")
+
+    auto = {"id": "X", "mode": "automated", "level": "L3",
+            "requires": ["device", "usb-switch"]}
+    check(runner.capability_gap(auto, {"device"}) == ["usb-switch"],
+          "a missing capability is named")
+    check(runner.capability_gap(auto, {"device", "human"}) == ["usb-switch"],
+          "an automated case does not need a human")
+
+    build = {"id": "X", "mode": "automated", "level": "L1",
+             "requires": ["kernel-tree"]}
+    check(runner.capability_gap(build, set()) == [],
+          "build levels are exempt -- they check for themselves")
+
+    steps = {"steps": ["do a thing"]}
+    check(runner.demotes_to_manual(steps, ["usb-switch"]),
+          "a missing actuator demotes to manual -- a person can unplug it")
+    check(not runner.demotes_to_manual({}, ["usb-switch"]),
+          "unless nobody wrote down how")
+    check(not runner.demotes_to_manual(steps, ["device"]),
+          "a missing DEVICE never demotes: there is nothing to test by hand")
+    check(not runner.demotes_to_manual(steps, ["usb-switch", "device"]),
+          "and one substitutable gap does not excuse an unsubstitutable one")
+
 
 def test_results_roundtrip():
     print("\nresult records")
@@ -284,6 +393,114 @@ def test_results_roundtrip():
     check(back["counts"] == {"pass": 1, "fail": 1}, "counts are derived",
           str(back.get("counts")))
     check(len(back["results"]) == 2, "results survive the round trip")
+
+
+def test_case_streaming():
+    """A case's progress reaches the terminal while it is still running.
+
+    The failure this guards against is not a wrong answer but an unusable
+    one: capture_output holds every byte until exit, so a case that
+    power-cycles a device ten times was eighty seconds indistinguishable
+    from a hang.
+
+    The second half matters more. Once a case is chatty, the naive "first
+    200 characters of stderr" reason reports its opening progress line as the
+    cause of a failure that happened a minute later.
+    """
+    print("\ncase streaming")
+    import runner
+
+    script = ("import sys, time\n"
+              "for i in (1, 2, 3):\n"
+              "    print(f'cycle {i}/3', file=sys.stderr, flush=True)\n"
+              "    time.sleep(0.05)\n"
+              "print('artifact', flush=True)\n"
+              "print('FAIL: cycle 3 broke', file=sys.stderr)\n"
+              "print('cycle 3 broke', file=sys.stderr)\n"
+              "sys.exit(1)\n")
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "case.py")
+        with open(path, "w") as f:
+            f.write(script)
+
+        seen = []
+        rc, out, err = runner.stream_case(
+            [sys.executable, path], dict(os.environ), 30, seen.append)
+        check(rc == 1, "the exit status survives streaming", str(rc))
+        check(seen and seen[0] == "cycle 1/3",
+              "progress is delivered line by line as it arrives", str(seen[:1]))
+        check(len(seen) == 5, "every stderr line is echoed", str(len(seen)))
+        check(out.strip() == "artifact",
+              "stdout stays separate and is captured, not echoed", repr(out))
+        check("cycle 1/3" in err and "cycle 3 broke" in err,
+              "and stderr is captured in full as well")
+
+        check(runner.failure_reason(err, out, rc) == "cycle 3 broke",
+              "the reason is the LAST line, not the first progress line",
+              runner.failure_reason(err, out, rc))
+
+        # A case that wedges must be killed at the deadline, not waited on.
+        with open(path, "w") as f:
+            f.write("import time\ntime.sleep(60)\n")
+        t0 = time.time()
+        rc, _out, err = runner.stream_case(
+            [sys.executable, path], dict(os.environ), 1, None)
+        check(rc == 124 and time.time() - t0 < 10,
+              "a silent case is killed at its timeout", f"rc={rc}")
+        check("timed out" in err, "and says so", err)
+
+    check(runner.mark(results.PASS) != runner.mark(results.FAIL),
+          "pass and fail are visually distinct at a glance")
+
+
+def test_manual_fallback():
+    """A case demoted to manual must reach the checklist intact.
+
+    The parameters are the part that rots silently. checklist.py renders what
+    the RUN RECORD says, so if the runner records a pending case without its
+    resolved parameters, every per-target override is quietly undone -- the
+    operator on a Pi 1B is handed the catalog's four sample rates when the
+    profile deliberately says two, and nothing anywhere reports a problem.
+    """
+    print("\nmanual fallback")
+    import checklist
+    catalog = load("catalog.yaml")
+    cases = {c["id"]: c for c in catalog["cases"]}
+
+    with tempfile.TemporaryDirectory() as d:
+        run = {"results": [
+            {"id": "JT-AUDIO-001", "status": results.PENDING, "mode": "manual",
+             "params": {"rates": [44100]},
+             "reason": "manual -- answer via checklist.py"},
+            {"id": "JT-PROBE-003", "status": results.PENDING, "mode": "manual",
+             "params": {"iterations_per_run": 3},
+             "reason": "no usb-switch -- do it by hand via checklist.py"},
+            {"id": "JT-PCM-002", "status": results.PASS, "mode": "automated",
+             "params": {}},
+            {"id": "JT-AUDIO-002", "status": results.BLOCKED,
+             "mode": "automated", "params": {}},
+        ]}
+        with open(os.path.join(d, "run.json"), "w") as f:
+            f.write(json.dumps(run))
+
+        items = checklist.pending_cases(d, cases)
+        ids = [c["id"] for c, _p, _r in items]
+        check(ids == ["JT-AUDIO-001", "JT-PROBE-003"],
+              "only pending cases reach the checklist", str(ids))
+        check(all(s != "JT-AUDIO-002" for s in ids),
+              "a blocked case is not offered -- it cannot be done here at all")
+
+        params = {c["id"]: p for c, p, _r in items}
+        check(params["JT-PROBE-003"] == {"iterations_per_run": 3},
+              "the RESOLVED parameters are rendered, not the catalog defaults",
+              str(params["JT-PROBE-003"]))
+
+        md = checklist.render("functional", "armhf-prod", items, "t/x")
+        demoted = "JT-PROBE-003 -- " in md and "Automated form could not run" in md
+        check(demoted, "a demoted case says why it is being done by hand")
+        after = md.split("## JT-AUDIO-001")[1].split("## ")[0]
+        check("Automated form could not run" not in after,
+              "a case that is manual by nature does not claim to be a fallback")
 
 
 def test_run_resolution():
@@ -327,7 +544,8 @@ def test_run_resolution():
     md = checklist.render("smoke", "x86_64-debug",
                           [({"id": "JT-MIDI-002", "title": "t", "level": "L3",
                              "area": "MIDI", "mode": "manual",
-                             "steps": ["do a thing"], "pass": "it works"}, {})],
+                             "steps": ["do a thing"], "pass": "it works"},
+                            {}, "")],
                           "x86_64-debug/20260809T182522Z-smoke")
     m = checklist.RUN_RE.search(md)
     check(m and m.group("path") == "x86_64-debug/20260809T182522Z-smoke",
@@ -399,7 +617,11 @@ def main():
     test_targets(targets)
     test_build_id()
     test_catalog(catalog, targets, profiles)
+    test_capabilities(targets)
+    test_capability_gating()
     test_results_roundtrip()
+    test_case_streaming()
+    test_manual_fallback()
     test_run_resolution()
     test_privilege_boundary()
 

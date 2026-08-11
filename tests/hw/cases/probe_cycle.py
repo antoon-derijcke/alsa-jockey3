@@ -90,6 +90,9 @@ def main():
             break
         unload_ms.append(round((gone_at - t0) * 1000, 1))
 
+        c.progress(f"load {i}/{iterations}  up {load_ms[-1]:>6.0f} ms  "
+                   f"down {unload_ms[-1]:>6.0f} ms  card hw:{idx}")
+
     # Leave the driver loaded: every case after this one expects a card.
     if not env.module_loaded():
         priv.load_module()

@@ -42,13 +42,14 @@ to notice an oops it caused.
 import argparse
 import json
 import os
+import selectors
 import subprocess
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import alsa, env, kmsg, priv, results    # noqa: E402
+from lib import alsa, capabilities, env, kmsg, priv, results    # noqa: E402
 
 try:
     import yaml
@@ -105,8 +106,13 @@ def resolve_plan(profile_name, target_name, cases, profiles):
 BUILD_LEVELS = {"L1", "L2"}
 
 
-def capability_gap(case, target_spec):
-    """Which of a case's requirements this target cannot satisfy.
+def capability_gap(case, available):
+    """Which of a case's requirements this machine cannot satisfy.
+
+    Checked against what lib/capabilities.py resolved for the machine, not
+    against a list in targets.yaml. A target is a build; a loopback cable is
+    not a property of a build, and declaring it per target meant declaring it
+    twice for the same EliteDesk and keeping the two in sync by hand.
 
     Build and component levels are exempt. Their requirements -- a kernel
     tree, cross toolchains, QEMU -- are properties of the machine doing the
@@ -117,9 +123,39 @@ def capability_gap(case, target_spec):
     """
     if case.get("level") in BUILD_LEVELS:
         return []
-    have = set((target_spec or {}).get("capabilities") or [])
     need = set(case.get("requires") or [])
-    return sorted(need - have)
+    # A semi-automated case is one that drives the hardware but still needs a
+    # person to act or to judge, so it needs `human` by construction. Derived
+    # rather than listed per case: a case that forgot to list it would run
+    # unattended and block forever waiting for an answer nobody is there to
+    # give, which is the one failure mode this must not have.
+    if case.get("mode") == "semi-automated":
+        need.add("human")
+    return sorted(need - set(available))
+
+
+# Capabilities that exist only to let a machine perform an action a person can
+# perform by hand: switching port power, cutting the mains. Their absence
+# costs automation, not coverage.
+#
+# Nothing else belongs here. A missing `device` cannot be worked around by an
+# operator -- there is no controller to test -- and neither can a missing
+# loopback cable or a missing sox. Treating those as demotable produced a
+# checklist politely asking somebody to test hardware that was not plugged in.
+SUBSTITUTABLE = {"usb-switch", "relay"}
+
+
+def demotes_to_manual(case, gap):
+    """Can this case fall back to being done by hand?
+
+    Two conditions, and both are load-bearing. Every missing capability must
+    be one a person can stand in for, and somebody must have written down how
+    -- a case with no steps has no manual form, so it blocks rather than
+    quietly becoming an instruction to do something unspecified.
+    """
+    if not case.get("steps"):
+        return False
+    return set(gap) <= SUBSTITUTABLE
 
 
 def needs_running_kernel(plan):
@@ -171,6 +207,88 @@ def case_path(case):
     return os.path.join(HERE, exe)
 
 
+def oneline(text, limit=52):
+    s = " ".join(str(text or "").split())
+    return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
+
+
+def stream_case(cmd, cenv, timeout, on_progress=None):
+    """Run a case, echoing its progress while capturing everything.
+
+    subprocess.run(capture_output=True) holds every byte until the process
+    exits, which for a case that power-cycles a device ten times is eighty
+    seconds of nothing. The two channels are kept apart on purpose: stdout is
+    the case's artifacts and is only captured, stderr is where it says what it
+    is doing and is echoed as it arrives.
+
+    Returns (rc, stdout, stderr), the same shape as before.
+    """
+    try:
+        p = subprocess.Popen(cmd, env=cenv, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, bufsize=1)
+    except OSError as e:
+        return 125, "", str(e)
+
+    out, err = [], []
+    sel = selectors.DefaultSelector()
+    sel.register(p.stdout, selectors.EVENT_READ, out)
+    sel.register(p.stderr, selectors.EVENT_READ, err)
+    deadline = time.time() + timeout
+    live = 2
+    try:
+        while live:
+            left = deadline - time.time()
+            if left <= 0:
+                p.kill()
+                p.wait()
+                return 124, "".join(out), f"timed out after {timeout}s"
+            # Woken at least once a second even in silence, so a hung case is
+            # noticed at the deadline rather than whenever it next speaks.
+            for key, _mask in sel.select(timeout=min(left, 1.0)):
+                line = key.fileobj.readline()
+                if not line:
+                    sel.unregister(key.fileobj)
+                    live -= 1
+                    continue
+                key.data.append(line)
+                if key.data is err and on_progress:
+                    on_progress(line.rstrip("\n"))
+        p.wait(timeout=max(1.0, deadline - time.time()))
+    except subprocess.TimeoutExpired:
+        p.kill()
+        p.wait()
+        return 124, "".join(out), f"timed out after {timeout}s"
+    finally:
+        sel.close()
+    return p.returncode, "".join(out), "".join(err)
+
+
+def failure_reason(err, out, rc):
+    """Why a case failed, in one line.
+
+    The LAST meaningful line, not the first. Case.done() prints its failure
+    summary last, and everything before it may be progress chatter -- taking
+    the head would report "cycle 1/10: power off" as the reason a case failed
+    on cycle nine.
+    """
+    for text in (err, out):
+        lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+        if lines:
+            return lines[-1][:200]
+    return f"exit {rc}"
+
+
+# How a verdict looks at a glance. The word is still there for anything
+# parsing the output; the mark is for the person watching it happen.
+MARKS = {results.PASS: "✓", results.FAIL: "✗",
+         results.SKIP: "–", results.BLOCKED: "⊘",
+         results.PENDING: "?"}
+
+
+def mark(status):
+    return MARKS.get(status, " ")
+
+
 def run_case(case, iteration, params, ctx):
     """Execute one automated case and classify what the kernel said about it."""
     started = time.time()
@@ -209,14 +327,7 @@ def run_case(case, iteration, params, ctx):
     })
 
     cmd = [path] + list(case.get("args") or [])
-    try:
-        proc = subprocess.run(cmd, env=cenv, capture_output=True, text=True,
-                              timeout=ctx["timeout"])
-        rc, out, err = proc.returncode, proc.stdout, proc.stderr
-    except subprocess.TimeoutExpired:
-        rc, out, err = 124, "", f"timed out after {ctx['timeout']}s"
-    except OSError as e:
-        rc, out, err = 125, "", str(e)
+    rc, out, err = stream_case(cmd, cenv, ctx["timeout"], ctx.get("on_progress"))
 
     with open(os.path.join(workdir, "stdout.txt"), "w", encoding="utf-8") as f:
         f.write(out or "")
@@ -247,13 +358,13 @@ def run_case(case, iteration, params, ctx):
         r.status = results.PASS
     elif rc == 2:
         r.status = results.SKIP
-        r.reason = (err or out or "").strip()[:200]
+        r.reason = failure_reason(err, out, rc)
     elif rc == 3:
         r.status = results.BLOCKED
-        r.reason = (err or out or "").strip()[:200]
+        r.reason = failure_reason(err, out, rc)
     else:
         r.status = results.FAIL
-        r.reason = (err or out or f"exit {rc}").strip()[:200]
+        r.reason = failure_reason(err, out, rc)
 
     # A driver message that is ours and unexpected fails the case even when
     # the case itself was happy. The case does not know what it provoked.
@@ -337,6 +448,14 @@ def main():
     ap.add_argument("--list", "-l", action="store_true")
     ap.add_argument("--dry-run", "-n", action="store_true")
     ap.add_argument("--operator", default=os.environ.get("USER", ""))
+    ap.add_argument("--quiet", "-q", action="store_true",
+                    help="do not echo each case's progress as it runs; keep "
+                         "only the per-case verdict")
+    ap.add_argument("--unattended", action="store_true",
+                    help="nobody is at the keyboard: withhold the 'human' "
+                         "capability, so cases needing a person are recorded "
+                         "as pending rather than waiting for an answer that "
+                         "is not coming. For CI.")
     ap.add_argument("--results-dir")
     ap.add_argument("--kernel-src",
                     help="kernel tree for build-only runs (default $KERNEL_SRC "
@@ -377,9 +496,13 @@ def main():
                     print(f"error: unknown case {cid}", file=sys.stderr)
                     return 3
 
+    caps, cap_detail = capabilities.resolve(attended=not args.unattended)
+
     card, cid, problems = preflight(target_name, target_spec, plan, args)
     problems = target_problems + problems
     problems += env.verify_target(target_spec, kernel)
+    if cap_detail.get("_note"):
+        problems.append(cap_detail["_note"])
 
     print(f"target   {target_name}   "
           f"({target_spec.get('arch')}, {target_spec.get('flavor')} config)")
@@ -388,6 +511,8 @@ def main():
     print(f"machine  {os.uname().nodename}   (context only, not the target)")
     print(f"profile  {args.profile}")
     print(f"card     {'hw:%d (%s)' % (card, cid) if card is not None else 'not found'}")
+    print(f"have     {', '.join(sorted(caps)) or 'nothing detected'}"
+          + ("   [--unattended: no human]" if args.unattended else ""))
     if problems:
         print("\npreflight:")
         for p in problems:
@@ -397,9 +522,12 @@ def main():
     runnable = 0
     manual = 0
     for case, iterations, params in plan:
-        gap = capability_gap(case, target_spec)
+        gap = capability_gap(case, caps)
         if iterations <= 0:
             note = "disabled on this target"
+        elif gap and demotes_to_manual(case, gap):
+            note = "manual fallback: no " + ", ".join(gap)
+            manual += 1
         elif gap:
             note = "blocked: needs " + ", ".join(gap)
         elif case["status"] != "implemented":
@@ -454,6 +582,12 @@ def main():
     run.env["target_explicit"] = bool(args.target)
     run.env["preflight"] = problems
     run.env["sound_server_stopped"] = stopped
+    # Which preconditions held, and how each was decided. Without this a pass
+    # from a day the loopback cable was connected reads identically to one
+    # taken with it coiled on the bench, and ledger.py cannot tell the
+    # difference between coverage and its absence.
+    run.env["capabilities"] = cap_detail
+    run.env["attended"] = not args.unattended
     if not fw_ok:
         run.env["firmware_debug_error"] = fw_err
 
@@ -465,6 +599,10 @@ def main():
         "timeout": args.timeout,
         "investigate": [],
         "unclassified": [],
+        # Echoed live. Indented under the case header so a case's own account
+        # of what it is doing is visibly subordinate to the runner's verdict.
+        "on_progress": None if args.quiet else
+                       (lambda line: print(f"      {line}", flush=True)),
     }
 
     run_json = os.path.join(run_path, "run.json")
@@ -474,32 +612,64 @@ def main():
     for case, iterations, params in plan:
         if iterations <= 0 or case["status"] != "implemented":
             continue
-        gap = capability_gap(case, target_spec)
+        gap = capability_gap(case, caps)
         if gap:
+            # A missing capability is not the end of the case. If somebody
+            # wrote down how to do it by hand, it demotes to manual and lands
+            # in the checklist: an automated form that cannot run today is a
+            # reason to ask a person, not a reason to lose the coverage.
+            # Without steps there is nothing to fall back to, so it blocks.
+            if demotes_to_manual(case, gap):
+                r = results.CaseResult(
+                    id=case["id"], mode="manual", level=case.get("level", ""),
+                    area=case.get("area", ""), status=results.PENDING,
+                    reason=("no " + ", ".join(gap)
+                            + " -- do it by hand via checklist.py"),
+                    # The RESOLVED parameters, not the catalog's. checklist.py
+                    # renders what the record says, so omitting them would put
+                    # the catalog defaults in front of the operator and quietly
+                    # undo every per-target override -- asking for four sample
+                    # rates on the Pi 1B, where the profile says two.
+                    params=params, started=results.utc_iso())
+                run.add(r)
+                print(f"  {mark(results.PENDING)} {case['id']:<16} PENDING  "
+                      f"manual fallback (no {', '.join(gap)})")
+                continue
             r = results.CaseResult(
                 id=case["id"], mode=case.get("mode", ""),
                 level=case.get("level", ""), area=case.get("area", ""),
                 status=results.BLOCKED, reason="needs " + ", ".join(gap),
                 started=results.utc_iso())
             run.add(r)
-            print(f"  {case['id']:<16} BLOCKED  needs {', '.join(gap)}")
+            print(f"  {mark(results.BLOCKED)} {case['id']:<16} BLOCKED  "
+                  f"needs {', '.join(gap)}")
             continue
         if case["mode"] != "automated":
             r = results.CaseResult(
                 id=case["id"], mode=case["mode"], level=case.get("level", ""),
                 area=case.get("area", ""), status=results.PENDING,
                 reason="manual -- answer via checklist.py",
-                started=results.utc_iso())
+                params=params, started=results.utc_iso())
             run.add(r)
-            print(f"  {case['id']:<16} PENDING  manual")
+            print(f"  {mark(results.PENDING)} {case['id']:<16} PENDING  manual")
             continue
 
         for i in range(1, iterations + 1):
+            tag = f"{case['id']}#{i}" if iterations > 1 else case["id"]
+            # Announced before it runs, not after. A case that power-cycles a
+            # device ten times takes over a minute, and a runner that says
+            # nothing until it finishes is indistinguishable from one that has
+            # hung.
+            counter = f" ({i}/{iterations})" if iterations > 1 else ""
+            # One character of prefix on both this line and the verdict, so
+            # the case ids line up in a column and the marks read down it.
+            print(f"\n  ▶ {tag:<16} {oneline(case.get('title'))}{counter}",
+                  flush=True)
             r = run_case(case, i, params, ctx)
             run.add(r)
-            tag = f"{case['id']}#{i}" if iterations > 1 else case["id"]
             extra = f"  {r.reason}" if r.reason else ""
-            print(f"  {tag:<16} {r.status.upper():<8} {r.duration_s:>6.1f}s{extra}")
+            print(f"  {mark(r.status)} {tag:<16} {r.status.upper():<8} "
+                  f"{r.duration_s:>6.1f}s{extra}")
             results.write(run, run_json)
 
             if ctx["investigate"]:

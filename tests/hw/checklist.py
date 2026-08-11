@@ -69,24 +69,34 @@ def load(name):
         return yaml.safe_load(f)
 
 
-def manual_cases(profile, target, cases, profiles):
-    prof = profiles["profiles"].get(profile)
-    if not prof:
-        raise SystemExit(f"unknown profile '{profile}'")
-    overrides = (prof.get("overrides") or {}).get(target, {})
-    out = []
-    for entry in prof["cases"]:
-        case = cases.get(entry["id"])
-        if not case or case.get("mode") == "automated":
+def pending_cases(run_path, cases):
+    """The cases this run is waiting on a person for.
+
+    Read from the run record, not re-derived from the profile. The profile
+    says which cases were meant to run; the record says which ones actually
+    ended up needing a human, and those are no longer the same list.
+
+    A case whose automated form could not run -- no ppps hub on this machine,
+    no loopback cable plugged in today -- demotes to manual at run time, and
+    only the record knows that happened. Deriving the list from the profile
+    would leave exactly the cases most at risk of being skipped silently off
+    the checklist, which is the opposite of what it is for.
+
+    It also keeps genuinely BLOCKED cases out: the profile-driven version
+    could not tell "needs a person" from "cannot be done here at all", and
+    rendered both.
+    """
+    run = results.read(os.path.join(run_path, "run.json"))
+    out, seen = [], set()
+    for r in run.get("results", []):
+        if r.get("status") != results.PENDING or r["id"] in seen:
             continue
-        iterations = overrides.get(case["id"], {}).get(
-            "iterations", entry.get("iterations", 1))
-        if iterations <= 0:
+        case = cases.get(r["id"])
+        if not case:
             continue
-        params = dict(case.get("params") or {})
-        params.update(entry.get("params") or {})
-        params.update((overrides.get(case["id"]) or {}).get("params") or {})
-        out.append((case, params))
+        seen.add(r["id"])
+        params = r.get("params") or dict(case.get("params") or {})
+        out.append((case, params, r.get("reason") or ""))
     return out
 
 
@@ -111,11 +121,21 @@ def render(profile, target, items, run_rel=None):
         "headphone right, only at 96k\" is how the next bug gets found early.",
         "",
     ]
-    for case, params in items:
+    for case, params, reason in items:
         lines.append(f"## {case['id']} -- {case['title']}")
         lines.append("")
         lines.append(f"*{case['level']} · {case['area']} · {case['mode']}*")
         lines.append("")
+        # Why it is here by hand. A case that normally runs automatically is
+        # worth flagging as such: the operator should know the automation
+        # exists and did not run, rather than assume this is how it is done.
+        #
+        # Keyed on the catalog mode, not on the wording of the reason -- a
+        # case that is manual by nature is not "falling back" to anything, and
+        # both reasons happen to mention the checklist.
+        if case.get("mode") != "manual" and reason:
+            lines.append(f"**Automated form could not run here:** {reason}")
+            lines.append("")
         if params:
             lines.append("Parameters: "
                          + ", ".join(f"`{k}={v}`" for k, v in params.items()))
@@ -313,7 +333,6 @@ def main():
         return 0
 
     catalog = load("catalog.yaml")
-    profiles = load("profiles.yaml")
     cases = {c["id"]: c for c in catalog["cases"]}
 
     target = resolve_target(args, targets)
@@ -327,10 +346,10 @@ def main():
     else:
         run_path, _age = resolve_run(root, target, args.profile)
 
-    items = manual_cases(args.profile, target, cases, profiles)
+    items = pending_cases(run_path, cases)
     if not items:
-        sys.exit(f"no manual cases in profile '{args.profile}' "
-                 f"for target '{target}'")
+        sys.exit(f"nothing pending in {os.path.relpath(run_path, root)} -- "
+                 f"every case in that run already has a verdict")
     run_rel = os.path.relpath(run_path, root)
     print(f"checklist: run {run_rel}", file=sys.stderr)
     sys.stdout.write(render(args.profile, target, items, run_rel))

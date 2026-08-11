@@ -60,7 +60,8 @@ that way.
 |---|---|
 | `runner.py` | Coordinator. Runs a profile on this machine and writes a result record. |
 | `catalog.yaml` | The register of every test case, implemented or not. |
-| `targets.yaml` | The machines and kernel flavors tests run on. |
+| `targets.yaml` | The kernel builds tests run against, and the capability vocabulary. |
+| `lib/capabilities.py` | What this machine can actually do right now. |
 | `profiles.yaml` | Which cases run, how many times, with what parameters, per target. |
 | `lib/` | Environment capture, dmesg classification, ALSA helpers, result schema. |
 | `cases/` | One executable per automated case. |
@@ -88,6 +89,45 @@ test user needs to be in the `audio` group, and nothing more.
 The runner executes **on the machine with the hardware attached**, not on a
 build host. That is what lets the same suite run on a Raspberry Pi you plugged
 in five minutes ago.
+
+### Capabilities, and cases that fall back to being done by hand
+
+A case declares what it needs from its surroundings — a device, a loopback
+cable, a person. Those are resolved for **this machine, at run time**, not
+declared per target: `x86_64-debug` and `x86_64-prod` are the same EliteDesk
+booted differently, so a cable plugged into it belongs to both.
+
+Three sources, and only one of them is a file you edit:
+
+| | |
+|---|---|
+| **probed** | the machine is asked — device, root, sox, qemu, the ppps hub |
+| **declared** | `~/.config/jockey3/capabilities.yaml` — speakers, loopback cable, signal source, relay, second unit, quiet machine |
+| **invocation** | `human`, from whether `--unattended` was passed |
+
+The declarations file lives outside the repository on purpose: the working
+tree is a Seafile share, so a file inside it would sync one machine's rig to
+every other. Absent file means everything false, which costs coverage and
+never invents it. A declaration can only take a capability **away** —
+`usb-switch: false` is a useful "do not power-cycle today"; `loopback-cable:
+true` does not put a cable in the socket.
+
+```sh
+./runner.py --profile smoke              # attended: a person is here
+./runner.py --profile smoke --unattended # CI: withhold 'human'
+```
+
+When a capability is missing the case does not simply vanish. If what is
+missing is an **actuator** — the ppps hub, the mains relay, something a person
+can do by hand — and the case carries manual steps, it demotes to manual,
+lands in the checklist, and the coverage survives with only the labor
+changing. Anything else blocks: no controller attached means there is nothing
+for an operator to test either, and a checklist politely asking someone to
+unplug a device that is not there is worse than an honest gap.
+
+Which capabilities held is recorded in every run. Without that, a pass from a
+day the loopback cable was connected reads identically to one taken with it
+coiled on the bench, and `ledger.py` cannot tell coverage from its absence.
 
 ### Manual cases
 
