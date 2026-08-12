@@ -1374,8 +1374,6 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 	u64 now, last, age_ns, outage_ns = 0;
 	bool open = false;
 
-	now = ktime_get_mono_fast_ns();
-
 	/*
 	 * Fall back to the start timestamp until the first completion arrives:
 	 * last_callback_time is legitimately 0 in that window, and treating it
@@ -1386,6 +1384,15 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 		last = atomic64_read(&urb_stream->urbs_started_time);
 	if (!last)
 		return;		/* never started; nothing to watch yet */
+
+	/*
+	 * Sampled after @last, not before: a URB completion on another CPU can
+	 * land between the two reads and advance last_callback_time past a
+	 * @now taken first, and "now - last" then underflows to a u64 near its
+	 * max instead of going negative. Reading @last first guarantees @now
+	 * is taken no earlier than the completion that produced it.
+	 */
+	now = ktime_get_mono_fast_ns();
 
 	age_ns = now - last;
 
