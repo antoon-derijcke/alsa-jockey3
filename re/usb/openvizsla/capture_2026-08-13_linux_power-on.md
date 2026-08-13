@@ -1,7 +1,7 @@
 ---
 capture: capture_2026-08-13_linux_power-on.txt
 captured: 2026-08-13
-platform: linux
+platform: Linux
 host: alsa-test; Elitedesk G2; i5 6500; 32GB ram
 os_version: Linux alsa-test 7.2.0-rc5-alsa-prod+ #4 SMP PREEMPT_DYNAMIC Sun Aug  9 21:11:53 AST 2026 x86_64 GNU/Linux
 driver_version: git acd847724baa05107b2834274a079e0b435910bf
