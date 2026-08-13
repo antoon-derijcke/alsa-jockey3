@@ -82,3 +82,9 @@ it means an idle window and a window full of rejected transfers are
 indistinguishable downstream. Before concluding that a gap is the host
 *waiting*, check the raw trace for that interval -- see
 `init_timing_comparison.md` for a worked example.
+
+## Analysis results
+
+- `init_timing_comparison.md` -- macOS vs Windows vs Linux initialization and
+  rate-change sequences, and the timing the vendor drivers leave that this
+  driver does not.
