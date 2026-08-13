@@ -259,13 +259,18 @@ int ploytec_get_rate(struct usb_interface *intf, void *xfer_buf, u16 index, u32 
  * endpoint and verify from it, which is the invariant that holds across all
  * 58 captured vendor sequences on both platforms:
  *
- *	cold init:	<14 ms>          86 05 86 05 86  then read back from 86
- *	rate change:	86 <10 ms>       86 05 86 05 86  then read back from 86
+ *	cold init:	          <14 ms>  86 05 86 05 86  read back <50 ms>
+ *	rate change:	<50 ms> 86 <10 ms>  86 05 86 05 86  read back <50 ms>
  *
  * The write count itself is not load-bearing -- the captures show between
  * five and seven, varying within a single platform -- but no vendor sequence
  * ends the burst anywhere other than the capture endpoint, and none verifies
  * against the playback endpoint.
+ *
+ * The ~50 ms windows are periods in which the vendor host sends nothing at
+ * all: the raw traces show no tokens, no NAKs and no retries in them, so the
+ * driver is waiting rather than polling. Their width is stable to under 4%
+ * across 58 sequences and does not vary with the sample rate.
  *
  * Return: 0 on success (including when the post-write rate verification
  * detects a mismatch, which is only logged), negative errno if a control
@@ -300,6 +305,14 @@ int ploytec_set_rate(struct usb_interface *intf, void *xfer_buf, u32 rate, bool 
 		 */
 		usleep_range(14000, 15000);
 	} else {
+		/*
+		 * A rate change waits before touching the rate at all. Measured
+		 * at 50.2-51.2 ms on macOS; Windows leaves the same window a
+		 * little earlier in its sequence. See the quiet-window note
+		 * above.
+		 */
+		usleep_range(50000, 51000);
+
 		ret = usb_control_msg_send(dev, 0, PLOYTEC_SET_RATE, PLOYTEC_SET_RATE_TYPE,
 					   0x0100, PLOYTEC_RATE_IDX_PCM_IN,
 					   buf, 3, PLOYTEC_CTRL_TIMEOUT_MS, GFP_KERNEL);
@@ -333,6 +346,14 @@ int ploytec_set_rate(struct usb_interface *intf, void *xfer_buf, u32 rate, bool 
 		else
 			dev_dbg(&intf->dev, "Rate verified as %u Hz\n", current_hw_rate);
 	}
+
+	/*
+	 * Every vendor sequence goes quiet for ~50 ms between verifying the rate
+	 * and programming the status byte, and the caller's next step is
+	 * ploytec_start_streaming(). Measured at 50.2-51.1 ms across both
+	 * platforms and independent of the rate, so there is nothing to scale.
+	 */
+	usleep_range(50000, 51000);
 
 	return 0;
 }
