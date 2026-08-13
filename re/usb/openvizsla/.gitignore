@@ -1,0 +1,18 @@
+# Raw OpenVizsla traces and their full parses run from 50 MB to 2.25 GB and
+# stay out of the repo, as README.md states. Only the reduced outputs and the
+# written analyses are versioned.
+#
+# Nothing enforced this before, so a plain "git add -A" in this directory
+# would have committed well over half a gigabyte.
+
+*.txt
+*.pcap
+*.bz2
+
+# ...except the reduced and extracted products, which are small and are the
+# whole point of keeping the tooling.
+!*_reduced.txt
+!*_events.txt
+!*_no-audio.txt
+!*_truncated.txt
+!*_stripped.txt
