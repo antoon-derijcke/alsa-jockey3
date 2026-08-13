@@ -1,0 +1,1569 @@
+Timestamp    | Direction  | Target   | Bytes | Payload Data
+----------------------------------------------------------------------------------------------------
+0.302120     | IN         | 8.3      | 5     | fd fd fd 90 fd
+0.303016     | IN         | 8.3      | 5     | fd fd 0c 7f fd
+0.400918     | IN         | 8.3      | 5     | fd fd fd 90 fd
+0.402067     | IN         | 8.3      | 5     | fd fd 0c 00 fd
+1.628623     | IN         | 8.3      | 5     | fd fd fd 90 fd
+1.629042     | IN         | 8.3      | 5     | fd fd fd 0c fd
+1.630180     | IN         | 8.3      | 5     | fd fd fd 7f fd
+1.687513     | IN         | 8.3      | 5     | fd fd fd 90 fd
+1.688233     | IN         | 8.3      | 5     | fd fd fd 0c fd
+1.689115     | IN         | 8.3      | 5     | fd fd fd 00 fd
+1.756641     | IN         | 8.3      | 5     | fd fd fd 90 fd
+1.757545     | IN         | 8.3      | 5     | fd fd fd 0c fd
+1.758001     | IN         | 8.3      | 5     | fd fd fd 7f fd
+1.815778     | IN         | 8.3      | 5     | fd fd fd 90 fd
+1.816246     | IN         | 8.3      | 5     | fd fd fd 0c fd
+1.817144     | IN         | 8.3      | 5     | fd fd fd 00 fd
+2.013183     | IN         | 8.3      | 5     | fd fd fd 90 fd
+2.014081     | IN         | 8.3      | 5     | fd fd 0c 7f fd
+2.062361     | IN         | 8.3      | 5     | fd fd fd 90 fd
+2.063078     | IN         | 8.3      | 5     | fd fd fd 0c fd
+2.064205     | IN         | 8.3      | 5     | fd fd fd 00 fd
+2.752691     | IN         | 8.3      | 5     | fd fd fd 90 fd
+2.753141     | IN         | 8.3      | 5     | fd fd fd 0d fd
+2.754045     | IN         | 8.3      | 5     | fd fd fd 7f fd
+2.811870     | IN         | 8.3      | 5     | fd fd fd 90 fd
+2.812322     | IN         | 8.3      | 5     | fd fd fd 0d fd
+2.813227     | IN         | 8.3      | 5     | fd fd fd 00 fd
+3.323342     | IN         | 8.3      | 5     | fd fd fd 90 fd
+3.324240     | IN         | 8.3      | 5     | fd fd 0c 7f fd
+3.372752     | IN         | 8.3      | 5     | fd fd fd 90 fd
+3.373192     | IN         | 8.3      | 5     | fd fd fd 0c fd
+3.374139     | IN         | 8.3      | 5     | fd fd fd 00 fd
+3.441863     | IN         | 8.3      | 5     | fd fd fd 90 fd
+3.442334     | IN         | 8.3      | 5     | fd fd fd 0c fd
+3.443232     | IN         | 8.3      | 5     | fd fd fd 7f fd
+3.490592     | IN         | 8.3      | 5     | fd fd fd 90 fd
+3.491279     | IN         | 8.3      | 5     | fd fd fd 0c fd
+3.492194     | IN         | 8.3      | 5     | fd fd fd 00 fd
+3.745780     | IN         | 8.3      | 5     | fd fd fd 90 fd
+3.746236     | IN         | 8.3      | 5     | fd fd fd 0c fd
+3.747145     | IN         | 8.3      | 5     | fd fd fd 7f fd
+3.804979     | IN         | 8.3      | 5     | fd fd fd 90 fd
+3.805378     | IN         | 8.3      | 5     | fd fd fd 0c fd
+3.806335     | IN         | 8.3      | 5     | fd fd fd 00 fd
+4.021827     | IN         | 8.3      | 5     | fd fd fd 90 fd
+4.022271     | IN         | 8.3      | 5     | fd fd fd 0d fd
+4.023217     | IN         | 8.3      | 5     | fd fd fd 7f fd
+4.081430     | IN         | 8.3      | 5     | fd fd fd 90 fd
+4.082102     | IN         | 8.3      | 5     | fd fd fd 0d fd
+4.083236     | IN         | 8.3      | 5     | fd fd fd 00 fd
+4.299892     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.300354     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.301252     | IN         | 8.3      | 5     | fd fd fd 3f fd
+4.308271     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.309191     | IN         | 8.3      | 5     | fd fd 28 3e fd
+4.317371     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.318261     | IN         | 8.3      | 5     | fd fd 28 3b fd
+4.325959     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.326417     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.327315     | IN         | 8.3      | 5     | fd fd fd 36 fd
+4.335249     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.336147     | IN         | 8.3      | 5     | fd fd 28 30 fd
+4.341817     | IN         | 8.3      | 5     | fd fd fd 90 fd
+4.342277     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.343179     | IN         | 8.3      | 5     | fd fd fd 7f fd
+4.344317     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.345216     | IN         | 8.3      | 5     | fd fd 28 2a fd
+4.353373     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.354296     | IN         | 8.3      | 5     | fd fd 28 23 fd
+4.362211     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.363155     | IN         | 8.3      | 5     | fd fd 28 1d fd
+4.371545     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.372182     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.373115     | IN         | 8.3      | 5     | fd fd fd 16 fd
+4.380364     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.381255     | IN         | 8.3      | 5     | fd fd 28 14 fd
+4.389183     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.390349     | IN         | 8.3      | 5     | fd fd 28 12 fd
+4.398501     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.399162     | IN         | 8.3      | 5     | fd fd 28 0f fd
+4.407108     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.407593     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.408463     | IN         | 8.3      | 5     | fd fd fd 12 fd
+4.409139     | IN         | 8.3      | 5     | fd fd 90 28 fd
+4.410265     | IN         | 8.3      | 5     | fd fd fd 00 fd
+4.416155     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.417287     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.418237     | IN         | 8.3      | 5     | fd fd fd 11 fd
+4.425001     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.425463     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.426138     | IN         | 8.3      | 5     | fd fd fd 12 fd
+4.434281     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.435198     | IN         | 8.3      | 5     | fd fd 28 10 fd
+4.443366     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.444266     | IN         | 8.3      | 5     | fd fd 28 12 fd
+4.452640     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.453340     | IN         | 8.3      | 5     | fd fd 28 10 fd
+4.461506     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.462215     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.463299     | IN         | 8.3      | 5     | fd fd fd 13 fd
+4.470324     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.471220     | IN         | 8.3      | 5     | fd fd 28 13 fd
+4.479619     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.480300     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.481199     | IN         | 8.3      | 5     | fd fd fd 10 fd
+4.488448     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.489162     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.490303     | IN         | 8.3      | 5     | fd fd fd 14 fd
+4.497291     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.498237     | IN         | 8.3      | 5     | fd fd 28 13 fd
+4.506576     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.507496     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.508169     | IN         | 8.3      | 5     | fd fd fd 10 fd
+4.515417     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.516342     | IN         | 8.3      | 5     | fd fd 28 13 fd
+4.524262     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.525160     | IN         | 8.3      | 5     | fd fd 28 15 fd
+4.533543     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.534239     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.535144     | IN         | 8.3      | 5     | fd fd fd 11 fd
+4.542387     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.543291     | IN         | 8.3      | 5     | fd fd 28 14 fd
+4.551469     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.552144     | IN         | 8.3      | 5     | fd fd 28 13 fd
+4.560513     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.561202     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.562122     | IN         | 8.3      | 5     | fd fd fd 12 fd
+4.569595     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.570264     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.571181     | IN         | 8.3      | 5     | fd fd fd 14 fd
+4.578872     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.579329     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.580247     | IN         | 8.3      | 5     | fd fd fd 12 fd
+4.587499     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.588220     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.589303     | IN         | 8.3      | 5     | fd fd fd 15 fd
+4.596330     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.597227     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.598134     | IN         | 8.3      | 5     | fd fd fd 14 fd
+4.605624     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.606306     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.607203     | IN         | 8.3      | 5     | fd fd fd 12 fd
+4.614681     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.615149     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.616311     | IN         | 8.3      | 5     | fd fd fd 16 fd
+4.623534     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.624196     | IN         | 8.3      | 5     | fd fd 28 14 fd
+4.632847     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.633266     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.634172     | IN         | 8.3      | 5     | fd fd fd 15 fd
+4.641661     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.642136     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.643247     | IN         | 8.3      | 5     | fd fd fd 22 fd
+4.650274     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.651171     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.652298     | IN         | 8.3      | 5     | fd fd fd 2b fd
+4.659782     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.660245     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.661150     | IN         | 8.3      | 5     | fd fd fd 30 fd
+4.668401     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.669297     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.670224     | IN         | 8.3      | 5     | fd fd fd 36 fd
+4.674745     | IN         | 8.3      | 5     | fd fd fd 90 fd
+4.675206     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.676333     | IN         | 8.3      | 5     | fd fd fd 7f fd
+4.677474     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.678149     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.679275     | IN         | 8.3      | 5     | fd fd fd 3c fd
+4.686981     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.687676     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.688392     | IN         | 8.3      | 5     | fd fd fd 3f fd
+4.698996     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.699445     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.700129     | IN         | 8.3      | 5     | fd fd fd 3f fd
+4.707372     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.708293     | IN         | 8.3      | 5     | fd fd 28 3f fd
+4.716210     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.717122     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.718284     | IN         | 8.3      | 5     | fd fd fd 3e fd
+4.725061     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.725546     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.726184     | IN         | 8.3      | 5     | fd fd fd 3e fd
+4.734383     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.735256     | IN         | 8.3      | 5     | fd fd 28 3c fd
+4.743188     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.744310     | IN         | 8.3      | 5     | fd fd 28 3c fd
+4.752266     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.753164     | IN         | 8.3      | 5     | fd fd 28 3b fd
+4.761314     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.762234     | IN         | 8.3      | 5     | fd fd 28 3b fd
+4.770147     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.771289     | IN         | 8.3      | 5     | fd fd 28 3b fd
+4.779493     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.780133     | IN         | 8.3      | 5     | fd fd 28 3c fd
+4.788280     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.789202     | IN         | 8.3      | 5     | fd fd 28 3d fd
+4.797355     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.798256     | IN         | 8.3      | 5     | fd fd 28 3d fd
+4.806233     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.807325     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.808230     | IN         | 8.3      | 5     | fd fd fd 3f fd
+4.815024     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.815480     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.816155     | IN         | 8.3      | 5     | fd fd fd 3f fd
+4.828395     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.829315     | IN         | 8.3      | 5     | fd fd 28 41 fd
+4.837231     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.838195     | IN         | 8.3      | 5     | fd fd 28 41 fd
+4.846079     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.847003     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.847441     | IN         | 8.3      | 5     | fd fd fd 43 fd
+4.855403     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.856276     | IN         | 8.3      | 5     | fd fd 28 44 fd
+4.864205     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.865370     | IN         | 8.3      | 5     | fd fd 28 44 fd
+4.873050     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.873523     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.874180     | IN         | 8.3      | 5     | fd fd fd 46 fd
+4.882382     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.883239     | IN         | 8.3      | 5     | fd fd 28 48 fd
+4.891176     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.892308     | IN         | 8.3      | 5     | fd fd 28 4b fd
+4.900508     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.901175     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.902286     | IN         | 8.3      | 5     | fd fd fd 4e fd
+4.909315     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.910216     | IN         | 8.3      | 5     | fd fd 28 51 fd
+4.918149     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.919286     | IN         | 8.3      | 5     | fd fd 28 54 fd
+4.927217     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.928344     | IN         | 8.3      | 5     | fd fd 28 58 fd
+4.936525     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.937176     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.938321     | IN         | 8.3      | 5     | fd fd fd 5a fd
+4.945111     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.945572     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.946242     | IN         | 8.3      | 5     | fd fd fd 5a fd
+4.954399     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.955320     | IN         | 8.3      | 5     | fd fd 28 5e fd
+4.963237     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.964165     | IN         | 8.3      | 5     | fd fd 28 60 fd
+4.972312     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.973237     | IN         | 8.3      | 5     | fd fd 28 64 fd
+4.981401     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.982282     | IN         | 8.3      | 5     | fd fd 28 66 fd
+4.990009     | IN         | 8.3      | 5     | fd fd fd b0 fd
+4.990438     | IN         | 8.3      | 5     | fd fd fd 28 fd
+4.991363     | IN         | 8.3      | 5     | fd fd fd 6a fd
+4.999316     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.000189     | IN         | 8.3      | 5     | fd fd 28 6e fd
+5.008114     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.008564     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.009278     | IN         | 8.3      | 5     | fd fd fd 6c fd
+5.017408     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.018312     | IN         | 8.3      | 5     | fd fd 28 6e fd
+5.026244     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.027180     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.028283     | IN         | 8.3      | 5     | fd fd fd 6c fd
+5.035097     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.035534     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.036240     | IN         | 8.3      | 5     | fd fd fd 6c fd
+5.040118     | IN         | 8.3      | 5     | fd fd fd 90 fd
+5.040528     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.041213     | IN         | 8.3      | 5     | fd fd fd 00 fd
+5.044155     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.045292     | IN         | 8.3      | 5     | fd fd 28 6b fd
+5.053450     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.054348     | IN         | 8.3      | 5     | fd fd 28 6e fd
+5.062279     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.063241     | IN         | 8.3      | 5     | fd fd 28 6b fd
+5.071577     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.072248     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.073155     | IN         | 8.3      | 5     | fd fd fd 6e fd
+5.080193     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.081326     | IN         | 8.3      | 5     | fd fd 28 69 fd
+5.089476     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.090167     | IN         | 8.3      | 5     | fd fd 28 6d fd
+5.098318     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.099264     | IN         | 8.3      | 5     | fd fd 28 6b fd
+5.107629     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.108293     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.109189     | IN         | 8.3      | 5     | fd fd fd 6d fd
+5.116217     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.117368     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.118270     | IN         | 8.3      | 5     | fd fd fd 6a fd
+5.125295     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.126192     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.127319     | IN         | 8.3      | 5     | fd fd fd 6b fd
+5.134393     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.135265     | IN         | 8.3      | 5     | fd fd 28 6b fd
+5.143008     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.143422     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.144316     | IN         | 8.3      | 5     | fd fd fd 69 fd
+5.152034     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.152716     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.153164     | IN         | 8.3      | 5     | fd fd fd 6b fd
+5.161329     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.162227     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.163141     | IN         | 8.3      | 5     | fd fd fd 6b fd
+5.170412     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.171298     | IN         | 8.3      | 5     | fd fd 28 6b fd
+5.179456     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.180142     | IN         | 8.3      | 5     | fd fd 28 6a fd
+5.188071     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.188517     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.189205     | IN         | 8.3      | 5     | fd fd fd 69 fd
+5.197582     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.198298     | IN         | 8.3      | 5     | fd fd 28 6c fd
+5.206460     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.207331     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.208231     | IN         | 8.3      | 5     | fd fd fd 69 fd
+5.215482     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.216167     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.217309     | IN         | 8.3      | 5     | fd fd fd 69 fd
+5.224093     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.224560     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.225269     | IN         | 8.3      | 5     | fd fd fd 68 fd
+5.233666     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.234292     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.235199     | IN         | 8.3      | 5     | fd fd fd 6c fd
+5.242220     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.243145     | IN         | 8.3      | 5     | fd fd 28 67 fd
+5.251090     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.251770     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.252197     | IN         | 8.3      | 5     | fd fd fd 69 fd
+5.260398     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.261303     | IN         | 8.3      | 5     | fd fd 28 69 fd
+5.269425     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.270323     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.271250     | IN         | 8.3      | 5     | fd fd fd 6a fd
+5.278257     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.279177     | IN         | 8.3      | 5     | fd fd 28 68 fd
+5.287335     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.288251     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.289147     | IN         | 8.3      | 5     | fd fd fd 69 fd
+5.296397     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.297295     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.298212     | IN         | 8.3      | 5     | fd fd fd 68 fd
+5.305462     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.306131     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.307281     | IN         | 8.3      | 5     | fd fd fd 69 fd
+5.314291     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.315211     | IN         | 8.3      | 5     | fd fd 28 67 fd
+5.323127     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.323583     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.324292     | IN         | 8.3      | 5     | fd fd fd 64 fd
+5.332204     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.333334     | IN         | 8.3      | 5     | fd fd 28 60 fd
+5.341293     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.342172     | IN         | 8.3      | 5     | fd fd 28 5d fd
+5.350363     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.351266     | IN         | 8.3      | 5     | fd fd 28 59 fd
+5.358713     | IN         | 8.3      | 5     | fd fd fd 90 fd
+5.359173     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.360298     | IN         | 8.3      | 5     | fd fd 7f b0 fd
+5.361204     | IN         | 8.3      | 5     | fd fd 28 55 fd
+5.368228     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.369136     | IN         | 8.3      | 5     | fd fd 28 51 fd
+5.377299     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.378203     | IN         | 8.3      | 5     | fd fd 28 50 fd
+5.386380     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.387276     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.388184     | IN         | 8.3      | 5     | fd fd fd 4b fd
+5.394987     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.395424     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.396384     | IN         | 8.3      | 5     | fd fd fd 4a fd
+5.404262     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.405175     | IN         | 8.3      | 5     | fd fd 28 48 fd
+5.413111     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.413556     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.414238     | IN         | 8.3      | 5     | fd fd fd 46 fd
+5.422411     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.423306     | IN         | 8.3      | 5     | fd fd 28 45 fd
+5.431241     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.432140     | IN         | 8.3      | 5     | fd fd 28 45 fd
+5.440082     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.440536     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.441217     | IN         | 8.3      | 5     | fd fd fd 44 fd
+5.445060     | IN         | 8.3      | 5     | fd fd fd 90 fd
+5.445559     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.446233     | IN         | 8.3      | 5     | fd fd fd 00 fd
+5.449365     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.450310     | IN         | 8.3      | 5     | fd fd 28 44 fd
+5.458444     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.459344     | IN         | 8.3      | 5     | fd fd 28 44 fd
+5.467299     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.468178     | IN         | 8.3      | 5     | fd fd 28 44 fd
+5.476334     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.477259     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.478161     | IN         | 8.3      | 5     | fd fd fd 44 fd
+5.485178     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.486311     | IN         | 8.3      | 5     | fd fd 28 43 fd
+5.494510     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.495141     | IN         | 8.3      | 5     | fd fd 28 44 fd
+5.503312     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.504210     | IN         | 8.3      | 5     | fd fd 28 43 fd
+5.512386     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.513282     | IN         | 8.3      | 5     | fd fd 28 44 fd
+5.521261     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.522389     | IN         | 8.3      | 5     | fd fd 28 43 fd
+5.530554     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.531188     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.532313     | IN         | 8.3      | 5     | fd fd fd 43 fd
+5.539337     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.540287     | IN         | 8.3      | 5     | fd fd 28 43 fd
+5.548408     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.549313     | IN         | 8.3      | 5     | fd fd 28 42 fd
+5.557245     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.558190     | IN         | 8.3      | 5     | fd fd 28 42 fd
+5.566784     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.567439     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.568347     | IN         | 8.3      | 5     | fd fd fd 42 fd
+5.575188     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.576292     | IN         | 8.3      | 5     | fd fd 28 41 fd
+5.583987     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.584668     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.585350     | IN         | 8.3      | 5     | fd fd fd 41 fd
+5.593092     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.593556     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.594191     | IN         | 8.3      | 5     | fd fd fd 41 fd
+5.602338     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.603265     | IN         | 8.3      | 5     | fd fd 28 41 fd
+5.611189     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.612317     | IN         | 8.3      | 5     | fd fd 28 41 fd
+5.620289     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.621167     | IN         | 8.3      | 5     | fd fd fd 28 fd
+5.622292     | IN         | 8.3      | 5     | fd fd fd 41 fd
+5.629318     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.630266     | IN         | 8.3      | 5     | fd fd 28 41 fd
+5.640194     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.641333     | IN         | 8.3      | 5     | fd fd 28 41 fd
+5.667171     | IN         | 8.3      | 5     | fd fd fd b0 fd
+5.668294     | IN         | 8.3      | 5     | fd fd 28 41 fd
+5.790044     | IN         | 8.3      | 5     | fd fd fd 90 fd
+5.790448     | IN         | 8.3      | 5     | fd fd fd 16 fd
+5.791357     | IN         | 8.3      | 5     | fd fd fd 7f fd
+6.116575     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.117475     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.118396     | IN         | 8.3      | 5     | fd fd fd 3f fd
+6.125412     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.126314     | IN         | 8.3      | 5     | fd fd 22 3c fd
+6.134259     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.135386     | IN         | 8.3      | 5     | fd fd 22 35 fd
+6.140145     | IN         | 8.3      | 5     | fd fd fd 90 fd
+6.140634     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.141271     | IN         | 8.3      | 5     | fd fd fd 7f fd
+6.143309     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.144250     | IN         | 8.3      | 5     | fd fd 22 2d fd
+6.152613     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.153295     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.154232     | IN         | 8.3      | 5     | fd fd fd 24 fd
+6.161443     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.162356     | IN         | 8.3      | 5     | fd fd 22 1b fd
+6.170510     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.171193     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.172318     | IN         | 8.3      | 5     | fd fd fd 14 fd
+6.179584     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.180251     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.181388     | IN         | 8.3      | 5     | fd fd fd 13 fd
+6.187959     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.188636     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.189345     | IN         | 8.3      | 5     | fd fd fd 14 fd
+6.193415     | IN         | 8.3      | 5     | fd fd fd 90 fd
+6.194317     | IN         | 8.3      | 5     | fd fd 22 00 fd
+6.197251     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.198421     | IN         | 8.3      | 5     | fd fd 22 11 fd
+6.206562     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.207445     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.208358     | IN         | 8.3      | 5     | fd fd fd 12 fd
+6.215430     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.216312     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.217205     | IN         | 8.3      | 5     | fd fd fd 13 fd
+6.223991     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.224673     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.225357     | IN         | 8.3      | 5     | fd fd fd 14 fd
+6.233292     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.234193     | IN         | 8.3      | 5     | fd fd 22 12 fd
+6.242386     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.243263     | IN         | 8.3      | 5     | fd fd 22 13 fd
+6.251418     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.252320     | IN         | 8.3      | 5     | fd fd 22 12 fd
+6.260026     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.260493     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.261391     | IN         | 8.3      | 5     | fd fd fd 15 fd
+6.269093     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.269544     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.270267     | IN         | 8.3      | 5     | fd fd fd 13 fd
+6.278611     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.279300     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.280197     | IN         | 8.3      | 5     | fd fd fd 11 fd
+6.287219     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.288361     | IN         | 8.3      | 5     | fd fd 22 15 fd
+6.296743     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.297698     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.298359     | IN         | 8.3      | 5     | fd fd fd 12 fd
+6.305383     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.306295     | IN         | 8.3      | 5     | fd fd 22 16 fd
+6.313972     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.314641     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.315324     | IN         | 8.3      | 5     | fd fd fd 14 fd
+6.323255     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.324427     | IN         | 8.3      | 5     | fd fd 22 14 fd
+6.332134     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.332567     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.333233     | IN         | 8.3      | 5     | fd fd fd 15 fd
+6.341435     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.342303     | IN         | 8.3      | 5     | fd fd 22 13 fd
+6.350239     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.351358     | IN         | 8.3      | 5     | fd fd 22 15 fd
+6.359076     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.359531     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.360199     | IN         | 8.3      | 5     | fd fd fd 15 fd
+6.368394     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.369272     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.370405     | IN         | 8.3      | 5     | fd fd fd 13 fd
+6.377194     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.378324     | IN         | 8.3      | 5     | fd fd 22 16 fd
+6.386033     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.387180     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.387633     | IN         | 8.3      | 5     | fd fd fd 16 fd
+6.395328     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.396274     | IN         | 8.3      | 5     | fd fd 22 14 fd
+6.404174     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.404624     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.405320     | IN         | 8.3      | 5     | fd fd fd 16 fd
+6.413009     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.413454     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.414367     | IN         | 8.3      | 5     | fd fd fd 16 fd
+6.422321     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.423204     | IN         | 8.3      | 5     | fd fd 22 15 fd
+6.431134     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.431629     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.432264     | IN         | 8.3      | 5     | fd fd fd 17 fd
+6.440432     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.441330     | IN         | 8.3      | 5     | fd fd 22 23 fd
+6.449521     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.450409     | IN         | 8.3      | 5     | fd fd 22 2e fd
+6.458339     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.459238     | IN         | 8.3      | 5     | fd fd 22 39 fd
+6.465808     | IN         | 8.3      | 5     | fd fd fd 90 fd
+6.466488     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.467407     | IN         | 8.3      | 5     | fd fd fd 7f fd
+6.468302     | IN         | 8.3      | 5     | fd fd b0 22 fd
+6.469213     | IN         | 8.3      | 5     | fd fd fd 3e fd
+6.476002     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.476467     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.477366     | IN         | 8.3      | 5     | fd fd fd 42 fd
+6.485534     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.486207     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.487342     | IN         | 8.3      | 5     | fd fd fd 43 fd
+6.494151     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.494589     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.495274     | IN         | 8.3      | 5     | fd fd fd 44 fd
+6.502981     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.503429     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.504333     | IN         | 8.3      | 5     | fd fd fd 41 fd
+6.512277     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.513400     | IN         | 8.3      | 5     | fd fd 22 41 fd
+6.521104     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.521604     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.522280     | IN         | 8.3      | 5     | fd fd fd 41 fd
+6.625143     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.625809     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.626268     | IN         | 8.3      | 5     | fd fd fd 41 fd
+6.650060     | IN         | 8.3      | 5     | fd fd fd b0 fd
+6.650519     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.651234     | IN         | 8.3      | 5     | fd fd fd 41 fd
+6.682707     | IN         | 8.3      | 5     | fd fd fd 90 fd
+6.683406     | IN         | 8.3      | 5     | fd fd fd 22 fd
+6.684296     | IN         | 8.3      | 5     | fd fd fd 00 fd
+7.380069     | OUT        | 8.2      | 1     | 00
+7.556122     | OUT        | 8.2      | 0     | []
+7.665687     | OUT        | 8.2      | 1     | 00
+7.701405     | OUT        | 8.2      | 1     | 00
+7.765784     | OUT        | 8.5      | 0     | []
+7.881190     | OUT        | 8.2      | 1     | 00
+7.884859     | OUT        | 8.2      | 1     | 00
+7.897116     | OUT        | 8.2      | 1     | 00
+7.932903     | IN         | 8.6      | 0     | []
+7.971934     | IN         | 8.6      | 0     | []
+7.982285     | IN         | 8.3      | 0     | []
+8.132652     | OUT        | 8.2      | 1     | 00
+8.177740     | OUT        | 8.5      | 0     | []
+8.397024     | OUT        | 8.2      | 1     | 00
+8.477036     | OUT        | 8.2      | 1     | 00
+8.569445     | OUT        | 8.5      | 0     | []
+8.606500     | OUT        | 8.2      | 1     | 00
+8.986811     | OUT        | 8.5      | 0     | []
+9.037026     | IN         | 8.6      | 0     | []
+9.157116     | IN         | 8.6      | 0     | []
+9.164182     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.170278     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.170874     | IN         | 8.3      | 5     | fd fd fd 32 fd
+9.173714     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.176507     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.183044     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.183541     | IN         | 8.3      | 5     | fd fd fd 14 fd
+9.186282     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.186690     | IN         | 8.3      | 5     | fd fd fd 12 fd
+9.189742     | IN         | 8.3      | 5     | fd fd b0 22 fd
+9.192965     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.196467     | IN         | 8.3      | 5     | fd fd fd 14 fd
+9.198963     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.199438     | IN         | 8.3      | 5     | fd fd fd 14 fd
+9.202056     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.202516     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.202614     | IN         | 8.3      | 5     | fd fd fd 12 fd
+9.205558     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.208777     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.211431     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.212016     | IN         | 8.3      | 5     | fd fd fd 14 fd
+9.214752     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.215053     | IN         | 8.3      | 5     | fd fd fd 13 fd
+9.217749     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.221093     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.224668     | IN         | 8.3      | 5     | fd fd 22 14 fd
+9.227132     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.227531     | IN         | 8.3      | 5     | fd fd fd 15 fd
+9.230636     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.237144     | IN         | 8.3      | 5     | fd fd fd 14 fd
+9.239766     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.243013     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.249471     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.249771     | IN         | 8.3      | 5     | fd fd fd 15 fd
+9.252466     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.255615     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.258735     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.261881     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.262379     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.265380     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.265790     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.270865     | IN         | 8.6      | 0     | []
+9.274713     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.278041     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.284400     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.284728     | IN         | 8.3      | 5     | fd fd fd 17 fd
+9.296830     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.297099     | IN         | 8.3      | 5     | fd fd fd 18 fd
+9.299992     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.303241     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.306645     | IN         | 8.3      | 5     | fd fd fd 18 fd
+9.309050     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.309464     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.312623     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.319042     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.319388     | IN         | 8.3      | 5     | fd fd fd 18 fd
+9.322431     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.325353     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.332144     | IN         | 8.3      | 5     | fd fd fd 18 fd
+9.334761     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.335371     | IN         | 8.3      | 5     | fd fd fd 18 fd
+9.338127     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.340144     | IN         | 8.6      | 0     | []
+9.341561     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.344423     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.345841     | OUT        | 8.2      | 1     | 00
+9.350539     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.350715     | IN         | 8.3      | 5     | fd fd fd 19 fd
+9.353433     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.360095     | IN         | 8.3      | 5     | fd fd fd 1a fd
+9.362524     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.362894     | IN         | 8.3      | 5     | fd fd fd 1b fd
+9.366284     | IN         | 8.3      | 5     | fd fd fd 19 fd
+9.372206     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.372725     | IN         | 8.3      | 5     | fd fd fd 19 fd
+9.374999     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.375552     | IN         | 8.3      | 5     | fd fd fd 1c fd
+9.378348     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.378780     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.384732     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.385208     | IN         | 8.3      | 5     | fd fd fd 1c fd
+9.387858     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.391008     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.393097     | OUT        | 8.2      | 1     | 00
+9.393977     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.394436     | IN         | 8.3      | 5     | fd fd fd 1c fd
+9.397344     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.400545     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.403696     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.404467     | IN         | 8.3      | 5     | fd fd fd 19 fd
+9.406902     | IN         | 8.3      | 5     | fd fd 22 1c fd
+9.412119     | OUT        | 8.5      | 0     | []
+9.412796     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.416242     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.416394     | IN         | 8.3      | 5     | fd fd fd 1c fd
+9.419226     | IN         | 8.3      | 5     | fd fd 22 1d fd
+9.421980     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.425053     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.428870     | IN         | 8.3      | 5     | fd fd fd 1b fd
+9.432097     | IN         | 8.3      | 5     | fd fd fd 1d fd
+9.434761     | IN         | 8.3      | 5     | fd fd 22 1d fd
+9.437805     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.444652     | IN         | 8.3      | 5     | fd fd 22 1d fd
+9.447581     | IN         | 8.3      | 5     | fd fd 22 1e fd
+9.450466     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.453835     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.460003     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.460507     | IN         | 8.3      | 5     | fd fd fd 1d fd
+9.463162     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.463441     | IN         | 8.3      | 5     | fd fd fd 1e fd
+9.473218     | IN         | 8.3      | 5     | fd fd fd 1f fd
+9.475874     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.476252     | IN         | 8.3      | 5     | fd fd fd 1f fd
+9.479043     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.479928     | OUT        | 8.2      | 1     | 00
+9.485874     | IN         | 8.3      | 5     | fd fd fd 1e fd
+9.488560     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.495609     | IN         | 8.3      | 5     | fd fd fd 1e fd
+9.495662     | OUT        | 8.5      | 0     | []
+9.498647     | IN         | 8.3      | 5     | fd fd fd 20 fd
+9.501296     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.504589     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.511508     | IN         | 8.3      | 5     | fd fd fd 20 fd
+9.514202     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.517537     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.523782     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.524443     | IN         | 8.3      | 5     | fd fd fd 20 fd
+9.527005     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.530141     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.536373     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.536880     | IN         | 8.3      | 5     | fd fd fd 21 fd
+9.539872     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.543075     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.549427     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.552633     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.555703     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.561999     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.562112     | IN         | 8.3      | 5     | fd fd fd 23 fd
+9.564744     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.565171     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.568129     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.571659     | IN         | 8.3      | 5     | fd fd 22 23 fd
+9.574691     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.578042     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.579376     | OUT        | 8.5      | 0     | []
+9.581198     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.584696     | IN         | 8.3      | 5     | fd fd 22 26 fd
+9.587646     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.590506     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.591584     | IN         | 8.3      | 5     | fd fd fd 2a fd
+9.597204     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.600175     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.606702     | IN         | 8.3      | 5     | fd fd fd 30 fd
+9.609281     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.609588     | IN         | 8.3      | 5     | fd fd fd 30 fd
+9.612866     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.618932     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.621854     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.621995     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.625019     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.628200     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.631879     | IN         | 8.3      | 5     | fd fd fd 33 fd
+9.634808     | IN         | 8.3      | 5     | fd fd fd 33 fd
+9.637911     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.641392     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.647477     | IN         | 8.3      | 5     | fd fd 22 33 fd
+9.650138     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.653459     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.659240     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.662365     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.668377     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.668836     | IN         | 8.3      | 5     | fd fd fd 35 fd
+9.671531     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.674931     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.678340     | IN         | 8.3      | 5     | fd fd 22 34 fd
+9.683950     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.684393     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.687367     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.691123     | IN         | 8.3      | 5     | fd fd 22 34 fd
+9.693766     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.696558     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.696786     | OUT        | 8.2      | 1     | 00
+9.704712     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.711496     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.714560     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.717338     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.720634     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.724206     | IN         | 8.3      | 5     | fd fd fd 35 fd
+9.726838     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.727385     | IN         | 8.3      | 5     | fd fd fd 36 fd
+9.730126     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.733462     | IN         | 8.3      | 5     | fd fd fd 36 fd
+9.736300     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.736750     | IN         | 8.3      | 5     | fd fd fd 36 fd
+9.746255     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.746560     | IN         | 8.3      | 5     | fd fd fd 36 fd
+9.748744     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.749398     | IN         | 8.3      | 5     | fd fd fd 37 fd
+9.752078     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.755096     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.755628     | IN         | 8.3      | 5     | fd fd fd 37 fd
+9.758022     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.768148     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.768557     | IN         | 8.3      | 5     | fd fd fd 37 fd
+9.771128     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.775095     | IN         | 8.3      | 5     | fd fd fd 38 fd
+9.777585     | IN         | 8.3      | 5     | fd fd 22 37 fd
+9.780325     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.792588     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.799027     | IN         | 8.3      | 5     | fd fd fd 38 fd
+9.801585     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.810970     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.814452     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.821184     | IN         | 8.3      | 5     | fd fd fd 39 fd
+9.823794     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.824248     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.824372     | IN         | 8.3      | 5     | fd fd fd 39 fd
+9.827356     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.836538     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.836697     | IN         | 8.3      | 5     | fd fd fd 3a fd
+9.838370     | OUT        | 8.2      | 1     | 00
+9.839790     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.850334     | IN         | 8.3      | 5     | fd fd fd 3a fd
+9.852622     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.853065     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.855932     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.859122     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.862283     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.862719     | IN         | 8.3      | 5     | fd fd fd 3b fd
+9.865361     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.875173     | IN         | 8.3      | 5     | fd fd fd 3b fd
+9.878132     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.884057     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.884625     | IN         | 8.3      | 5     | fd fd fd 3b fd
+9.886991     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.887463     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.890756     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.897296     | IN         | 8.3      | 5     | fd fd fd 3b fd
+9.899685     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.900089     | IN         | 8.3      | 5     | fd fd fd 3b fd
+9.902931     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.909076     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.909458     | IN         | 8.3      | 5     | fd fd fd 3b fd
+9.912314     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.912810     | IN         | 8.3      | 5     | fd fd fd 3b fd
+9.915549     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.922412     | IN         | 8.3      | 5     | fd fd 22 3b fd
+9.925029     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.925494     | OUT        | 8.5      | 0     | []
+9.925701     | IN         | 8.3      | 5     | fd fd fd 3c fd
+9.928149     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.931774     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.934787     | IN         | 8.3      | 5     | fd fd fd 3c fd
+9.937202     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.937645     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.937820     | IN         | 8.3      | 5     | fd fd fd 3c fd
+9.940375     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.947066     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.947557     | IN         | 8.3      | 5     | fd fd fd 3c fd
+9.950227     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.950483     | IN         | 8.3      | 5     | fd fd fd 3d fd
+9.953379     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.956522     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.962725     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.963258     | IN         | 8.3      | 5     | fd fd fd 3d fd
+9.965635     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.969013     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.975367     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.975802     | IN         | 8.3      | 5     | fd fd fd 3d fd
+9.988112     | IN         | 8.3      | 5     | fd fd fd b0 fd
+9.988464     | IN         | 8.3      | 5     | fd fd fd 3d fd
+9.991363     | IN         | 8.3      | 5     | fd fd fd 22 fd
+9.994768     | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.000336    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.000871    | IN         | 8.3      | 5     | fd fd fd 3d fd
+10.004091    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.010444    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.011000    | IN         | 8.3      | 5     | fd fd fd 3d fd
+10.013411    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.013865    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.013914    | IN         | 8.3      | 5     | fd fd fd 3e fd
+10.016532    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.022771    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.023407    | IN         | 8.3      | 5     | fd fd fd 3e fd
+10.026251    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.032859    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.033534    | IN         | 8.3      | 5     | fd fd fd 3e fd
+10.036054    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.039223    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.041949    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.047965    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.048535    | IN         | 8.3      | 5     | fd fd fd 3f fd
+10.051157    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.057343    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.057862    | IN         | 8.3      | 5     | fd fd fd 3e fd
+10.060441    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.063455    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.067066    | IN         | 8.3      | 5     | fd fd fd 3f fd
+10.069644    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.069976    | IN         | 8.3      | 5     | fd fd fd 3f fd
+10.072821    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.079664    | IN         | 8.3      | 5     | fd fd fd 3f fd
+10.081986    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.082438    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.082852    | IN         | 8.3      | 5     | fd fd fd 3f fd
+10.085269    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.085687    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.087408    | IN         | 8.3      | 0     | []
+10.089511    | IN         | 8.3      | 5     | fd fd fd 22 fd
+10.095050    | IN         | 8.3      | 5     | fd fd fd b0 fd
+10.095643    | IN         | 8.3      | 5     | fd fd fd 3f fd
+10.103561    | IN         | 8.3      | 5     | fd fd fd 3f fd
+10.159881    | OUT        | 8.5      | 0     | []
+10.220601    | OUT        | 8.5      | 0     | []
+10.244662    | IN         | 8.6      | 0     | []
+10.341055    | IN         | 8.3      | 0     | []
+10.410845    | OUT        | 8.5      | 0     | []
+10.452760    | OUT        | 8.2      | 1     | 00
+10.523800    | OUT        | 8.2      | 1     | 00
+10.590709    | OUT        | 8.5      | 0     | []
+10.640098    | OUT        | 8.2      | 1     | 00
+10.822215    | SETUP      | 8.0      | 8     | 01 0b 00 00 01 00 00 00
+10.822241    | IN         | 8.0      | 0     | []
+10.823271    | SETUP      | 8.0      | 8     | 01 0b 00 00 00 00 00 00
+10.823296    | IN         | 8.0      | 0     | []
+10.823750    | SETUP      | 8.0      | 8     | 01 0b 01 00 00 00 00 00
+10.823776    | IN         | 8.0      | 0     | []
+10.823998    | SETUP      | 8.0      | 8     | 01 0b 01 00 01 00 00 00
+10.824024    | IN         | 8.0      | 0     | []
+10.824765    | SETUP      | 8.0      | 8     | 02 01 00 00 86 00 00 00
+10.824790    | IN         | 8.0      | 0     | []
+10.825963    | SETUP      | 8.0      | 8     | 02 01 00 00 05 00 00 00
+10.825988    | IN         | 8.0      | 0     | []
+10.826435    | SETUP      | 8.0      | 8     | 02 01 00 00 83 00 00 00
+10.826460    | IN         | 8.0      | 0     | []
+10.831739    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+10.831764    | IN         | 8.0      | 1     | 32
+10.831770    | OUT        | 8.0      | 0     | []
+10.831940    | SETUP      | 8.0      | 8     | a2 81 00 01 00 00 03 00
+10.832049    | IN         | 8.0      | 3     | 44 ac 00
+10.832054    | OUT        | 8.0      | 0     | []
+10.883037    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+10.883068    | OUT        | 8.0      | 3     | 80 bb 00
+10.883093    | IN         | 8.0      | 0     | []
+10.893722    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+10.893758    | OUT        | 8.0      | 3     | 80 bb 00
+10.893782    | IN         | 8.0      | 0     | []
+10.893969    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+10.894000    | OUT        | 8.0      | 3     | 80 bb 00
+10.894024    | IN         | 8.0      | 0     | []
+10.894341    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+10.894372    | OUT        | 8.0      | 3     | 80 bb 00
+10.894396    | IN         | 8.0      | 0     | []
+10.894535    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+10.894567    | OUT        | 8.0      | 3     | 80 bb 00
+10.894591    | IN         | 8.0      | 0     | []
+10.894721    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+10.894758    | OUT        | 8.0      | 3     | 80 bb 00
+10.894782    | IN         | 8.0      | 0     | []
+10.894917    | SETUP      | 8.0      | 8     | a2 81 00 01 86 00 03 00
+10.895026    | IN         | 8.0      | 3     | 80 bb 00
+10.895031    | OUT        | 8.0      | 0     | []
+10.945711    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+10.945736    | IN         | 8.0      | 1     | 32
+10.945741    | OUT        | 8.0      | 0     | []
+10.945911    | SETUP      | 8.0      | 8     | 40 49 32 00 00 00 00 00
+10.946130    | IN         | 8.0      | 0     | []
+11.090964    | OUT        | 8.5      | 0     | []
+11.108200    | IN         | 8.6      | 0     | []
+11.132236    | IN         | 8.6      | 0     | []
+11.360711    | OUT        | 8.5      | 0     | []
+11.476695    | OUT        | 8.2      | 1     | 00
+11.516778    | IN         | 8.6      | 0     | []
+11.547656    | IN         | 8.6      | 0     | []
+11.569246    | OUT        | 8.2      | 1     | 00
+11.764697    | OUT        | 8.5      | 0     | []
+11.893748    | IN         | 8.6      | 0     | []
+11.958055    | OUT        | 8.2      | 1     | 00
+12.051832    | OUT        | 8.2      | 1     | 00
+12.056821    | OUT        | 8.5      | 0     | []
+12.057301    | IN         | 8.6      | 0     | []
+12.168094    | OUT        | 8.5      | 0     | []
+12.192387    | OUT        | 8.5      | 0     | []
+12.251400    | IN         | 8.6      | 0     | []
+12.304184    | OUT        | 8.5      | 0     | []
+12.307253    | IN         | 8.6      | 0     | []
+12.559643    | SETUP      | 8.0      | 8     | 01 0b 00 00 01 00 00 00
+12.559668    | IN         | 8.0      | 0     | []
+12.560701    | SETUP      | 8.0      | 8     | 01 0b 00 00 00 00 00 00
+12.560726    | IN         | 8.0      | 0     | []
+12.561189    | SETUP      | 8.0      | 8     | 01 0b 01 00 00 00 00 00
+12.561215    | IN         | 8.0      | 0     | []
+12.561496    | SETUP      | 8.0      | 8     | 01 0b 01 00 01 00 00 00
+12.561521    | IN         | 8.0      | 0     | []
+12.562268    | SETUP      | 8.0      | 8     | 02 01 00 00 86 00 00 00
+12.562293    | IN         | 8.0      | 0     | []
+12.563428    | SETUP      | 8.0      | 8     | 02 01 00 00 05 00 00 00
+12.563457    | IN         | 8.0      | 0     | []
+12.563856    | SETUP      | 8.0      | 8     | 02 01 00 00 83 00 00 00
+12.563882    | IN         | 8.0      | 0     | []
+12.569441    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+12.569466    | IN         | 8.0      | 1     | 32
+12.569472    | OUT        | 8.0      | 0     | []
+12.569607    | SETUP      | 8.0      | 8     | a2 81 00 01 00 00 03 00
+12.569715    | IN         | 8.0      | 3     | 80 bb 00
+12.569721    | OUT        | 8.0      | 0     | []
+12.620744    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+12.620773    | OUT        | 8.0      | 3     | 44 ac 00
+12.620798    | IN         | 8.0      | 0     | []
+12.631380    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+12.631411    | OUT        | 8.0      | 3     | 44 ac 00
+12.631439    | IN         | 8.0      | 0     | []
+12.631602    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+12.631633    | OUT        | 8.0      | 3     | 44 ac 00
+12.631658    | IN         | 8.0      | 0     | []
+12.631982    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+12.632014    | OUT        | 8.0      | 3     | 44 ac 00
+12.632039    | IN         | 8.0      | 0     | []
+12.632225    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+12.632256    | OUT        | 8.0      | 3     | 44 ac 00
+12.632281    | IN         | 8.0      | 0     | []
+12.632442    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+12.632472    | OUT        | 8.0      | 3     | 44 ac 00
+12.632497    | IN         | 8.0      | 0     | []
+12.632648    | SETUP      | 8.0      | 8     | a2 81 00 01 86 00 03 00
+12.632778    | IN         | 8.0      | 3     | 44 ac 00
+12.632783    | OUT        | 8.0      | 0     | []
+12.683351    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+12.683376    | IN         | 8.0      | 1     | 32
+12.683382    | OUT        | 8.0      | 0     | []
+12.683560    | SETUP      | 8.0      | 8     | 40 49 32 00 00 00 00 00
+12.683776    | IN         | 8.0      | 0     | []
+12.879083    | OUT        | 8.5      | 0     | []
+12.993207    | OUT        | 8.2      | 1     | 00
+13.087302    | OUT        | 8.2      | 1     | 00
+13.101105    | IN         | 8.3      | 0     | []
+13.114432    | IN         | 8.6      | 0     | []
+13.131541    | IN         | 8.6      | 0     | []
+13.139225    | OUT        | 8.5      | 0     | []
+13.197535    | OUT        | 8.2      | 1     | 00
+13.228080    | OUT        | 8.5      | 0     | []
+13.248382    | IN         | 8.6      | 0     | []
+13.432123    | IN         | 8.6      | 0     | []
+13.468114    | OUT        | 8.2      | 1     | 00
+13.482679    | IN         | 8.6      | 0     | []
+13.659901    | OUT        | 8.2      | 1     | 00
+13.748845    | OUT        | 8.2      | 1     | 00
+13.795177    | OUT        | 8.2      | 1     | 00
+13.888529    | OUT        | 8.5      | 0     | []
+14.006701    | IN         | 8.6      | 0     | []
+14.173147    | SETUP      | 8.0      | 8     | 01 0b 00 00 01 00 00 00
+14.173172    | IN         | 8.0      | 0     | []
+14.174158    | SETUP      | 8.0      | 8     | 01 0b 00 00 00 00 00 00
+14.174183    | IN         | 8.0      | 0     | []
+14.174684    | SETUP      | 8.0      | 8     | 01 0b 01 00 00 00 00 00
+14.174708    | IN         | 8.0      | 0     | []
+14.174930    | SETUP      | 8.0      | 8     | 01 0b 01 00 01 00 00 00
+14.174955    | IN         | 8.0      | 0     | []
+14.175650    | SETUP      | 8.0      | 8     | 02 01 00 00 86 00 00 00
+14.175675    | IN         | 8.0      | 0     | []
+14.176708    | SETUP      | 8.0      | 8     | 02 01 00 00 05 00 00 00
+14.176733    | IN         | 8.0      | 0     | []
+14.177136    | SETUP      | 8.0      | 8     | 02 01 00 00 83 00 00 00
+14.177161    | IN         | 8.0      | 0     | []
+14.182379    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+14.182403    | IN         | 8.0      | 1     | 32
+14.182409    | OUT        | 8.0      | 0     | []
+14.182584    | SETUP      | 8.0      | 8     | a2 81 00 01 00 00 03 00
+14.182714    | IN         | 8.0      | 3     | 44 ac 00
+14.182740    | OUT        | 8.0      | 0     | []
+14.233142    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+14.233174    | OUT        | 8.0      | 3     | 80 bb 00
+14.233198    | IN         | 8.0      | 0     | []
+14.243666    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+14.243697    | OUT        | 8.0      | 3     | 80 bb 00
+14.243722    | IN         | 8.0      | 0     | []
+14.243885    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+14.243917    | OUT        | 8.0      | 3     | 80 bb 00
+14.243943    | IN         | 8.0      | 0     | []
+14.244450    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+14.244480    | OUT        | 8.0      | 3     | 80 bb 00
+14.244506    | IN         | 8.0      | 0     | []
+14.244650    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+14.244679    | OUT        | 8.0      | 3     | 80 bb 00
+14.244703    | IN         | 8.0      | 0     | []
+14.244857    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+14.244888    | OUT        | 8.0      | 3     | 80 bb 00
+14.244910    | IN         | 8.0      | 0     | []
+14.245069    | SETUP      | 8.0      | 8     | a2 81 00 01 86 00 03 00
+14.245199    | IN         | 8.0      | 3     | 80 bb 00
+14.245205    | OUT        | 8.0      | 0     | []
+14.295863    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+14.295887    | IN         | 8.0      | 1     | 32
+14.295893    | OUT        | 8.0      | 0     | []
+14.296086    | SETUP      | 8.0      | 8     | 40 49 32 00 00 00 00 00
+14.296301    | IN         | 8.0      | 0     | []
+14.449159    | OUT        | 8.2      | 1     | 00
+14.609278    | IN         | 8.6      | 0     | []
+14.637864    | IN         | 8.6      | 0     | []
+14.735348    | OUT        | 8.2      | 1     | 00
+15.033778    | IN         | 8.6      | 0     | []
+15.155202    | OUT        | 8.2      | 1     | 00
+15.158821    | OUT        | 8.5      | 0     | []
+15.307729    | OUT        | 8.5      | 0     | []
+15.368478    | OUT        | 8.2      | 1     | 00
+15.424451    | IN         | 8.6      | 0     | []
+15.480926    | OUT        | 8.5      | 0     | []
+15.486856    | IN         | 8.6      | 0     | []
+15.508733    | IN         | 8.6      | 0     | []
+15.524826    | OUT        | 8.5      | 0     | []
+15.569188    | OUT        | 8.2      | 1     | 00
+15.630147    | IN         | 8.6      | 0     | []
+15.811859    | OUT        | 8.5      | 0     | []
+15.819134    | OUT        | 8.5      | 0     | []
+15.936084    | OUT        | 8.5      | 0     | []
+16.029691    | IN         | 8.6      | 0     | []
+16.067957    | OUT        | 8.2      | 1     | 00
+16.099606    | IN         | 8.3      | 0     | []
+16.172883    | OUT        | 8.5      | 0     | []
+16.180655    | IN         | 8.6      | 0     | []
+16.197221    | OUT        | 8.5      | 0     | []
+16.379605    | SETUP      | 8.0      | 8     | 01 0b 00 00 01 00 00 00
+16.379630    | IN         | 8.0      | 0     | []
+16.380570    | SETUP      | 8.0      | 8     | 01 0b 00 00 00 00 00 00
+16.380595    | IN         | 8.0      | 0     | []
+16.381090    | SETUP      | 8.0      | 8     | 01 0b 01 00 00 00 00 00
+16.381115    | IN         | 8.0      | 0     | []
+16.381423    | SETUP      | 8.0      | 8     | 01 0b 01 00 01 00 00 00
+16.381448    | IN         | 8.0      | 0     | []
+16.382249    | SETUP      | 8.0      | 8     | 02 01 00 00 86 00 00 00
+16.382274    | IN         | 8.0      | 0     | []
+16.383341    | SETUP      | 8.0      | 8     | 02 01 00 00 05 00 00 00
+16.383366    | IN         | 8.0      | 0     | []
+16.383795    | SETUP      | 8.0      | 8     | 02 01 00 00 83 00 00 00
+16.383820    | IN         | 8.0      | 0     | []
+16.389231    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+16.389256    | IN         | 8.0      | 1     | 32
+16.389262    | OUT        | 8.0      | 0     | []
+16.389403    | SETUP      | 8.0      | 8     | a2 81 00 01 00 00 03 00
+16.389511    | IN         | 8.0      | 3     | 80 bb 00
+16.389517    | OUT        | 8.0      | 0     | []
+16.440666    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+16.440697    | OUT        | 8.0      | 3     | 88 58 01
+16.440722    | IN         | 8.0      | 0     | []
+16.451807    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+16.451838    | OUT        | 8.0      | 3     | 88 58 01
+16.451860    | IN         | 8.0      | 0     | []
+16.452057    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+16.452088    | OUT        | 8.0      | 3     | 88 58 01
+16.452113    | IN         | 8.0      | 0     | []
+16.452451    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+16.452485    | OUT        | 8.0      | 3     | 88 58 01
+16.452511    | IN         | 8.0      | 0     | []
+16.452694    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+16.452730    | OUT        | 8.0      | 3     | 88 58 01
+16.452756    | IN         | 8.0      | 0     | []
+16.452938    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+16.452968    | OUT        | 8.0      | 3     | 88 58 01
+16.452994    | IN         | 8.0      | 0     | []
+16.453184    | SETUP      | 8.0      | 8     | a2 81 00 01 86 00 03 00
+16.453293    | IN         | 8.0      | 3     | 88 58 01
+16.453298    | OUT        | 8.0      | 0     | []
+16.503508    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+16.503533    | IN         | 8.0      | 1     | 32
+16.503539    | OUT        | 8.0      | 0     | []
+16.503680    | SETUP      | 8.0      | 8     | 40 49 32 00 00 00 00 00
+16.503899    | IN         | 8.0      | 0     | []
+16.584733    | IN         | 8.6      | 0     | []
+16.595600    | OUT        | 8.2      | 1     | 00
+16.596607    | OUT        | 8.5      | 0     | []
+16.597962    | OUT        | 8.5      | 0     | []
+16.617210    | OUT        | 8.5      | 0     | []
+16.618543    | IN         | 8.6      | 0     | []
+16.638386    | IN         | 8.6      | 0     | []
+16.639090    | IN         | 8.6      | 0     | []
+16.646049    | OUT        | 8.5      | 0     | []
+16.647386    | OUT        | 8.5      | 0     | []
+16.683362    | OUT        | 8.5      | 0     | []
+16.691812    | OUT        | 8.5      | 0     | []
+16.692454    | IN         | 8.6      | 0     | []
+16.714348    | IN         | 8.6      | 0     | []
+16.722006    | OUT        | 8.2      | 1     | 00
+16.740788    | OUT        | 8.5      | 0     | []
+16.757195    | OUT        | 8.5      | 0     | []
+16.772238    | IN         | 8.6      | 0     | []
+16.807443    | IN         | 8.6      | 0     | []
+16.821157    | OUT        | 8.5      | 0     | []
+16.838565    | OUT        | 8.5      | 0     | []
+16.849531    | OUT        | 8.2      | 1     | 00
+16.857422    | IN         | 8.6      | 0     | []
+16.871545    | IN         | 8.6      | 0     | []
+16.894704    | IN         | 8.6      | 0     | []
+16.901970    | OUT        | 8.2      | 1     | 00
+16.921739    | IN         | 8.6      | 0     | []
+16.926290    | OUT        | 8.5      | 0     | []
+16.960860    | IN         | 8.6      | 0     | []
+16.968372    | IN         | 8.6      | 0     | []
+16.978814    | IN         | 8.6      | 0     | []
+16.984707    | IN         | 8.6      | 0     | []
+16.990856    | OUT        | 8.2      | 1     | 00
+16.992428    | IN         | 8.6      | 0     | []
+17.002733    | OUT        | 8.5      | 0     | []
+17.003074    | OUT        | 8.5      | 0     | []
+17.016074    | OUT        | 8.2      | 1     | 00
+17.020733    | IN         | 8.6      | 0     | []
+17.023226    | OUT        | 8.2      | 1     | 00
+17.026046    | OUT        | 8.5      | 0     | []
+17.041636    | OUT        | 8.5      | 0     | []
+17.053601    | OUT        | 8.5      | 0     | []
+17.060033    | OUT        | 8.5      | 0     | []
+17.064766    | IN         | 8.6      | 0     | []
+17.065091    | IN         | 8.6      | 0     | []
+17.084655    | OUT        | 8.5      | 0     | []
+17.122962    | IN         | 8.6      | 0     | []
+17.145312    | IN         | 8.6      | 0     | []
+17.149535    | OUT        | 8.2      | 1     | 00
+17.152127    | IN         | 8.6      | 0     | []
+17.175032    | OUT        | 8.5      | 0     | []
+17.175328    | OUT        | 8.2      | 1     | 00
+17.179805    | IN         | 8.6      | 0     | []
+17.181728    | IN         | 8.6      | 0     | []
+17.182587    | IN         | 8.6      | 0     | []
+17.185260    | OUT        | 8.5      | 0     | []
+17.187501    | OUT        | 8.5      | 0     | []
+17.196635    | OUT        | 8.5      | 0     | []
+17.234443    | IN         | 8.6      | 0     | []
+17.266567    | OUT        | 8.5      | 0     | []
+17.277188    | IN         | 8.6      | 0     | []
+17.287557    | OUT        | 8.5      | 0     | []
+17.292448    | IN         | 8.6      | 0     | []
+17.317591    | OUT        | 8.5      | 0     | []
+17.322169    | IN         | 8.6      | 0     | []
+17.324117    | IN         | 8.3      | 0     | []
+17.327092    | IN         | 8.6      | 0     | []
+17.329797    | OUT        | 8.5      | 0     | []
+17.353650    | IN         | 8.6      | 0     | []
+17.358463    | OUT        | 8.5      | 0     | []
+17.361423    | OUT        | 8.5      | 0     | []
+17.390563    | OUT        | 8.5      | 0     | []
+17.426088    | IN         | 8.6      | 0     | []
+17.438096    | OUT        | 8.2      | 1     | 00
+17.452064    | OUT        | 8.5      | 0     | []
+17.482041    | OUT        | 8.2      | 1     | 00
+17.483409    | IN         | 8.6      | 0     | []
+17.510285    | OUT        | 8.5      | 0     | []
+17.528189    | OUT        | 8.5      | 0     | []
+17.531015    | OUT        | 8.2      | 1     | 00
+17.543348    | IN         | 8.6      | 0     | []
+17.544984    | IN         | 8.6      | 0     | []
+17.555983    | IN         | 8.6      | 0     | []
+17.557358    | IN         | 8.6      | 0     | []
+17.576512    | IN         | 8.6      | 0     | []
+17.586042    | OUT        | 8.5      | 0     | []
+17.588792    | IN         | 8.6      | 0     | []
+17.598758    | OUT        | 8.2      | 1     | 00
+17.600802    | OUT        | 8.5      | 0     | []
+17.601127    | IN         | 8.6      | 0     | []
+17.765546    | SETUP      | 8.0      | 8     | 01 0b 00 00 01 00 00 00
+17.765571    | IN         | 8.0      | 0     | []
+17.766523    | SETUP      | 8.0      | 8     | 01 0b 00 00 00 00 00 00
+17.766548    | IN         | 8.0      | 0     | []
+17.767048    | SETUP      | 8.0      | 8     | 01 0b 01 00 00 00 00 00
+17.767073    | IN         | 8.0      | 0     | []
+17.767376    | SETUP      | 8.0      | 8     | 01 0b 01 00 01 00 00 00
+17.767401    | IN         | 8.0      | 0     | []
+17.768202    | SETUP      | 8.0      | 8     | 02 01 00 00 86 00 00 00
+17.768227    | IN         | 8.0      | 0     | []
+17.769346    | SETUP      | 8.0      | 8     | 02 01 00 00 05 00 00 00
+17.769371    | IN         | 8.0      | 0     | []
+17.769830    | SETUP      | 8.0      | 8     | 02 01 00 00 83 00 00 00
+17.769855    | IN         | 8.0      | 0     | []
+17.775277    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+17.775302    | IN         | 8.0      | 1     | 32
+17.775307    | OUT        | 8.0      | 0     | []
+17.775456    | SETUP      | 8.0      | 8     | a2 81 00 01 00 00 03 00
+17.775565    | IN         | 8.0      | 3     | 88 58 01
+17.775570    | OUT        | 8.0      | 0     | []
+17.825853    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+17.825885    | OUT        | 8.0      | 3     | 00 77 01
+17.825910    | IN         | 8.0      | 0     | []
+17.836637    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+17.836665    | OUT        | 8.0      | 3     | 00 77 01
+17.836690    | IN         | 8.0      | 0     | []
+17.836836    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+17.836867    | OUT        | 8.0      | 3     | 00 77 01
+17.836897    | IN         | 8.0      | 0     | []
+17.837170    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+17.837199    | OUT        | 8.0      | 3     | 00 77 01
+17.837225    | IN         | 8.0      | 0     | []
+17.837397    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+17.837427    | OUT        | 8.0      | 3     | 00 77 01
+17.837450    | IN         | 8.0      | 0     | []
+17.837624    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+17.837655    | OUT        | 8.0      | 3     | 00 77 01
+17.837680    | IN         | 8.0      | 0     | []
+17.837827    | SETUP      | 8.0      | 8     | a2 81 00 01 86 00 03 00
+17.837918    | IN         | 8.0      | 3     | 00 77 01
+17.837924    | OUT        | 8.0      | 0     | []
+17.888360    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+17.888386    | IN         | 8.0      | 1     | 32
+17.888391    | OUT        | 8.0      | 0     | []
+17.888517    | SETUP      | 8.0      | 8     | 40 49 32 00 00 00 00 00
+17.888735    | IN         | 8.0      | 0     | []
+17.973717    | IN         | 8.6      | 0     | []
+17.975578    | OUT        | 8.5      | 0     | []
+17.993613    | OUT        | 8.2      | 1     | 00
+17.995866    | IN         | 8.6      | 0     | []
+18.003810    | OUT        | 8.5      | 0     | []
+18.005565    | OUT        | 8.5      | 0     | []
+18.007386    | IN         | 8.6      | 0     | []
+18.019412    | OUT        | 8.5      | 0     | []
+18.025711    | OUT        | 8.5      | 0     | []
+18.027763    | OUT        | 8.5      | 0     | []
+18.050298    | IN         | 8.6      | 0     | []
+18.065071    | OUT        | 8.5      | 0     | []
+18.070115    | OUT        | 8.5      | 0     | []
+18.075357    | OUT        | 8.2      | 1     | 00
+18.090273    | IN         | 8.3      | 0     | []
+18.093951    | IN         | 8.6      | 0     | []
+18.123134    | OUT        | 8.5      | 0     | []
+18.126087    | OUT        | 8.5      | 0     | []
+18.130814    | OUT        | 8.5      | 0     | []
+18.140538    | OUT        | 8.5      | 0     | []
+18.182108    | OUT        | 8.2      | 1     | 00
+18.194575    | IN         | 8.6      | 0     | []
+18.198166    | IN         | 8.6      | 0     | []
+18.199365    | OUT        | 8.5      | 0     | []
+18.203224    | OUT        | 8.2      | 1     | 00
+18.204720    | IN         | 8.6      | 0     | []
+18.209868    | OUT        | 8.5      | 0     | []
+18.217148    | OUT        | 8.5      | 0     | []
+18.219763    | OUT        | 8.5      | 0     | []
+18.232513    | IN         | 8.6      | 0     | []
+18.235191    | IN         | 8.6      | 0     | []
+18.236097    | OUT        | 8.5      | 0     | []
+18.248258    | OUT        | 8.5      | 0     | []
+18.257051    | OUT        | 8.5      | 0     | []
+18.269132    | OUT        | 8.5      | 0     | []
+18.269706    | OUT        | 8.5      | 0     | []
+18.275245    | OUT        | 8.2      | 1     | 00
+18.277146    | OUT        | 8.2      | 1     | 00
+18.284770    | IN         | 8.6      | 0     | []
+18.293815    | OUT        | 8.5      | 0     | []
+18.294123    | OUT        | 8.2      | 1     | 00
+18.297146    | OUT        | 8.5      | 0     | []
+18.317485    | OUT        | 8.2      | 1     | 00
+18.321010    | OUT        | 8.2      | 0     | []
+18.322574    | OUT        | 8.5      | 0     | []
+18.322897    | IN         | 8.6      | 0     | []
+18.355495    | OUT        | 8.5      | 0     | []
+18.363927    | OUT        | 8.5      | 0     | []
+18.378718    | OUT        | 8.5      | 0     | []
+18.382748    | OUT        | 8.5      | 0     | []
+18.387900    | IN         | 8.6      | 0     | []
+18.389360    | IN         | 8.6      | 0     | []
+18.390561    | IN         | 8.6      | 0     | []
+18.405437    | IN         | 8.6      | 0     | []
+18.407477    | OUT        | 8.2      | 1     | 00
+18.408737    | OUT        | 8.5      | 0     | []
+18.414155    | OUT        | 8.5      | 0     | []
+18.416008    | IN         | 8.6      | 0     | []
+18.425762    | IN         | 8.6      | 0     | []
+18.426720    | IN         | 8.6      | 0     | []
+18.440672    | OUT        | 8.5      | 0     | []
+18.447680    | IN         | 8.6      | 0     | []
+18.460928    | OUT        | 8.5      | 0     | []
+18.465866    | IN         | 8.6      | 1     | 03
+18.473219    | IN         | 8.3      | 0     | []
+18.482134    | IN         | 8.6      | 0     | []
+18.486043    | IN         | 8.6      | 0     | []
+18.497555    | IN         | 8.6      | 0     | []
+18.527884    | IN         | 8.6      | 0     | []
+18.540024    | IN         | 8.6      | 0     | []
+18.545783    | IN         | 8.6      | 0     | []
+18.550106    | IN         | 8.6      | 0     | []
+18.563986    | OUT        | 8.2      | 1     | 00
+18.567503    | IN         | 8.6      | 0     | []
+18.568151    | OUT        | 8.5      | 0     | []
+18.590544    | IN         | 8.6      | 0     | []
+18.593267    | OUT        | 8.5      | 0     | []
+18.594747    | IN         | 8.6      | 0     | []
+18.598600    | IN         | 8.6      | 0     | []
+18.609615    | IN         | 8.6      | 0     | []
+18.612139    | IN         | 8.6      | 0     | []
+18.614273    | OUT        | 8.5      | 0     | []
+18.619636    | OUT        | 8.5      | 0     | []
+18.620488    | IN         | 8.6      | 0     | []
+18.625224    | OUT        | 8.5      | 0     | []
+18.634289    | OUT        | 8.5      | 0     | []
+18.646905    | OUT        | 8.5      | 0     | []
+18.654320    | OUT        | 8.2      | 1     | 00
+18.657410    | OUT        | 8.2      | 1     | 00
+18.681491    | IN         | 8.3      | 0     | []
+18.695199    | OUT        | 8.5      | 0     | []
+18.696421    | IN         | 8.6      | 0     | []
+18.711849    | OUT        | 8.5      | 0     | []
+18.726690    | IN         | 8.6      | 0     | []
+18.735740    | OUT        | 8.5      | 0     | []
+18.741124    | IN         | 8.6      | 0     | []
+18.742302    | IN         | 8.3      | 0     | []
+18.749943    | OUT        | 8.2      | 1     | 00
+18.750568    | OUT        | 8.2      | 1     | 00
+18.752155    | OUT        | 8.2      | 1     | 00
+18.752824    | IN         | 8.6      | 0     | []
+18.756940    | OUT        | 8.5      | 0     | []
+18.763841    | IN         | 8.6      | 0     | []
+18.769784    | IN         | 8.6      | 0     | []
+18.770132    | OUT        | 8.5      | 0     | []
+18.771063    | IN         | 8.6      | 0     | []
+18.771648    | IN         | 8.6      | 0     | []
+18.778208    | IN         | 8.6      | 0     | []
+18.802833    | IN         | 8.6      | 0     | []
+18.806714    | OUT        | 8.5      | 0     | []
+18.841323    | OUT        | 8.2      | 1     | 00
+18.847374    | OUT        | 8.5      | 0     | []
+18.848617    | OUT        | 8.5      | 0     | []
+18.853992    | OUT        | 8.5      | 0     | []
+18.857592    | OUT        | 8.5      | 0     | []
+18.866545    | OUT        | 8.2      | 0     | []
+18.885597    | IN         | 8.6      | 0     | []
+18.892234    | IN         | 8.6      | 0     | []
+18.899667    | OUT        | 8.5      | 0     | []
+18.906795    | OUT        | 8.5      | 0     | []
+18.925269    | OUT        | 8.5      | 0     | []
+18.939346    | OUT        | 8.2      | 1     | 00
+18.939699    | IN         | 8.6      | 0     | []
+18.940898    | IN         | 8.3      | 0     | []
+18.947445    | OUT        | 8.2      | 1     | 00
+18.953893    | OUT        | 8.2      | 1     | 00
+18.956296    | IN         | 8.6      | 0     | []
+18.969318    | IN         | 8.6      | 0     | []
+18.969629    | OUT        | 8.5      | 0     | []
+18.975148    | IN         | 8.6      | 0     | []
+18.976446    | IN         | 8.6      | 0     | []
+19.008159    | IN         | 8.6      | 0     | []
+19.013230    | IN         | 8.6      | 0     | []
+19.027906    | IN         | 8.6      | 0     | []
+19.029363    | IN         | 8.6      | 0     | []
+19.043690    | OUT        | 8.2      | 1     | 00
+19.055362    | IN         | 8.3      | 0     | []
+19.071264    | IN         | 8.6      | 0     | []
+19.091895    | OUT        | 8.5      | 0     | []
+19.113234    | OUT        | 8.5      | 0     | []
+19.133147    | OUT        | 8.5      | 0     | []
+19.133755    | OUT        | 8.5      | 0     | []
+19.140032    | IN         | 8.6      | 0     | []
+19.140651    | IN         | 8.6      | 0     | []
+19.142216    | OUT        | 8.5      | 0     | []
+19.156522    | IN         | 8.6      | 0     | []
+19.160923    | OUT        | 8.5      | 0     | []
+19.312582    | SETUP      | 8.0      | 8     | 01 0b 00 00 01 00 00 00
+19.312607    | IN         | 8.0      | 0     | []
+19.313529    | SETUP      | 8.0      | 8     | 01 0b 00 00 00 00 00 00
+19.313554    | IN         | 8.0      | 0     | []
+19.314093    | SETUP      | 8.0      | 8     | 01 0b 01 00 00 00 00 00
+19.314119    | IN         | 8.0      | 0     | []
+19.314400    | SETUP      | 8.0      | 8     | 01 0b 01 00 01 00 00 00
+19.314425    | IN         | 8.0      | 0     | []
+19.315169    | SETUP      | 8.0      | 8     | 02 01 00 00 86 00 00 00
+19.315194    | IN         | 8.0      | 0     | []
+19.316280    | SETUP      | 8.0      | 8     | 02 01 00 00 05 00 00 00
+19.316305    | IN         | 8.0      | 0     | []
+19.316710    | SETUP      | 8.0      | 8     | 02 01 00 00 83 00 00 00
+19.316735    | IN         | 8.0      | 0     | []
+19.322344    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+19.322369    | IN         | 8.0      | 1     | 32
+19.322375    | OUT        | 8.0      | 0     | []
+19.322534    | SETUP      | 8.0      | 8     | a2 81 00 01 00 00 03 00
+19.322643    | IN         | 8.0      | 3     | 00 77 01
+19.322669    | OUT        | 8.0      | 0     | []
+19.372894    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+19.372924    | OUT        | 8.0      | 3     | 44 ac 00
+19.372947    | IN         | 8.0      | 0     | []
+19.383843    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+19.383877    | OUT        | 8.0      | 3     | 44 ac 00
+19.383901    | IN         | 8.0      | 0     | []
+19.384091    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+19.384127    | OUT        | 8.0      | 3     | 44 ac 00
+19.384153    | IN         | 8.0      | 0     | []
+19.384527    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+19.384558    | OUT        | 8.0      | 3     | 44 ac 00
+19.384583    | IN         | 8.0      | 0     | []
+19.384747    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+19.384775    | OUT        | 8.0      | 3     | 44 ac 00
+19.384801    | IN         | 8.0      | 0     | []
+19.385043    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+19.385074    | OUT        | 8.0      | 3     | 44 ac 00
+19.385099    | IN         | 8.0      | 0     | []
+19.385240    | SETUP      | 8.0      | 8     | a2 81 00 01 86 00 03 00
+19.385352    | IN         | 8.0      | 3     | 44 ac 00
+19.385357    | OUT        | 8.0      | 0     | []
+19.436209    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+19.436234    | IN         | 8.0      | 1     | 32
+19.436240    | OUT        | 8.0      | 0     | []
+19.436401    | SETUP      | 8.0      | 8     | 40 49 32 00 00 00 00 00
+19.436615    | IN         | 8.0      | 0     | []
+19.665569    | IN         | 8.6      | 0     | []
+19.688593    | OUT        | 8.2      | 1     | 00
+19.780872    | IN         | 8.6      | 0     | []
+19.794726    | OUT        | 8.2      | 1     | 00
+19.805747    | OUT        | 8.2      | 1     | 00
+19.806352    | OUT        | 8.2      | 1     | 00
+19.925156    | OUT        | 8.2      | 1     | 00
+19.938427    | OUT        | 8.2      | 1     | 00
+20.193365    | OUT        | 8.5      | 0     | []
+20.279227    | IN         | 8.6      | 0     | []
+20.337783    | OUT        | 8.5      | 0     | []
+20.346616    | OUT        | 8.5      | 0     | []
+20.500246    | OUT        | 8.5      | 0     | []
+20.604600    | OUT        | 8.5      | 0     | []
+20.653099    | OUT        | 8.2      | 1     | 00
+20.827644    | SETUP      | 8.0      | 8     | 01 0b 00 00 01 00 00 00
+20.827669    | IN         | 8.0      | 0     | []
+20.828631    | SETUP      | 8.0      | 8     | 01 0b 00 00 00 00 00 00
+20.828656    | IN         | 8.0      | 0     | []
+20.829180    | SETUP      | 8.0      | 8     | 01 0b 01 00 00 00 00 00
+20.829205    | IN         | 8.0      | 0     | []
+20.829508    | SETUP      | 8.0      | 8     | 01 0b 01 00 01 00 00 00
+20.829532    | IN         | 8.0      | 0     | []
+20.830275    | SETUP      | 8.0      | 8     | 02 01 00 00 86 00 00 00
+20.830303    | IN         | 8.0      | 0     | []
+20.831407    | SETUP      | 8.0      | 8     | 02 01 00 00 05 00 00 00
+20.831432    | IN         | 8.0      | 0     | []
+20.831884    | SETUP      | 8.0      | 8     | 02 01 00 00 83 00 00 00
+20.831909    | IN         | 8.0      | 0     | []
+20.837303    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+20.837328    | IN         | 8.0      | 1     | 32
+20.837333    | OUT        | 8.0      | 0     | []
+20.837487    | SETUP      | 8.0      | 8     | a2 81 00 01 00 00 03 00
+20.837617    | IN         | 8.0      | 3     | 44 ac 00
+20.837622    | OUT        | 8.0      | 0     | []
+20.888192    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+20.888223    | OUT        | 8.0      | 3     | 80 bb 00
+20.888248    | IN         | 8.0      | 0     | []
+20.899423    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+20.899457    | OUT        | 8.0      | 3     | 80 bb 00
+20.899482    | IN         | 8.0      | 0     | []
+20.899667    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+20.899698    | OUT        | 8.0      | 3     | 80 bb 00
+20.899723    | IN         | 8.0      | 0     | []
+20.900108    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+20.900137    | OUT        | 8.0      | 3     | 80 bb 00
+20.900159    | IN         | 8.0      | 0     | []
+20.900318    | SETUP      | 8.0      | 8     | 22 01 00 01 05 00 03 00
+20.900350    | OUT        | 8.0      | 3     | 80 bb 00
+20.900375    | IN         | 8.0      | 0     | []
+20.900514    | SETUP      | 8.0      | 8     | 22 01 00 01 86 00 03 00
+20.900545    | OUT        | 8.0      | 3     | 80 bb 00
+20.900570    | IN         | 8.0      | 0     | []
+20.900748    | SETUP      | 8.0      | 8     | a2 81 00 01 86 00 03 00
+20.900856    | IN         | 8.0      | 3     | 80 bb 00
+20.900862    | OUT        | 8.0      | 0     | []
+20.951755    | SETUP      | 8.0      | 8     | c0 49 00 00 00 00 01 00
+20.951780    | IN         | 8.0      | 1     | 32
+20.951785    | OUT        | 8.0      | 0     | []
+20.951964    | SETUP      | 8.0      | 8     | 40 49 32 00 00 00 00 00
+20.952183    | IN         | 8.0      | 0     | []
+21.163238    | OUT        | 8.2      | 1     | 00
+21.418177    | IN         | 8.6      | 0     | []
+21.452085    | OUT        | 8.2      | 1     | 00
+21.546920    | OUT        | 8.2      | 1     | 00
+21.578936    | OUT        | 8.2      | 1     | 00
+21.684400    | OUT        | 8.5      | 0     | []
+21.703092    | OUT        | 8.5      | 0     | []
+21.751409    | IN         | 8.6      | 0     | []
+21.781614    | IN         | 8.6      | 0     | []
+21.871076    | IN         | 8.3      | 0     | []
+21.962857    | IN         | 8.6      | 0     | []
+21.964989    | IN         | 8.6      | 0     | []
+21.966057    | IN         | 8.6      | 0     | []
+22.074234    | OUT        | 8.5      | 0     | []
+22.128120    | IN         | 8.6      | 0     | []
+22.149136    | OUT        | 8.2      | 1     | 00
+22.161539    | OUT        | 8.2      | 1     | 00
+22.230632    | OUT        | 8.5      | 0     | []
+22.245902    | OUT        | 8.5      | 0     | []
+22.329060    | IN         | 8.6      | 0     | []
