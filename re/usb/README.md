@@ -76,12 +76,44 @@ trailing `CLEAR_FEATURE` pair follows `SET_STATUS` by between 250 ms and
 in others. Raising the default does not resolve it. This changes reported
 event spans only.
 
-**A caveat that matters for timing work:** `parse_openvizsla.py` discards NAK
-and STALL transactions as polling noise. That is right for glitch hunting, but
-it means an idle window and a window full of rejected transfers are
-indistinguishable downstream. Before concluding that a gap is the host
-*waiting*, check the raw trace for that interval -- see
-`init_timing_comparison.md` for a worked example.
+### NAK and STALL
+
+`parse_openvizsla.py` drops NAK and STALL by default, and that is right for
+most work: a NAK is ordinary USB flow control, the device saying "not yet"
+before the host retries a few microseconds later. Nearly every control
+transfer on this device NAKs once before it is accepted.
+
+They matter when a transfer *fails*, which is exactly the case when
+investigating an initialization that did not complete. `--errors` collapses
+runs of NAK and STALL into one record per burst:
+
+```sh
+python3 parse_openvizsla.py --errors=0 capture.txt    # control transfers only
+```
+
+Each record says how the burst ended, and that is the whole point:
+
+| Outcome | Meaning |
+|---|---|
+| `resolved` | a success followed on the same target -- ordinary, the common case |
+| `abandoned` | the target went quiet with no success: **the host gave up**, which is what a failed transfer looks like |
+| `ongoing` | still NAKing when the record was cut. Normal on an idle interrupt endpoint -- MIDI IN polls forever and NAKs whenever nobody touches a control |
+
+`--errors=0` restricts this to EP0, which is almost always what is wanted: a
+control transfer that is never accepted is always a fault, while the bulk and
+interrupt endpoints NAK constantly and swamp everything else. Resolved bursts
+of fewer than two events are suppressed, since every transfer has one; STALLs
+and abandoned bursts are always reported.
+
+For reference, a healthy macOS rate change produces three bursts, all
+resolved, the largest ten NAKs. `extract_events.py` attaches bursts to the
+control transfer they concern and marks them with `!!`.
+
+**A caveat that matters for timing work:** with NAK and STALL dropped, an idle
+window and a window full of rejected transfers are indistinguishable. Before
+concluding that a gap is the host *waiting*, either re-parse with `--errors`
+or check the raw trace for that interval -- see `init_timing_comparison.md`
+for a worked example.
 
 ## Trace metadata
 

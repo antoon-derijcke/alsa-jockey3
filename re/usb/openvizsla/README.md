@@ -41,7 +41,10 @@ which almost all is MIDI IN polling and NAKs.
 ### Reducing the capture
 
 `parse_openvizsla.py` turns a raw capture into completed transactions, dropping
-handshake noise and NAK polling:
+handshake noise and NAK polling. That discarding is right for glitch hunting,
+where NAKs are just flow control; when investigating a transfer that *failed*,
+re-parse with `--errors=0` so unresolved bursts and STALLs on EP0 survive.
+See `../README.md`.
 
 ```sh
 python3 ../parse_openvizsla.py capture.txt      # writes capture_parsed.txt

@@ -162,12 +162,17 @@ class Reducer:
 		self.out = out
 		self.run = []			# pending consecutive stream transactions
 		self.prev_timestamp = None	# for the delta column
+		self.prev_real = None		# for the capture-integrity check
 		self.backward_jumps = 0
 		self.n_input = 0
 		self.n_output = 0
 		self.n_elided = 0
 
 	def is_stream(self, tx):
+		# Aggregated NAK/STALL records are never elided: they are already a
+		# summary, and they are the point of asking for them.
+		if tx["direction"] in ("NAK", "STALL"):
+			return False
 		if tx["ep"] is None or tx["ep"] == 0:
 			return False
 		if self.args.stream_ep == "all":
@@ -257,8 +262,14 @@ class Reducer:
 	def feed(self, tx):
 		self.n_input += 1
 
-		if self.prev_timestamp is not None and tx["timestamp"] < self.prev_timestamp:
-			self.backward_jumps += 1
+		# Aggregated NAK/STALL records carry a synthetic position and may
+		# sit marginally out of order, so they are excluded from the
+		# integrity check entirely -- both as the thing compared and as the
+		# thing compared against.
+		if tx["direction"] not in ("NAK", "STALL"):
+			if self.prev_real is not None and tx["timestamp"] < self.prev_real:
+				self.backward_jumps += 1
+			self.prev_real = tx["timestamp"]
 
 		if self.is_stream(tx):
 			self.run.append(tx)

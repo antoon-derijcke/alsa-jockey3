@@ -52,6 +52,15 @@ def collect_transfers(lines, stream_eps=(5, 6)):
 		if tx is None:
 			continue
 
+		if tx["direction"] in ("NAK", "STALL"):
+			# An aggregated NAK/STALL burst from parse_openvizsla.py
+			# --errors. Its Bytes column is a count, not a payload, so
+			# it must never be taken for a data stage. Attach it to the
+			# transfer in flight, which is the one it concerns.
+			if tx["ep"] == 0 and current is not None:
+				current["errors"].append(tx["bytes"])
+			continue
+
 		if tx["ep"] != 0:
 			if tx["ep"] in stream_eps:
 				stream_since += 1
@@ -69,6 +78,7 @@ def collect_transfers(lines, stream_eps=(5, 6)):
 				"data": None,
 				"stream_since": stream_since,
 				"stream_bytes_since": stream_bytes_since,
+				"errors": [],
 			}
 			stream_since = 0
 			stream_bytes_since = 0
@@ -137,6 +147,10 @@ def describe(transfer):
 		text += f" -> {rate} Hz"
 	elif transfer["data"]:
 		text += " -> " + " ".join(transfer["data"])
+	for burst in transfer.get("errors", ()):
+		# Present only when the log was produced with --errors. A burst
+		# the host gave up on is the signature of a failed transfer.
+		text += "  !! " + " ".join(burst)
 	return text
 
 
