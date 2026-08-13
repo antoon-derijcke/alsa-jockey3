@@ -1274,7 +1274,7 @@ static void jockey3_start_urbs_failed(struct jockey3_chip *chip, int err, const 
 	dev_err(&chip->intf0->dev, "Failed to start URBs after %s: %d\n", context, err);
 }
 
-static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate)
+static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate, bool cold_init)
 {
 	int ret;
 	u32 current_hw_rate;
@@ -1291,7 +1291,8 @@ static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate)
 		return ret;
 	}
 
-	ret = ploytec_get_rate(chip->intf0, chip->xfer_buf, &current_hw_rate);
+	ret = ploytec_get_rate(chip->intf0, chip->xfer_buf, PLOYTEC_RATE_IDX_DEVICE,
+			       &current_hw_rate);
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Failed to read current hardware rate: %d\n", ret);
 		return ret;
@@ -1312,7 +1313,7 @@ static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate)
 	 * against chip->current_rate before getting here.
 	 */
 	dev_dbg(&chip->intf0->dev, "Setting hardware rate: %u Hz\n", rate);
-	ret = ploytec_set_rate(chip->intf0, chip->xfer_buf, rate);
+	ret = ploytec_set_rate(chip->intf0, chip->xfer_buf, rate, cold_init);
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Failed to set rate: %d\n", ret);
 		return ret;
@@ -1966,7 +1967,7 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 
 		jockey3_stop_urbs(chip);
 
-		ret = jockey3_set_rate(chip, rate);
+		ret = jockey3_set_rate(chip, rate, false);
 		if (ret != 0) {
 			dev_err(&chip->intf0->dev, "Rate change to %u failed: %d\n", rate, ret);
 			/*
@@ -2138,7 +2139,7 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 	scoped_guard(mutex, &chip->rate_mutex)
 		jockey3_set_current_rate(chip, rate);
 
-	ret = jockey3_set_rate(chip, rate);
+	ret = jockey3_set_rate(chip, rate, true);
 	if (ret < 0)
 		return ret;
 
@@ -2686,12 +2687,13 @@ static int jockey3_post_reset(struct usb_interface *intf)
 			jockey3_initialize_ploytec(chip);
 
 			/* Verify if the sample rate persisted through the reset */
-			if (ploytec_get_rate(chip->intf0, chip->xfer_buf, &hw_rate) == 0) {
+			if (ploytec_get_rate(chip->intf0, chip->xfer_buf,
+					     PLOYTEC_RATE_IDX_DEVICE, &hw_rate) == 0) {
 				if (hw_rate != chip->current_rate) {
 					dev_warn(&chip->intf0->dev,
 						 "Rate mismatch after reset. HW: %u, Expected: %u. Re-applying...\n",
 						 hw_rate, chip->current_rate);
-					jockey3_set_rate(chip, chip->current_rate);
+					jockey3_set_rate(chip, chip->current_rate, true);
 				} else {
 					dev_dbg(&chip->intf0->dev,
 						"Rate %u Hz persisted through reset\n", hw_rate);
@@ -2742,7 +2744,7 @@ static int jockey3_restore_device(struct jockey3_chip *chip, bool reset)
 			return ret;
 	}
 
-	ret = jockey3_set_rate(chip, chip->current_rate);
+	ret = jockey3_set_rate(chip, chip->current_rate, true);
 	if (ret < 0)
 		return ret;
 

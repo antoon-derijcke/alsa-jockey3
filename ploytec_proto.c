@@ -218,19 +218,26 @@ int ploytec_start_streaming(struct usb_interface *intf, void *xfer_buf)
  * ploytec_get_rate - Read hardware sample rate
  * @intf: USB interface
  * @xfer_buf: Temporary transfer buffer
+ * @index: wIndex to read from -- PLOYTEC_RATE_IDX_DEVICE before programming,
+ *	PLOYTEC_RATE_IDX_PCM_IN to verify afterwards
  * @rate: Pointer to store the rate
+ *
+ * The wIndex is not cosmetic. The vendor drivers always read the current rate
+ * with a wIndex of zero and always verify with the capture endpoint, and the
+ * captures show the device answering both. Reading the device-wide form
+ * tracks the live rate: in capture_macos_rate_change it follows the
+ * programmed value through 44100, 48000, 88200 and 96000 Hz.
  *
  * Return: 0 on success, negative errno on failure.
  */
-int ploytec_get_rate(struct usb_interface *intf, void *xfer_buf, u32 *rate)
+int ploytec_get_rate(struct usb_interface *intf, void *xfer_buf, u16 index, u32 *rate)
 {
 	struct usb_device *dev = interface_to_usbdev(intf);
 	u8 *buf = xfer_buf;
 	int ret;
 
-	// Read rate from Playback EP 0x05
 	ret = usb_control_msg_recv(dev, 0, PLOYTEC_REQ_GET_RATE, PLOYTEC_REQ_GET_RATE_TYPE,
-				   0x0100, PLOYTEC_EP_NUM_PCM_OUT | USB_DIR_OUT,
+				   0x0100, index,
 				   buf, 3, PLOYTEC_CTRL_TIMEOUT_MS, GFP_KERNEL);
 	if (ret < 0)
 		return ret;
@@ -244,60 +251,82 @@ int ploytec_get_rate(struct usb_interface *intf, void *xfer_buf, u32 *rate)
  * @intf: USB interface
  * @xfer_buf: Temporary transfer buffer
  * @rate: Sample rate in Hz
+ * @cold_init: true when this programs the rate as part of bringing the device
+ *	up, false when it changes the rate of a device already running
+ *
+ * The vendor drivers use two shapes here, and the difference is not cosmetic
+ * -- see re/usb/init_timing_comparison.md. Both end the burst on the capture
+ * endpoint and verify from it, which is the invariant that holds across all
+ * 58 captured vendor sequences on both platforms:
+ *
+ *	cold init:	<14 ms>          86 05 86 05 86  then read back from 86
+ *	rate change:	86 <10 ms>       86 05 86 05 86  then read back from 86
+ *
+ * The write count itself is not load-bearing -- the captures show between
+ * five and seven, varying within a single platform -- but no vendor sequence
+ * ends the burst anywhere other than the capture endpoint, and none verifies
+ * against the playback endpoint.
  *
  * Return: 0 on success (including when the post-write rate verification
  * detects a mismatch, which is only logged), negative errno if a control
  * transfer fails.
  */
-int ploytec_set_rate(struct usb_interface *intf, void *xfer_buf, u32 rate)
+int ploytec_set_rate(struct usb_interface *intf, void *xfer_buf, u32 rate, bool cold_init)
 {
+	static const u16 burst_index[] = {
+		PLOYTEC_RATE_IDX_PCM_IN,
+		PLOYTEC_RATE_IDX_PCM_OUT,
+		PLOYTEC_RATE_IDX_PCM_IN,
+		PLOYTEC_RATE_IDX_PCM_OUT,
+		PLOYTEC_RATE_IDX_PCM_IN,
+	};
 	struct usb_device *dev = interface_to_usbdev(intf);
 	u8 *buf = xfer_buf;
 	u32 current_hw_rate = 0;
+	unsigned int i;
 	int ret;
 
-	ploytec_get_rate(intf, xfer_buf, &current_hw_rate);
-	dev_dbg(&intf->dev, "Setting rate %u Hz (current hw rate: %u Hz)\n",
-		rate, current_hw_rate);
+	dev_dbg(&intf->dev, "Setting rate %u Hz (%s)\n",
+		rate, cold_init ? "cold init" : "rate change");
 
 	buf[0] = rate & 0xFF;
 	buf[1] = (rate >> 8) & 0xFF;
 	buf[2] = (rate >> 16) & 0xFF;
 
-	// Set rate on Capture EP 0x86
-	ret = usb_control_msg_send(dev, 0, PLOYTEC_SET_RATE, PLOYTEC_SET_RATE_TYPE,
-				   0x0100, PLOYTEC_EP_NUM_PCM_IN | USB_DIR_IN,
-				   buf, 3, PLOYTEC_CTRL_TIMEOUT_MS, GFP_KERNEL);
-	if (ret < 0) {
-		dev_err(&intf->dev, "Failed to set rate on EP 0x86: %d\n", ret);
-		return ret;
-	}
-
-	/* 10ms delay to allow device to process the command, as per MacOS driver behavior */
-	usleep_range(10000, 11000);
-
-	/* and after that delay the device is repeatedly "hammered" with rate again... */
-	for (int i = 0; i < 3; i++) {
-		// Set rate on Capture EP 0x86
+	if (cold_init) {
+		/*
+		 * macOS leaves ~14 ms between reading the rate and starting to
+		 * program it on a fresh device, and no separate first write.
+		 */
+		usleep_range(14000, 15000);
+	} else {
 		ret = usb_control_msg_send(dev, 0, PLOYTEC_SET_RATE, PLOYTEC_SET_RATE_TYPE,
-					   0x0100, PLOYTEC_EP_NUM_PCM_IN | USB_DIR_IN,
+					   0x0100, PLOYTEC_RATE_IDX_PCM_IN,
 					   buf, 3, PLOYTEC_CTRL_TIMEOUT_MS, GFP_KERNEL);
 		if (ret < 0) {
 			dev_err(&intf->dev, "Failed to set rate on EP 0x86: %d\n", ret);
 			return ret;
 		}
 
-		// Set rate on Playback EP 0x05
+		/*
+		 * A rate change writes once, pauses, then repeats the burst.
+		 * Observed at 10.5-11.2 ms on macOS and 6-23 ms on Windows.
+		 */
+		usleep_range(10000, 11000);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(burst_index); i++) {
 		ret = usb_control_msg_send(dev, 0, PLOYTEC_SET_RATE, PLOYTEC_SET_RATE_TYPE,
-					   0x0100, PLOYTEC_EP_NUM_PCM_OUT | USB_DIR_OUT,
+					   0x0100, burst_index[i],
 					   buf, 3, PLOYTEC_CTRL_TIMEOUT_MS, GFP_KERNEL);
 		if (ret < 0) {
-			dev_err(&intf->dev, "Failed to set rate on EP 0x05: %d\n", ret);
+			dev_err(&intf->dev, "Failed to set rate on EP 0x%02x: %d\n",
+				burst_index[i], ret);
 			return ret;
 		}
 	}
 
-	if (ploytec_get_rate(intf, xfer_buf, &current_hw_rate) == 0) {
+	if (ploytec_get_rate(intf, xfer_buf, PLOYTEC_RATE_IDX_PCM_IN, &current_hw_rate) == 0) {
 		if (current_hw_rate != rate)
 			dev_warn(&intf->dev, "Rate mismatch! Requested %u Hz, Hardware at %u Hz\n",
 				 rate, current_hw_rate);

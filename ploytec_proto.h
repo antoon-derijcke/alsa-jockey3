@@ -38,6 +38,15 @@
 #define PLOYTEC_REQ_GET_RATE		0x81	// bRequest to get current sample rate
 #define PLOYTEC_REQ_GET_RATE_TYPE	0xA2	// bmRequestType to get current sample rate
 
+/*
+ * wIndex values for the rate requests. The vendor drivers read the current
+ * rate with a wIndex of zero and read it back, after programming, from the
+ * capture endpoint; both forms are needed.
+ */
+#define PLOYTEC_RATE_IDX_DEVICE		0x0000	// device-wide, used before programming
+#define PLOYTEC_RATE_IDX_PCM_IN		(PLOYTEC_EP_NUM_PCM_IN | USB_DIR_IN)	// 0x86
+#define PLOYTEC_RATE_IDX_PCM_OUT	(PLOYTEC_EP_NUM_PCM_OUT)		// 0x05
+
 /* Status Bits (bits 0-4 are observed but not understood, and unused) */
 #define PLOYTEC_STATUS_STREAMING	0x20
 
@@ -55,8 +64,8 @@
  */
 int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf);
 int ploytec_start_streaming(struct usb_interface *intf, void *xfer_buf);
-int ploytec_get_rate(struct usb_interface *intf, void *xfer_buf, u32 *rate);
-int ploytec_set_rate(struct usb_interface *intf, void *xfer_buf, u32 rate);
+int ploytec_get_rate(struct usb_interface *intf, void *xfer_buf, u16 index, u32 *rate);
+int ploytec_set_rate(struct usb_interface *intf, void *xfer_buf, u32 rate, bool cold_init);
 int ploytec_get_firmware(struct usb_interface *intf, void *xfer_buf);
 int ploytec_get_status(struct usb_interface *intf, void *xfer_buf, u8 *status);
 
