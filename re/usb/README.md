@@ -83,8 +83,66 @@ indistinguishable downstream. Before concluding that a gap is the host
 *waiting*, check the raw trace for that interval -- see
 `init_timing_comparison.md` for a worked example.
 
+## Trace metadata
+
+**Every trace gets a Markdown sidecar named after it**: `capture_foo.md` for
+`capture_foo.txt` (or `capture_foo.txt.bz2`). The traces themselves are too
+large to version; the sidecars are small, are versioned, and are what makes a
+trace still interpretable in a year.
+
+The sidecars live **here, in `openvizsla/`**, not beside the trace files. The
+traces are kept outside the repo in the project workspace under
+`usb capture 2026/` and are symlinked into `openvizsla/`; putting the metadata
+next to the real files would leave it unversioned, which defeats the purpose.
+So `openvizsla/` is the metadata index for traces stored elsewhere, and a
+sidecar exists here for every trace whether or not the trace itself is
+reachable from this checkout.
+
+### Taking a capture
+
+Before tearing the rig down, check the capture caught what it was meant to:
+
+```sh
+grep -c "SETUP" capture_foo.txt     # 0 means no control traffic at all
+```
+
+Four of the 2026 macOS traces contain no EP0 traffic, and at least one of
+those looks as though it was meant to. That check takes seconds and tells you
+whether to re-take the trace while the setup is still standing. Then generate
+the sidecar and fill it in while the details are fresh.
+
+`make_trace_sidecar.py` writes the skeleton, filling in everything derivable
+from the trace -- duration, device address, endpoints, whether there is any
+EP0 traffic, the control events and the rates programmed -- and leaving TODO
+markers for what only the person at the keyboard knows:
+
+```sh
+python3 make_trace_sidecar.py capture_foo_parsed.txt \
+    --for capture_foo.txt --platform Linux
+```
+
+The fields that must be filled in by hand:
+
+| Field | Why |
+|---|---|
+| `host`, `os_version` | timing is a property of the machine as much as the driver |
+| `driver_version` | for Linux, the alsa-jockey3 git hash |
+| `module_build_id` | Linux only, from `/sys/module/snd_reloop_jockey3/notes/` -- the only reliable identity of a *loaded* module here, since `srcversion` needs `CONFIG_MODULE_SRCVERSION_ALL`, which Debian and Pi kernels do not set |
+| `kernel_config` | Linux only; debug and production kernels behave differently, which is the whole reason this investigation exists |
+| `application` | the software driving the device, with version |
+| **Objective** | why the trace was taken and what it should contain |
+| **Conclusion** | what it actually showed, once analyzed |
+
+**Objective is the field that matters most.** Several 2026 captures contain no
+EP0 traffic at all, which makes them look defective. They are not -- they were
+taken deliberately to answer whether the application's buffer-size setting
+affects the on-wire format (it does not; it is local to the host). Without the
+objective recorded, a stream-only trace is indistinguishable from a botched
+capture.
+
 ## Analysis results
 
 - `init_timing_comparison.md` -- macOS vs Windows vs Linux initialization and
   rate-change sequences, and the timing the vendor drivers leave that this
   driver does not.
+
