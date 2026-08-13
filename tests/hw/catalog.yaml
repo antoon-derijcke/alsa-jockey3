@@ -706,11 +706,12 @@ cases:
     level: L3
     mode: semi-automated
     status: implemented
-    requires: [device, root, human]
+    requires: [device, root]
     exec: cases/audio_engine_start.py
     params:
       trigger: device_power
       iterations_per_run: 10
+      off_seconds: 5
       seconds: 2
       rate: 44100
       min_nonzero_fraction: 0.01
@@ -733,9 +734,16 @@ cases:
       Needs a real device power cycle. Ten re-enumerations through the ppps
       hub switch all recovered correctly -- the Jockey 3 is self-powered, so
       cutting VBUS is a cable unplug rather than a power-off, and the two are
-      not equivalent to the device. That is why this is semi-automated: the
-      trigger that reproduces the fault has no software path. Set
-      trigger:port_power for the automated regression baseline, or
+      not equivalent to the device.
+
+      It therefore switches the device's own mains supply: a network relay
+      when one is configured (device-power, see lib/power/), otherwise an
+      operator working the switch by hand. With a relay it runs unattended,
+      which is what makes a fault this intermittent practical to chase. The
+      case blocks itself if neither is available, which is why device-power
+      and human are not listed as requirements -- either will do.
+
+      Set trigger:port_power for the automated regression baseline, or
       trigger:module_reload to re-probe a device that stayed powered.
     steps:
       - >

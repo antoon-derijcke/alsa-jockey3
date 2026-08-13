@@ -40,7 +40,7 @@ import os
 import shutil
 import subprocess
 
-from lib import env, priv
+from lib import env, power, priv
 
 try:
     import yaml
@@ -55,7 +55,8 @@ DEFAULT_PATH = "~/.config/jockey3/capabilities.yaml"
 
 # Settled by asking the machine. Never declared, never in a file.
 PROBED = ("device", "root", "kernel-tree", "cross-toolchains", "qemu", "sox",
-          "mixxx", "python-mido", "rtc-wake", "usb-switch", "gadget-emulation")
+          "mixxx", "python-mido", "rtc-wake", "usb-switch", "gadget-emulation",
+          "device-power")
 
 # No probe exists, or none can exist. These come from the local file, and
 # default to false when it is absent.
@@ -153,6 +154,16 @@ def _probe_gadget_emulation():
         return False
 
 
+def _probe_device_power():
+    """A network relay on the device's own mains supply.
+
+    Probed rather than declared: the relay either answers or it does not, and
+    a declaration that it is present when the network is down would block
+    JT-AUDIO-005 with a confusing error instead of demoting it to manual.
+    """
+    return power.available()
+
+
 def _probe_usb_switch():
     """Is a Jockey 3 sitting behind a switchable hub port?
 
@@ -178,6 +189,7 @@ PROBES = {
     "python-mido": _probe_python_mido,
     "rtc-wake": _probe_rtc_wake,
     "usb-switch": _probe_usb_switch,
+    "device-power": _probe_device_power,
     "gadget-emulation": _probe_gadget_emulation,
 }
 

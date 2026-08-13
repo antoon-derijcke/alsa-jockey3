@@ -60,9 +60,13 @@ whatever runs its audio engine is still coming up. Program it in that window
 and the engine never starts -- which is why a debug kernel, which is slower to
 reach probe, has never shown the fault.
 
-The practical consequence is that this case cannot be fully automated through
-the hub. `device_power` is the mode that reproduces it, and it needs either an
-operator or a switchable mains outlet feeding the device's own supply.
+The practical consequence is that this case cannot be automated through the
+hub. `device_power` is the mode that reproduces it, and it switches the
+device's own supply: a network relay if one is configured (see
+lib/power/), otherwise an operator working the switch by hand. With a
+relay it runs unattended, which is what makes a fault this intermittent
+practical to chase -- three failures in four cycles, but only after a real
+cold boot.
 
 `port_power` is kept anyway: ten clean cycles is a useful regression baseline,
 and if it ever starts failing that is a different and worse defect.
@@ -91,7 +95,7 @@ sys.path.insert(0, os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
 
 from lib.case import Case          # noqa: E402
-from lib import alsa, priv         # noqa: E402
+from lib import alsa, power, priv    # noqa: E402
 
 CHANNELS = 6                       # fixed by the driver: min == max
 FORMAT = "S24_3LE"
@@ -158,17 +162,34 @@ def reenumerate(c, trigger, off_seconds, settle, operator_timeout):
     t0 = time.time()
 
     if trigger == "device_power":
-        # The only mode known to reproduce the fault. Nothing here can switch
-        # the device's own supply, so the operator does it.
-        c.instruct("Switch the device OFF, wait for the LEDs to go dark, "
-                   "then switch it ON again.")
-        # Waiting on a person, not on the bus: the machine settle is far too
-        # short for someone to reach the switch.
-        _idx, gone = wait_for_card(False, operator_timeout)
-        if gone is None:
-            c.fail(f"card still present {operator_timeout}s after the "
-                   f"power-off instruction -- was the device switched off?")
-            return None, None
+        # The only mode known to reproduce the fault, because it is the only
+        # one that gives the device a cold boot.
+        if power.available():
+            ok, detail = power.set_state(False)
+            if not ok:
+                c.fail(f"could not switch the device off: {detail}")
+                return None, None
+            _idx, gone = wait_for_card(False, settle)
+            if gone is None:
+                c.fail(f"card still present {settle}s after mains power was "
+                       f"cut -- is the relay feeding the right outlet?")
+                return None, None
+            time.sleep(off_seconds)
+            ok, detail = power.set_state(True)
+            if not ok:
+                c.fail(f"could not switch the device back on: {detail}")
+                return None, None
+        else:
+            c.instruct("Switch the device OFF, wait for the LEDs to go dark, "
+                       "then switch it ON again.")
+            # Waiting on a person, not on the bus: the machine settle is far
+            # too short for someone to reach the switch.
+            _idx, gone = wait_for_card(False, operator_timeout)
+            if gone is None:
+                c.fail(f"card still present {operator_timeout}s after the "
+                       f"power-off instruction -- was the device switched "
+                       f"off?")
+                return None, None
     elif trigger == "port_power":
         rc, _out, err = priv.usb_power("off")
         if rc != 0:
@@ -194,7 +215,8 @@ def reenumerate(c, trigger, off_seconds, settle, operator_timeout):
             c.fail(f"module load failed: {str(err).strip()[:120]}")
             return None, None
 
-    back = operator_timeout if trigger == "device_power" else settle
+    back = (operator_timeout if trigger == "device_power"
+            and not power.available() else settle)
     idx, seen = wait_for_card(True, back)
     if seen is None:
         c.fail(f"card did not come back within {back}s")
@@ -216,12 +238,22 @@ def main():
         c.blocked(f"unknown trigger {trigger!r}")
     if trigger == "port_power" and not priv.usb_switch_available():
         c.blocked("no Jockey 3 behind a ppps-capable hub port")
-    if trigger == "device_power" and not c.attended:
-        c.blocked("device_power needs an operator to work the power switch; "
-                  "no automated path to the device's own supply exists yet")
+    if trigger == "device_power":
+        # A relay makes this unattended; without one it needs somebody at the
+        # switch, and saying which is in play belongs in the record.
+        if power.available():
+            c.metric("power_control", "relay")
+        elif c.attended:
+            c.metric("power_control", "operator")
+        else:
+            c.blocked("device_power needs either a configured mains relay "
+                      "(see lib/power/) or an operator at the switch")
 
     iterations = int(c.params.get("iterations_per_run", 10))
-    off_seconds = float(c.params.get("off_seconds", 2))
+    # Long enough for the device's own supply to drain: the point is a cold
+    # boot, and reconnecting mains too early gives a warm one, which is the
+    # case that already works.
+    off_seconds = float(c.params.get("off_seconds", 5))
     settle = float(c.params.get("settle_seconds", 8))
     seconds = int(c.params.get("seconds", 2))
     rate = int(c.params.get("rate", 44100))

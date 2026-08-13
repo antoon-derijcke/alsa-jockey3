@@ -74,6 +74,9 @@ capabilities:
   python-mido:      mido and python-rtmidi are available
   usb-switch:       A ppps-capable hub port, switchable with uhubctl
   gadget-emulation: USB gadget or dummy_hcd for malformed-descriptor tests
+  device-power:     A network relay on the device's own mains supply,
+                    for the cold boot JT-AUDIO-005 needs. Configured in
+                    the same local file; see lib/power/
   # declared locally
   speakers:         Monitoring is connected and audible
   loopback-cable:   Outputs are cabled back into the device's own inputs
