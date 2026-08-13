@@ -7,6 +7,10 @@ Due to the sheer size of the raw traces (between 50 MB and 1 GB depending on
 the duration of the trace) these are *omitted* from the git repo. Only the
 parsed and pruned versions are included.
 
+The orignal, raw capture files are stored outside of this tree on a Seafile 
+shared folder; with a symbolic link to this this file in this repository
+directory.
+
 ---
 
 ## Diagnosing audio glitches that report nothing
