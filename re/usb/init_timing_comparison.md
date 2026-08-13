@@ -23,6 +23,10 @@ Only captures containing EP0 traffic can say anything here, and several of the
 |---|---|
 | `capture_macos_44k_poweron` | 1 enumeration, **1 cold init** |
 | `capture_macos_rate_change` | **7 warm rate changes** |
+| `capture_2026-08-13_macos_poweron` | 6 enumerations, **6 cold inits** at 44.1 kHz |
+| `capture_2026-08-13_macos_poweron_96k` | 6 enumerations, **6 cold inits**, 6 rate changes to 96 kHz |
+| `capture_2026-08-13_macos_usb_disconnect_96k` | 5 enumerations, **5 cold inits**, 4 rate changes to 96 kHz |
+| `capture_2026-08-13_macos_poweron_noapp` | 6 enumerations, **6 cold inits**, 6 rate changes, **no application running** |
 | `capture_macos_96k_512` | none -- no EP0 traffic captured |
 | `capture_macos_96k_to_44k1` | none -- no EP0 traffic captured |
 | `capture_macos_44k1_{128,512,1024}` | none -- no SETUP tokens in the raw trace |
@@ -32,9 +36,15 @@ Only captures containing EP0 traffic can say anything here, and several of the
 | `capture_stalled_linux` | 8 init+rate sequences |
 | `capture_linux_44k1`, `capture_linux_88k` | none -- no SETUP tokens |
 
-Vendor sample sizes: macOS cold init **n=1**, macOS warm rate change **n=7**,
-Windows cold init **n=5**, Windows warm rate change **n=6**. Eighteen vendor
-sequences in total.
+Vendor sample sizes: macOS cold init **n=24**, macOS rate change **n=23**,
+Windows cold init **n=5**, Windows warm rate change **n=6**. Fifty-eight
+vendor sequences in total.
+
+The four `2026-08-13` captures were taken specifically to close the macOS
+cold-init gap, which stood at n=1 when this document was first written. They
+also settle three questions the earlier corpus could not: whether the quiet
+window is rate-dependent, whether the device retains its rate across a USB
+disconnect, and whether the vendor driver streams without an application.
 
 **Caveat on the Linux captures.** The driver revision that produced
 `capture_linux` and `capture_stalled_linux` was not recorded, so every Linux
@@ -44,7 +54,7 @@ identity for a loaded module here.
 
 ## Finding 1: the rate-write burst ends on the wrong endpoint
 
-This is the hardest result in the data: an invariant that holds in all 18
+This is the hardest result in the data: an invariant that holds in all 58
 vendor sequences, at every rate, on both platforms, and which we violate.
 
 Both vendors end the `SET_RATE` burst on **EP 0x86** and then read the rate
@@ -52,13 +62,13 @@ back from **EP 0x86**.
 
 | | Burst | Readback from |
 |---|---|---|
-| macOS cold init | `86 05 \| 86 05 86` | `0x86` |
-| macOS warm rate change | `86 \| 86 05 86 05 86` | `0x86` |
+| macOS cold init (n=24) | `86 05 86 05 86`, no pause | `0x86` |
+| macOS rate change (n=23) | `86 \| 86 05 86 05 86` | `0x86` |
 | Windows cold init | `86 05 \| 86 05 86` | `0x86` |
 | Windows, samplerate capture | `86 05 \| 86 05 86 05 86` | `0x86` |
 | **this driver** | `86 \| 86 05 86 05 86 05` | **`0x05`** |
 
-(`\|` marks the mid-burst pause -- see finding 3.)
+(`\|` marks the mid-burst pause -- see finding 6.)
 
 The write *count* is plainly not load-bearing: it varies from 5 to 7 within a
 single platform, and even within a single capture. The **parity** may well be.
@@ -83,16 +93,24 @@ the readback can target `0x86`.
 ## Finding 2: the vendors leave a ~50 ms quiet window; we never do
 
 Every vendor sequence contains at least one window of very close to 50 ms in
-which the host sends nothing at all. Across 18 sequences the value lands
+which the host sends nothing at all. Across 58 sequences the value lands
 between 50.2 ms and 52.0 ms -- a spread under 4%.
+
+**It is not rate-dependent.** That was the open question the 96 kHz captures
+were taken to settle, and the answer is clean: 50.227 ms in a 44.1 kHz cold
+init against 51.076 ms in a 96 kHz one, and 51.177 / 50.211 ms in a 96 kHz
+rate change. A fixed 50 ms in the driver is correct at every supported rate;
+there is nothing to scale.
 
 | Sequence | n | Quiet window | Position |
 |---|---|---|---|
 | Windows cold init (power cycle) | 4 | 50.863 - 51.372 ms | after `SET_INTERFACE(1, alt 1)` |
 | Windows, samplerate capture | 7 | 50.316 - 51.956 ms | after `SET_INTERFACE(1, alt 1)` |
-| macOS warm rate change | 7 | 50.225 - 51.149 ms | before the first `SET_RATE` |
-| macOS warm rate change | 7 | 50.210 - 50.893 ms | after the `GET_RATE` readback |
-| macOS cold init | 1 | 51.112 ms | after the `GET_RATE` readback |
+| macOS rate change | 7 | 50.225 - 51.149 ms | before the first `SET_RATE` |
+| macOS rate change | 7 | 50.210 - 50.893 ms | after the `GET_RATE` readback |
+| macOS cold init, 44.1 kHz | 6 | ~50.2 ms | after the `GET_RATE` readback |
+| macOS cold init, 96 kHz | 6 | ~51.1 ms | after the `GET_RATE` readback |
+| macOS rate change to 96 kHz | 16 | 50.2 - 51.2 ms | both positions |
 
 This driver has no such window anywhere. Its largest inter-transfer gap is the
 deliberate ~11 ms inside the `SET_RATE` burst; every other step follows the
@@ -135,7 +153,73 @@ Across the 7 macOS warm rate changes the window starts at phases of 0.0, 37.7,
 interval with no common phase. A periodic tick would cluster. These are fixed
 sleeps that begin whenever the previous step finished.
 
-## Finding 3: the mid-burst pause is real and ours is about right
+## Finding 3: cold init and rate change are two different sequences
+
+The 2026-08-13 captures make this unmistakable, and it is the finding with the
+most direct consequence for our code. macOS uses two structurally distinct
+sequences, and we use one.
+
+| | macOS cold init | macOS rate change |
+|---|---|---|
+| Transfers | 16 | 18 |
+| Interface handling | `SET_INTERFACE` to alt 1 only | bounce: alt 0 on both, then alt 1 on both |
+| Preceded by | `SET_CONFIGURATION` | nothing |
+| Lead-in before burst | ~14 ms | **~51 ms** |
+| Burst | 5 writes, contiguous | 1 write, **~11 ms**, then 5 |
+| Quiet windows | one, before the final `GET_STATUS` | two |
+
+The cold init always programs **44100 Hz**, whatever the application is
+configured for. When Traktor was set to 96 kHz, every power-on produced a
+44.1 kHz cold init followed about half a second later by a *separate* rate
+change to 96 kHz. The initialization is not parameterized by the desired rate
+at all.
+
+We have only one path: `ploytec_initialize_device()` followed by
+`ploytec_set_rate()`, so our initialization uses the *rate-change* burst shape
+-- one write, a 10 ms sleep, then a loop -- where macOS uses five contiguous
+writes with a 14 ms lead-in and no mid-burst pause. We also perform the alt 0
+bounce during initialization, which macOS does only on rate changes.
+
+## Finding 4: no application is required, which validates the free-running URBs
+
+`capture_2026-08-13_macos_poweron_noapp` was taken with nothing open on the
+Mac. macOS still enumerated the device, ran the full cold init, programmed the
+rate -- including the change to 96 kHz -- and then streamed continuously:
+141524 packets on EP 0x05 over 38.4 s, about 3700 per second, with gaps only
+while the device was physically powered off.
+
+This driver keeps its URBs submitted for the device's lifetime rather than
+starting and stopping them around PCM open and close. That was reasoned from
+the MIDI multiplexing -- MIDI OUT rides in byte 480 of every playback packet,
+so the stream cannot stop while MIDI is expected to work. It now has direct
+vendor evidence behind it: the reference implementation streams with no
+application in the picture at all.
+
+## Finding 5: the device resets its rate on USB re-enumeration
+
+`capture_2026-08-13_macos_usb_disconnect_96k` was taken to test whether the
+device retains its configured rate when the USB cable is unplugged and
+replugged, since that does not power-cycle it -- the Jockey 3 is self-powered
+(`bmAttributes 0xc0`).
+
+**It does not.** Every `GET_RATE wIndex=0` after a replug reads 44100 Hz, in
+cycles where the device had been running at 96 kHz moments earlier.
+
+After a power cycle that reading is unremarkable -- 44100 Hz is evidently the
+power-on default. The unplug case is the informative one: the device kept its
+power the whole time and still came back at 44100 Hz, so the reset is
+triggered by USB re-enumeration rather than by loss of power.
+
+That reading is genuinely live rather than a constant, which the older
+`capture_macos_rate_change` establishes: there the same request tracks the
+programmed rate through 44100, 48000, 44100, 48000, 88200, 96000 and 44100.
+
+Two consequences. A driver may not assume a rate survives re-enumeration, so
+the rate must be reprogrammed on every probe -- which we do. And the vendors
+issue this initial read with `wIndex = 0x0000`, a form our
+`ploytec_get_rate()` cannot express; see finding 7.
+
+## Finding 6: the mid-burst pause is real and ours is about right
 
 Every implementation splits the rate writes with a pause:
 
@@ -149,7 +233,7 @@ Every implementation splits the rate writes with a pause:
 Ours sits inside the observed vendor range. This one is fine, and the comment
 in `ploytec_set_rate()` attributing it to macOS behavior is accurate.
 
-## Finding 4: smaller divergences
+## Finding 7: smaller divergences
 
 - **`GET_RATE` wIndex.** Both vendors issue the *initial* rate read with
   `wIndex = 0x0000` and the *readback* with `wIndex = 0x0086`. We use
@@ -199,10 +283,17 @@ on a production kernel.
 
 ## Do we need more vendor traces?
 
-**For the delay values, no.** Eighteen sequences with under 4% spread is not
-noise-limited; more captures would refine a number that is already clearly
-50 ms. The one thin cell is macOS cold init at n=1, which one more macOS
-power-on capture would close -- worth having, not blocking.
+**No.** This was an open question when the corpus held 18 sequences and a
+single macOS cold init. The 2026-08-13 captures took it to 58 sequences and 24
+macOS cold inits, and every number they added fell inside the range already
+established. The delays are settled, and the two questions the numbers alone
+could not answer -- rate dependence and the streaming-without-an-application
+assumption -- are settled too.
+
+Scenarios still uncovered on every platform, in descending order of value:
+**stream stop / application close**, which bears on our module-unload path,
+and **suspend/resume**, which bears on the open PM warning. Neither is
+blocking.
 
 **The blocking artifact is on the Linux side**: a failing init and a passing
 init captured back to back on a production kernel, same driver build, with the
