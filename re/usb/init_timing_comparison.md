@@ -90,6 +90,9 @@ The change is small: drop the trailing `0x05` write from the loop in
 `ploytec_set_rate()`, and give `ploytec_get_rate()` an endpoint argument so
 the readback can target `0x86`.
 
+Note that at probe this burst does not run at all -- see finding 7, which is
+the more serious problem.
+
 ## Finding 2: the vendors leave a ~50 ms quiet window; we never do
 
 Every vendor sequence contains at least one window of very close to 50 ms in
@@ -249,7 +252,53 @@ Every implementation splits the rate writes with a pause:
 Ours sits inside the observed vendor range. This one is fine, and the comment
 in `ploytec_set_rate()` attributing it to macOS behavior is accurate.
 
-## Finding 7: smaller divergences
+## Finding 7: at probe we skip the rate programming altogether
+
+This one is not visible on our wire as a *difference in* a sequence -- it is a
+sequence that never happens. It lives in our control flow, and the vendor
+corpus is what made it visible.
+
+`jockey3_set_rate()` reads the hardware rate and only calls
+`ploytec_set_rate()` if it differs from the requested one:
+
+```c
+ret = ploytec_get_rate(chip->intf0, chip->xfer_buf, &current_hw_rate);
+...
+if (current_hw_rate != rate) {
+        ret = ploytec_set_rate(chip->intf0, chip->xfer_buf, rate);
+```
+
+`jockey3_initialize()` requests 44100 Hz at probe, and 44100 Hz is the
+device's power-on default -- established by every macOS cold init in the
+corpus, all of which read exactly that before programming anything. So on a
+cold power-on the condition is false and **the entire rate burst is skipped**.
+Our initialization is `initialize_device` -> `get_rate` -> `start_streaming`,
+with no `SET_RATE` in it at all.
+
+All 24 macOS cold inits program the rate unconditionally, writing 44100 Hz to
+a device already reporting 44100 Hz, and only then read it back and set the
+status. Windows does the same. No vendor sequence in the corpus, on either
+platform, skips the burst.
+
+If those writes are what arms the endpoints rather than merely setting a
+frequency, this is not a timing bug at all but a missing step, and the
+intermittency is in whatever sometimes makes the device work without it.
+
+Two things make this the strongest candidate for the initialization failure:
+
+- It is the only divergence that removes work entirely rather than
+  reordering or re-timing it.
+- `jockey3_initialize()` already retries the whole sequence ten times with
+  50-100 ms between attempts. A device that merely needed a settling period
+  would be very likely to succeed on the second attempt; ten consecutive
+  failures over about a second fit an absent step far better than a missed
+  window.
+
+The fix is to program the rate unconditionally at probe, as both vendors do.
+The `current_hw_rate != rate` guard is reasonable for a later rate *change*,
+but initialization is not a rate change -- finding 3.
+
+## Finding 8: smaller divergences
 
 - **`GET_RATE` wIndex.** Both vendors issue the *initial* rate read with
   `wIndex = 0x0000` and the *readback* with `wIndex = 0x0086`. We use
