@@ -700,6 +700,63 @@ cases:
       channels 5 and 6. Mic level is known to be lower than under Windows --
       Windows applies software gain -- so this is not a defect.
 
+  - id: JT-AUDIO-005
+    title: Device audio engine starts after a power cycle
+    area: AUDIO
+    level: L3
+    mode: semi-automated
+    status: implemented
+    requires: [device, root, human]
+    exec: cases/audio_engine_start.py
+    params:
+      trigger: device_power
+      iterations_per_run: 10
+      seconds: 2
+      rate: 44100
+      min_nonzero_fraction: 0.01
+      operator_timeout_seconds: 120
+    metrics: [cycles, silent_cycles, first_silent_cycle, nonzero_fraction_min,
+              nonzero_fraction_max, enumerate_ms_max, trigger]
+    pass: >
+      Every power cycle leaves a device that actually produces audio. Capture
+      carries a noise floor -- a running converter is never bit-exact silent,
+      and the working runs measure above 95% of frames non-zero. A capture
+      that is entirely zero means the device accepted the stream and never
+      started its audio engine, which no dmesg line and no xrun counter
+      reports.
+    notes: >
+      Observed 2026-08-13 on the production kernel: three consecutive power
+      cycles produced a device that enumerated, probed, programmed and
+      verified its rate, and accepted every playback sample while emitting
+      nothing. The control plane was byte-identical to the cycle that worked.
+
+      Needs a real device power cycle. Ten re-enumerations through the ppps
+      hub switch all recovered correctly -- the Jockey 3 is self-powered, so
+      cutting VBUS is a cable unplug rather than a power-off, and the two are
+      not equivalent to the device. That is why this is semi-automated: the
+      trigger that reproduces the fault has no software path. Set
+      trigger:port_power for the automated regression baseline, or
+      trigger:module_reload to re-probe a device that stayed powered.
+    steps:
+      - >
+        Switch the device off, wait for the LEDs to go dark, and switch it
+        back on. Wait for the card to reappear in /proc/asound/cards.
+      - >
+        Capture two seconds from it, for example
+        `arecord -D hw:CARD -f S24_3LE -c 6 -r 44100 -d 2 -t raw /tmp/e.raw`.
+      - >
+        Check whether any byte of that capture is non-zero, e.g.
+        `python3 -c "print(any(open('/tmp/e.raw','rb').read()))"`. True is a
+        pass. False means the device never started its audio engine, even
+        though playback was accepted and dmesg is clean.
+      - >
+        Repeat ten times. The fault is intermittent -- three failures in four
+        cycles were seen on 2026-08-13, and a single passing cycle proves
+        nothing.
+      - >
+        If a cycle fails, keep the capture and take an OpenVizsla trace of the
+        next attempt; see re/usb/init_timing_comparison.md.
+
   # ------------------------------------------------------------------- MIDI
 
   - id: JT-MIDI-001
