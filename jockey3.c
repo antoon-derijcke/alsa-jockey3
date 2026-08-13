@@ -1297,16 +1297,25 @@ static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate)
 		return ret;
 	}
 	dev_dbg(&chip->intf0->dev, "Current hardware rate: %u Hz\n", current_hw_rate);
-	if (current_hw_rate != rate) {
-		dev_dbg(&chip->intf0->dev, "Setting new hardware rate: %u Hz\n", rate);
-		ret = ploytec_set_rate(chip->intf0, chip->xfer_buf, rate);
-		if (ret < 0) {
-			dev_err(&chip->intf0->dev, "Failed to set rate: %d\n", ret);
-			return ret;
-		}
-	} else {
-		dev_dbg(&chip->intf0->dev, "Hardware rate already at requested value: %u Hz\n",
-			current_hw_rate);
+
+	/*
+	 * Program the rate even when the device already reports it. This used to
+	 * be skipped on a match, which meant it never ran at all during probe:
+	 * initialization asks for 44100 Hz and 44100 Hz is the power-on default,
+	 * so the device always reported the value we were about to write and the
+	 * write was elided. The USB traces show no vendor sequence doing that --
+	 * every macOS and Windows initialization programs the rate
+	 * unconditionally, to a device already reporting it, and only then reads
+	 * it back. The writes evidently do more than set a frequency.
+	 *
+	 * Callers that want to avoid a redundant rate change already check
+	 * against chip->current_rate before getting here.
+	 */
+	dev_dbg(&chip->intf0->dev, "Setting hardware rate: %u Hz\n", rate);
+	ret = ploytec_set_rate(chip->intf0, chip->xfer_buf, rate);
+	if (ret < 0) {
+		dev_err(&chip->intf0->dev, "Failed to set rate: %d\n", ret);
+		return ret;
 	}
 	ret = ploytec_start_streaming(chip->intf0, chip->xfer_buf);
 	if (ret < 0) {
