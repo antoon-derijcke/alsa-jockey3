@@ -56,7 +56,7 @@ def parse_capture(file_path):
 
 if __name__ == "__main__":
     #results = parse_capture("capture_midi_out.txt")
-    results = parse_capture("usb capture 2026/capture_macos_44k1_512.txt")
+    results = parse_capture("openvizsla/capture_macos_44k1_512.txt")
     #results = parse_capture("capture_macos_96k_512.txt")
     
     #results = parse_capture("capture_linux_44k1_2.txt")
