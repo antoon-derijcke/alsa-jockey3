@@ -2686,19 +2686,24 @@ static int jockey3_post_reset(struct usb_interface *intf)
 		scoped_guard(mutex, &chip->rate_mutex) {
 			jockey3_initialize_ploytec(chip);
 
-			/* Verify if the sample rate persisted through the reset */
+			/*
+			 * Re-apply the rate unconditionally. Reading it first
+			 * and skipping on a match repeated the probe-time
+			 * mistake: a reset returns the device to 44100 Hz, so
+			 * whenever the stream was already at 44100 Hz the
+			 * comparison matched and nothing was reprogrammed. The
+			 * captures show the rate does not survive even a bus
+			 * re-enumeration, and no vendor sequence omits the
+			 * programming. The read stays as a diagnostic.
+			 */
 			if (ploytec_get_rate(chip->intf0, chip->xfer_buf,
-					     PLOYTEC_RATE_IDX_DEVICE, &hw_rate) == 0) {
-				if (hw_rate != chip->current_rate) {
-					dev_warn(&chip->intf0->dev,
-						 "Rate mismatch after reset. HW: %u, Expected: %u. Re-applying...\n",
-						 hw_rate, chip->current_rate);
-					jockey3_set_rate(chip, chip->current_rate, true);
-				} else {
-					dev_dbg(&chip->intf0->dev,
-						"Rate %u Hz persisted through reset\n", hw_rate);
-				}
-			}
+					     PLOYTEC_RATE_IDX_DEVICE, &hw_rate) == 0 &&
+			    hw_rate != chip->current_rate)
+				dev_dbg(&chip->intf0->dev,
+					"Rate after reset: HW %u, expected %u\n",
+					hw_rate, chip->current_rate);
+
+			jockey3_set_rate(chip, chip->current_rate, true);
 
 			jockey3_start_urbs_failed(chip, jockey3_start_urbs(chip),
 						  "a device reset");
