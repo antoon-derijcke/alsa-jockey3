@@ -106,6 +106,8 @@ int ploytec_get_status(struct usb_interface *intf, void *xfer_buf, u8 *status)
  * ploytec_initialize_device - Perform Ploytec handshake sequence as observed in USB traces.
  * @intf: USB interface
  * @xfer_buf: Temporary transfer buffer
+ * @bounce_alt0: drive both interfaces to alt 0 before selecting alt 1, which
+ *	the vendors do only when changing the rate of a running device
  *
  * Aborts early if EP0 stops responding, rather than continuing into the
  * alt-setting sequence below; see the comment on the firmware read for why
@@ -113,7 +115,7 @@ int ploytec_get_status(struct usb_interface *intf, void *xfer_buf, u8 *status)
  *
  * Return: 0 on success, negative errno on failure.
  */
-int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf)
+int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf, bool bounce_alt0)
 {
 	struct usb_device *dev = interface_to_usbdev(intf);
 	const unsigned int halt_pipes[] = {
@@ -145,16 +147,25 @@ int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf)
 			return ret;
 	}
 
-	// Select Alt Setting 0 to deactivates the audio interface
-	ret = usb_set_interface(dev, 0, 0);
-	if (ret < 0)
-		return ret;
-	ret = usb_set_interface(dev, 1, 0);
-	if (ret < 0)
-		return ret;
+	/*
+	 * Deactivate the audio interfaces before reactivating them, but only
+	 * when the device is already running. On a device that has just been
+	 * enumerated the interfaces are at alt 0 anyway, and neither vendor
+	 * driver touches alt 0 there: all 29 captured cold initializations go
+	 * straight to alt 1. macOS does bounce on a rate change, and takes
+	 * interface 1 down first, which is the order used here.
+	 */
+	if (bounce_alt0) {
+		ret = usb_set_interface(dev, 1, 0);
+		if (ret < 0)
+			return ret;
+		ret = usb_set_interface(dev, 0, 0);
+		if (ret < 0)
+			return ret;
 
-	/* Give the hardware some time to respond, otherwise it might not be ready */
-	usleep_range(3000, 5000);
+		/* Give the hardware some time to respond, otherwise it might not be ready */
+		usleep_range(3000, 5000);
+	}
 
 	// Select Alt Setting 1 to activate the audio interface
 	ret = usb_set_interface(dev, 0, 1);
