@@ -214,6 +214,22 @@ That reading is genuinely live rather than a constant, which the older
 `capture_macos_rate_change` establishes: there the same request tracks the
 programmed rate through 44100, 48000, 44100, 48000, 88200, 96000 and 44100.
 
+The status byte tells the same story. The first `GET_STATUS` of a cold init
+reads **0x12** after a replug, exactly as it does after a power cycle, with
+the streaming bit clear. On both paths the device presents itself to the host
+as freshly initialized.
+
+The likely explanation is that the firmware runs its own initialization when
+USB is disconnected. It is not a full reset: the control surface LED pattern
+is unchanged across an unplug, which it would not be after a genuine reset.
+
+What the trace cannot distinguish is *when* the rate goes back to 44100 --
+at the disconnect, or when the host sends `SET_CONFIGURATION` on the way back
+up. Nothing is on the wire while the cable is out, and by the time any host
+reads the rate it has already reconfigured the device. The LED observation is
+what separates "partial firmware re-init" from "full reset", and that is an
+out-of-band observation, not something in the capture.
+
 Two consequences. A driver may not assume a rate survives re-enumeration, so
 the rate must be reprogrammed on every probe -- which we do. And the vendors
 issue this initial read with `wIndex = 0x0000`, a form our
@@ -290,10 +306,23 @@ established. The delays are settled, and the two questions the numbers alone
 could not answer -- rate dependence and the streaming-without-an-application
 assumption -- are settled too.
 
-Scenarios still uncovered on every platform, in descending order of value:
-**stream stop / application close**, which bears on our module-unload path,
-and **suspend/resume**, which bears on the open PM warning. Neither is
-blocking.
+Two scenarios were considered and ruled out rather than left open.
+
+**Stream stop / application close.** Because the vendor driver brings the
+device up and keeps the stream flowing as soon as the OS loads it, with no
+application involved, closing an application leaves the device in the same
+state as never having opened one -- and that state is already captured, in
+`capture_2026-08-13_macos_poweron_noapp`. The transition is not expected to
+hold surprises, and the question we actually care about at close is whether
+*our* driver tears down cleanly, which is a hardware-in-the-loop test rather
+than a capture.
+
+**Suspend/resume.** What matters here is that this driver's URBs are running
+correctly again after a resume. How macOS or Windows handle suspend does not
+bear on that, so a vendor trace would not inform the fix. This belongs in the
+test suite too.
+
+With those set aside, the vendor-side capture work is essentially complete.
 
 **The blocking artifact is on the Linux side**: a failing init and a passing
 init captured back to back on a production kernel, same driver build, with the
