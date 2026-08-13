@@ -55,8 +55,13 @@ def parse_line(line):
 	}
 
 def extract_transactions(log_lines):
+	"""Yield completed transactions as they are recognized.
+
+	This is a generator rather than a list builder because the raw captures
+	reach 2.25 GB; nothing may hold the whole trace, or even the whole
+	transaction list, in memory.
+	"""
 	current_tx = None
-	successful_transactions = []
 
 	for line in log_lines:
 		parsed = parse_line(line)
@@ -94,47 +99,62 @@ def extract_transactions(log_lines):
 		# Treat NYET identically to ACK since data was accepted by the device
 		if p_type in ["ACK", "NYET"]:
 			current_tx["status"] = "SUCCESS"
-			# Only save transactions that actually completed cleanly with data or setup tokens
-			successful_transactions.append(current_tx)
+			# Only emit transactions that actually completed cleanly with data or setup tokens
+			yield current_tx
 			current_tx = None
 		elif p_type in ["NAK", "STALL"]:
 			# Ignore NAKs entirely—this filters out the host polling noise
 			current_tx = None
-
-	return successful_transactions
 
 
 
 def main():
 
 	if len(sys.argv) < 2:
-		print("Usage: {} <input_file>".format(os.path.basename(sys.argv[0])))
+		print("Usage: {} <input_file> [output_file|-]".format(
+			os.path.basename(sys.argv[0])))
+		print("  Use - for the output file to write to stdout, so the parse")
+		print("  can be piped straight into reduce_transactions.py without")
+		print("  materializing the intermediate, which for the larger")
+		print("  captures is over a gigabyte.")
 		sys.exit(1)
-	
-	#filename = "usb capture 2026/capture_macos_44k_poweron.txt"
+
 	filename = sys.argv[1].strip()
- 
-	path = Path(filename)
-	parsed_path = path.with_name(f"{path.stem}_parsed{path.suffix}")
-	parsed_filename = str(parsed_path)
-	
-	with open(filename, "r", encoding="ascii") as f:
-		
-		log_lines = f.readlines()
-		print(f"Read {len(log_lines)} lines from capture file.")
-		
-		transactions = extract_transactions(log_lines)
-		print(f"Extracted {len(transactions)} successful transactions.")
-  
-		with open(parsed_filename, "w", encoding="ascii") as out_file:
-			out_file.write(f"{'Timestamp':<12} | {'Direction':<10} | {'Target':<8} | {'Bytes'} | {'Payload Data'}\n")
-			out_file.write("-" * 100 + "\n")
-			for tx in transactions:
-				# Format payload bytes cleanly or indicate no data (e.g., zero-length packets)
-				data_str = " ".join(tx["data"]) if tx["data"] else "[]"
-				data_len = len(tx["data"]) if tx["data"] else 0
-				out_file.write(f"{tx['start_time']:<12.6f} | {tx['type']:<10} | {tx['target']:<8} | {data_len:<5} | {data_str}\n")
+
+	if len(sys.argv) > 2:
+		parsed_filename = sys.argv[2].strip()
+	else:
+		path = Path(filename)
+		parsed_filename = str(path.with_name(f"{path.stem}_parsed{path.suffix}"))
+
+	to_stdout = parsed_filename == "-"
+
+	infile = sys.stdin if filename == "-" else open(filename, "r", encoding="ascii")
+	out_file = sys.stdout if to_stdout else open(parsed_filename, "w", encoding="ascii")
+	try:
+		out_file.write(f"{'Timestamp':<12} | {'Direction':<10} | {'Target':<8} | {'Bytes'} | {'Payload Data'}\n")
+		out_file.write("-" * 100 + "\n")
+
+		count = 0
+		for tx in extract_transactions(infile):
+			# Format payload bytes cleanly or indicate no data (e.g., zero-length packets)
+			data_str = " ".join(tx["data"]) if tx["data"] else "[]"
+			data_len = len(tx["data"]) if tx["data"] else 0
+			out_file.write(f"{tx['start_time']:<12.6f} | {tx['type']:<10} | {tx['target']:<8} | {data_len:<5} | {data_str}\n")
+			count += 1
+	finally:
+		if infile is not sys.stdin:
+			infile.close()
+		if out_file is not sys.stdout:
+			out_file.close()
+
+	print(f"Extracted {count} successful transactions.", file=sys.stderr)
 
 
 if __name__ == "__main__":
-	main()
+	try:
+		main()
+	except BrokenPipeError:
+		# Normal when the output is piped into head(1); say nothing.
+		sys.stderr.close()
+		sys.exit(0)
