@@ -26,8 +26,18 @@ configured sample rate, which may or not may be relfected in the initialization 
 
 ## Conclusion
 
-TODO -- what the trace actually showed, once analyzed. Link the analysis
-document if there is one.
+**The hypothesis is disproved: the device does not retain its sample rate
+across a USB disconnect.** Every `GET_RATE wIndex=0` taken after a replug
+reads 44100 Hz, including immediately after a cycle in which the device had
+been programmed to 96000 Hz.
+
+That read is a live one, not a constant: in `capture_macos_rate_change` the
+same request tracks the programmed rate through 44100, 48000, 88200 and 96000.
+So the 44100 seen here is the device's real state, and a USB re-enumeration
+resets the rate just as a power cycle does.
+
+Otherwise the sequence is identical to the power-on captures -- enumeration,
+44.1 kHz cold init, then a rate change to 96 kHz.
 
 ## Contents (derived)
 

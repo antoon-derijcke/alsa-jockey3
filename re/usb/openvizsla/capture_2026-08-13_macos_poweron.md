@@ -23,8 +23,13 @@ Multiple events captured, by power-cycling the device while playing in Traktor D
 
 ## Conclusion
 
-TODO -- what the trace actually showed, once analyzed. Link the analysis
-document if there is one.
+Six clean cold initializations at 44.1 kHz. Establishes the canonical macOS
+cold-init sequence: enumeration, then a 16-transfer init that always programs
+**44100 Hz** and ends with `SET_STATUS 0x32`. Because Traktor was already at
+44.1 kHz, no rate change follows.
+
+The ~50 ms quiet window appears once per init, between the `GET_RATE` readback
+and the final `GET_STATUS`. Analyzed in `../init_timing_comparison.md`.
 
 ## Contents (derived)
 

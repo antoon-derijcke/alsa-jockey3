@@ -26,8 +26,17 @@ started and kept running forever independent from application use.
 
 ## Conclusion
 
-TODO -- what the trace actually showed, once analyzed. Link the analysis
-document if there is one.
+**Confirms the free-running URB design.** With no application open, macOS
+still enumerates the device, runs the full cold init, programs the rate
+(including the change to 96000 Hz), and then streams continuously: 141524
+packets on EP 0x05 over 38.4 s, about 3700 per second, with gaps only while
+the device was actually powered off.
+
+The vendor driver therefore does not start and stop the stream around
+application use, which is exactly the behavior this driver implements by
+keeping its URBs submitted for the device's lifetime. That design decision now
+has direct vendor evidence behind it rather than being an inference from the
+MIDI multiplexing alone.
 
 ## Contents (derived)
 

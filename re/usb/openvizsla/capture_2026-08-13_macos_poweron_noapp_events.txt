@@ -1,0 +1,384 @@
+# Control-plane events: capture_2026-08-13_macos_poweron_noapp_parsed.txt
+#
+# t(ms) is relative to the first transfer of the event.
+# gap(ms) is from the completion of the previous transfer.
+# stream is bulk packets seen on EP 0x05/0x86 since the previous transfer.
+
+================================================================================================
+EVENT 1  [enumeration]  at 3.426664 s, 11 transfers, span 18.376 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     23.0 |      0 | SET_ADDRESS wValue=0x001e
+     2.440 |     2.417 |     93.0 |      0 | GET_DESCRIPTOR wValue=0x0100 len=18 -> 12 01 00 02 ff ff ff 40 0c 20 37 10 00 01 01 02 03 01
+     2.792 |     0.259 |     50.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=2 -> 1e 03
+     2.997 |     0.155 |     92.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=30 -> 1e 03 4a 00 6f 00 63 00 6b 00 65 00 79 00 20 00 33 00 20 00 52 00 65 00 6d 00 69 00 78 00
+     3.356 |     0.267 |     50.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=2 -> 0e 03
+     3.547 |     0.141 |     75.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=14 -> 0e 03 72 00 65 00 6c 00 6f 00 6f 00 70 00
+     3.792 |     0.170 |     50.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=2 -> 22 03
+     3.959 |     0.117 |    118.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=34 -> 22 03 6e 00 6f 00 20 00 73 00 65 00 72 00 69 00 61 00 6c 00 20 00 6e 00 75 00 6d 00 62 00 65 00 72 00
+    17.227 |    13.150 |     50.0 |      0 | GET_FIRMWARE len=8 -> 31 01 06
+    17.908 |     0.631 |     71.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=9 -> 09 02 49 00 02 01 00 c0 00
+    18.169 |     0.190 |    207.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=73 -> 09 02 49 00 02 01 00 c0 00 09 04 00 00 00 ff 00 00 00 09 04 00 01 03 ff 00 00 00 07 05 02 05 04 00 01 07 05 83 02 00 02 01 07 05 05 02 00 02 01 09 04 01 00 00 ff 00 00 00 09 04 01 01 01 ff 00
+
+================================================================================================
+EVENT 2  [init+rate]  at 4.471596 s, 16 transfers, span 107.341 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     24.0 |      0 | SET_CONFIGURATION wValue=0x0001
+     0.795 |     0.771 |     24.0 |      0 | SET_INTERFACE intf=0 alt=1
+    16.541 |    15.722 |     24.0 |      0 | SET_INTERFACE intf=1 alt=1
+    32.791 |    16.226 |     24.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    34.190 |     1.375 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    34.773 |     0.558 |     24.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    41.059 |     6.262 |     53.0 |      0 | GET_STATUS len=1 -> 12
+    41.278 |     0.166 |    156.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    55.145 |    13.711 |     51.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    55.354 |     0.158 |     50.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    55.696 |     0.292 |     50.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    55.863 |     0.117 |     50.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    56.025 |     0.112 |     50.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    56.206 |     0.131 |    136.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+   106.891 |    50.549 |     54.0 |      0 | GET_STATUS len=1 -> 12
+   107.127 |     0.182 |    214.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 3  [init+rate]  at 5.008237 s, 18 transfers, span 140.370 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |  16806.0 |   3192 | SET_INTERFACE intf=1 alt=0
+    17.905 |     1.099 |     25.0 |      0 | SET_INTERFACE intf=0 alt=0
+    18.336 |     0.406 |     26.0 |      0 | SET_INTERFACE intf=0 alt=1
+    18.616 |     0.254 |     25.0 |      0 | SET_INTERFACE intf=1 alt=1
+    19.464 |     0.823 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    20.755 |     1.266 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    21.234 |     0.454 |     26.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    26.427 |     5.167 |     50.0 |      0 | GET_STATUS len=1 -> 32
+    26.628 |     0.151 |    158.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    77.035 |    50.249 |     51.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    87.601 |    10.515 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    87.815 |     0.158 |     61.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    88.133 |     0.257 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    88.390 |     0.201 |     60.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    88.578 |     0.128 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    88.758 |     0.124 |    115.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+   139.935 |    51.062 |     49.0 |      0 | GET_STATUS len=1 -> 32
+   140.151 |     0.167 |    219.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 4  [enumeration]  at 14.114329 s, 11 transfers, span 17.177 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     22.0 |  90606 | SET_ADDRESS wValue=0x001f
+     2.622 |     2.600 |     75.0 |      0 | GET_DESCRIPTOR wValue=0x0100 len=18 -> 12 01 00 02 ff ff ff 40 0c 20 37 10 00 01 01 02 03 01
+     2.943 |     0.246 |     30.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=2 -> 1e 03
+     3.171 |     0.198 |     76.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=30 -> 1e 03 4a 00 6f 00 63 00 6b 00 65 00 79 00 20 00 33 00 20 00 52 00 65 00 6d 00 69 00 78 00
+     3.443 |     0.196 |     31.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=2 -> 0e 03
+     3.637 |     0.163 |     53.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=14 -> 0e 03 72 00 65 00 6c 00 6f 00 6f 00 70 00
+     3.833 |     0.143 |     30.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=2 -> 22 03
+     3.985 |     0.122 |     74.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=34 -> 22 03 6e 00 6f 00 20 00 73 00 65 00 72 00 69 00 61 00 6c 00 20 00 6e 00 75 00 6d 00 62 00 65 00 72 00
+    16.169 |    12.110 |     31.0 |      0 | GET_FIRMWARE len=8 -> 31 01 06
+    16.735 |     0.535 |     52.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=9 -> 09 02 49 00 02 01 00 c0 00
+    16.975 |     0.188 |    202.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=73 -> 09 02 49 00 02 01 00 c0 00 09 04 00 00 00 ff 00 00 00 09 04 00 01 03 ff 00 00 00 07 05 02 05 04 00 01 07 05 83 02 00 02 01 07 05 05 02 00 02 01 09 04 01 00 00 ff 00 00 00 09 04 01 01 01 ff 00
+
+================================================================================================
+EVENT 5  [init+rate]  at 15.156864 s, 16 transfers, span 106.129 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     28.0 |      0 | SET_CONFIGURATION wValue=0x0001
+     1.305 |     1.277 |     25.0 |      0 | SET_INTERFACE intf=0 alt=1
+    29.786 |    28.456 |     25.0 |      0 | SET_INTERFACE intf=1 alt=1
+    30.692 |     0.881 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    32.621 |     1.904 |     24.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    33.300 |     0.655 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    38.945 |     5.620 |     30.0 |      0 | GET_STATUS len=1 -> 12
+    39.171 |     0.196 |    115.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    53.444 |    14.158 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    53.648 |     0.148 |     56.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    53.978 |     0.274 |     57.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    54.165 |     0.130 |     56.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    54.376 |     0.155 |     60.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    54.564 |     0.128 |    139.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+   105.726 |    51.023 |     36.0 |      0 | GET_STATUS len=1 -> 12
+   105.915 |     0.153 |    214.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 6  [init+rate]  at 15.671549 s, 18 transfers, span 140.898 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |  15963.0 |   2880 | SET_INTERFACE intf=1 alt=0
+    17.133 |     1.170 |     25.0 |      0 | SET_INTERFACE intf=0 alt=0
+    17.703 |     0.545 |     25.0 |      0 | SET_INTERFACE intf=0 alt=1
+    18.001 |     0.273 |     25.0 |      0 | SET_INTERFACE intf=1 alt=1
+    18.820 |     0.794 |     26.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    20.089 |     1.243 |     27.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    20.642 |     0.526 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    26.427 |     5.760 |     31.0 |      0 | GET_STATUS len=1 -> 32
+    26.606 |     0.148 |    120.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    76.985 |    50.259 |     55.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    88.392 |    11.352 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    88.602 |     0.154 |     56.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    88.960 |     0.302 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    89.170 |     0.154 |     57.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    89.364 |     0.137 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    89.549 |     0.129 |    118.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+   140.503 |    50.836 |     31.0 |      0 | GET_STATUS len=1 -> 32
+   140.683 |     0.149 |    215.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 7  [enumeration]  at 20.305271 s, 11 transfers, span 15.735 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     23.0 |  57107 | SET_ADDRESS wValue=0x0004
+     2.604 |     2.581 |     76.0 |      0 | GET_DESCRIPTOR wValue=0x0100 len=18 -> 12 01 00 02 ff ff ff 40 0c 20 37 10 00 01 01 02 03 01
+     2.925 |     0.245 |     30.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=2 -> 1e 03
+     3.153 |     0.198 |     76.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=30 -> 1e 03 4a 00 6f 00 63 00 6b 00 65 00 79 00 20 00 33 00 20 00 52 00 65 00 6d 00 69 00 78 00
+     3.425 |     0.196 |     30.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=2 -> 0e 03
+     3.618 |     0.163 |     52.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=14 -> 0e 03 72 00 65 00 6c 00 6f 00 6f 00 70 00
+     3.810 |     0.140 |     31.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=2 -> 22 03
+     3.960 |     0.119 |     94.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=34 -> 22 03 6e 00 6f 00 20 00 73 00 65 00 72 00 69 00 61 00 6c 00 20 00 6e 00 75 00 6d 00 62 00 65 00 72 00
+    14.720 |    10.666 |     36.0 |      0 | GET_FIRMWARE len=8 -> 31 01 06
+    15.278 |     0.522 |     52.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=9 -> 09 02 49 00 02 01 00 c0 00
+    15.530 |     0.200 |    205.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=73 -> 09 02 49 00 02 01 00 c0 00 09 04 00 00 00 ff 00 00 00 09 04 00 01 03 ff 00 00 00 07 05 02 05 04 00 01 07 05 83 02 00 02 01 07 05 05 02 00 02 01 09 04 01 00 00 ff 00 00 00 09 04 01 01 01 ff 00
+
+================================================================================================
+EVENT 8  [init+rate]  at 22.348489 s, 16 transfers, span 105.680 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     25.0 |      0 | SET_CONFIGURATION wValue=0x0001
+     0.715 |     0.690 |     31.0 |      0 | SET_INTERFACE intf=0 alt=1
+    30.366 |    29.620 |     25.0 |      0 | SET_INTERFACE intf=1 alt=1
+    31.286 |     0.895 |     26.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    32.789 |     1.477 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    33.327 |     0.513 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    39.185 |     5.833 |     31.0 |      0 | GET_STATUS len=1 -> 12
+    39.386 |     0.170 |    118.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    52.731 |    13.227 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    52.955 |     0.168 |     57.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    53.412 |     0.400 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    53.605 |     0.137 |     56.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    53.791 |     0.130 |     61.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    53.996 |     0.144 |    136.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+   105.299 |    51.167 |     31.0 |      0 | GET_STATUS len=1 -> 12
+   105.466 |     0.136 |    214.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 9  [init+rate]  at 22.894430 s, 18 transfers, span 124.786 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     25.0 |   2661 | SET_INTERFACE intf=1 alt=0
+     1.103 |     1.078 |     24.0 |      0 | SET_INTERFACE intf=0 alt=0
+     1.521 |     0.394 |     24.0 |      0 | SET_INTERFACE intf=0 alt=1
+     1.768 |     0.223 |     25.0 |      0 | SET_INTERFACE intf=1 alt=1
+     2.685 |     0.892 |     26.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+     4.086 |     1.375 |     26.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+     4.608 |     0.496 |     26.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    10.518 |     5.884 |     30.0 |      0 | GET_STATUS len=1 -> 32
+    10.717 |     0.169 |    118.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    62.063 |    51.228 |     57.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    72.921 |    10.801 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    73.128 |     0.151 |     58.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    73.469 |     0.283 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    73.654 |     0.129 |     57.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    73.834 |     0.123 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    74.015 |     0.125 |    115.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+   124.386 |    50.256 |     54.0 |      0 | GET_STATUS len=1 -> 32
+   124.571 |     0.131 |    215.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 10  [enumeration]  at 26.507635 s, 11 transfers, span 15.762 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     23.0 |  41081 | SET_ADDRESS wValue=0x0003
+     2.533 |     2.510 |     95.0 |      0 | GET_DESCRIPTOR wValue=0x0100 len=18 -> 12 01 00 02 ff ff ff 40 0c 20 37 10 00 01 01 02 03 01
+     2.841 |     0.213 |     50.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=2 -> 1e 03
+     3.093 |     0.202 |     99.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=30 -> 1e 03 4a 00 6f 00 63 00 6b 00 65 00 79 00 20 00 33 00 20 00 52 00 65 00 6d 00 69 00 78 00
+     3.336 |     0.144 |     50.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=2 -> 0e 03
+     3.616 |     0.230 |     71.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=14 -> 0e 03 72 00 65 00 6c 00 6f 00 6f 00 70 00
+     3.829 |     0.142 |     50.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=2 -> 22 03
+     4.005 |     0.126 |    114.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=34 -> 22 03 6e 00 6f 00 20 00 73 00 65 00 72 00 69 00 61 00 6c 00 20 00 6e 00 75 00 6d 00 62 00 65 00 72 00
+    14.791 |    10.672 |     50.0 |      0 | GET_FIRMWARE len=8 -> 31 01 06
+    15.285 |     0.444 |     71.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=9 -> 09 02 49 00 02 01 00 c0 00
+    15.541 |     0.185 |    221.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=73 -> 09 02 49 00 02 01 00 c0 00 09 04 00 00 00 ff 00 00 00 09 04 00 01 03 ff 00 00 00 07 05 02 05 04 00 01 07 05 83 02 00 02 01 07 05 05 02 00 02 01 09 04 01 00 00 ff 00 00 00 09 04 01 01 01 ff 00
+
+================================================================================================
+EVENT 11  [init+rate]  at 28.548914 s, 16 transfers, span 107.117 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     25.0 |      0 | SET_CONFIGURATION wValue=0x0001
+     1.390 |     1.365 |     25.0 |      0 | SET_INTERFACE intf=0 alt=1
+    17.598 |    16.183 |     25.0 |      0 | SET_INTERFACE intf=1 alt=1
+    32.687 |    15.064 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    34.058 |     1.346 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    34.683 |     0.600 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    40.297 |     5.589 |     31.0 |      0 | GET_STATUS len=1 -> 12
+    40.514 |     0.186 |    115.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    54.543 |    13.914 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    54.774 |     0.175 |     57.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    55.091 |     0.260 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    55.307 |     0.160 |     57.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    55.500 |     0.136 |     57.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    55.687 |     0.130 |    135.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+   106.731 |    50.909 |     31.0 |      0 | GET_STATUS len=1 -> 12
+   106.903 |     0.141 |    214.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 12  [init+rate]  at 29.096831 s, 18 transfers, span 123.672 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     25.0 |   2846 | SET_INTERFACE intf=1 alt=0
+     1.209 |     1.184 |     25.0 |      0 | SET_INTERFACE intf=0 alt=0
+     1.783 |     0.549 |     24.0 |      0 | SET_INTERFACE intf=0 alt=1
+     2.091 |     0.284 |     25.0 |      0 | SET_INTERFACE intf=1 alt=1
+     2.993 |     0.877 |     27.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+     4.308 |     1.288 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+     4.772 |     0.439 |     24.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    10.280 |     5.484 |     52.0 |      0 | GET_STATUS len=1 -> 32
+    10.456 |     0.124 |    114.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    60.972 |    50.402 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    71.506 |    10.478 |     57.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    71.798 |     0.235 |     56.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    72.118 |     0.264 |     59.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    72.305 |     0.128 |     55.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    72.493 |     0.133 |     59.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    72.674 |     0.122 |    114.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+   123.264 |    50.476 |     36.0 |      0 | GET_STATUS len=1 -> 32
+   123.454 |     0.154 |    218.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 13  [enumeration]  at 32.425290 s, 11 transfers, span 17.412 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     22.0 |  38554 | SET_ADDRESS wValue=0x0005
+     2.647 |     2.625 |     92.0 |      0 | GET_DESCRIPTOR wValue=0x0100 len=18 -> 12 01 00 02 ff ff ff 40 0c 20 37 10 00 01 01 02 03 01
+     2.966 |     0.227 |     50.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=2 -> 1e 03
+     3.173 |     0.157 |     93.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=30 -> 1e 03 4a 00 6f 00 63 00 6b 00 65 00 79 00 20 00 33 00 20 00 52 00 65 00 6d 00 69 00 78 00
+     3.411 |     0.145 |     50.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=2 -> 0e 03
+     3.583 |     0.122 |     77.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=14 -> 0e 03 72 00 65 00 6c 00 6f 00 6f 00 70 00
+     3.791 |     0.131 |     50.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=2 -> 22 03
+     3.953 |     0.112 |    113.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=34 -> 22 03 6e 00 6f 00 20 00 73 00 65 00 72 00 69 00 61 00 6c 00 20 00 6e 00 75 00 6d 00 62 00 65 00 72 00
+    16.478 |    12.412 |     50.0 |      0 | GET_FIRMWARE len=8 -> 31 01 06
+    16.975 |     0.447 |     71.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=9 -> 09 02 49 00 02 01 00 c0 00
+    17.186 |     0.140 |    226.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=73 -> 09 02 49 00 02 01 00 c0 00 09 04 00 00 00 ff 00 00 00 09 04 00 01 03 ff 00 00 00 07 05 02 05 04 00 01 07 05 83 02 00 02 01 07 05 05 02 00 02 01 09 04 01 00 00 ff 00 00 00 09 04 01 01 01 ff 00
+
+================================================================================================
+EVENT 14  [init+rate]  at 34.471343 s, 16 transfers, span 108.549 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     25.0 |      0 | SET_CONFIGURATION wValue=0x0001
+     1.418 |     1.393 |     28.0 |      0 | SET_INTERFACE intf=0 alt=1
+    16.305 |    14.859 |     26.0 |      0 | SET_INTERFACE intf=1 alt=1
+    35.548 |    19.217 |     26.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    36.903 |     1.329 |     26.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    37.542 |     0.613 |     30.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    43.463 |     5.891 |     30.0 |      0 | GET_STATUS len=1 -> 12
+    43.670 |     0.177 |    139.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    56.371 |    12.562 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    56.582 |     0.155 |     55.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    56.921 |     0.284 |     57.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    57.171 |     0.193 |     57.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    57.422 |     0.194 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    57.617 |     0.139 |    136.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+   108.188 |    50.435 |     29.0 |      0 | GET_STATUS len=1 -> 12
+   108.334 |     0.117 |    215.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 15  [init+rate]  at 34.977726 s, 18 transfers, span 142.072 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |  16341.0 |   2855 | SET_INTERFACE intf=1 alt=0
+    17.528 |     1.187 |     26.0 |      0 | SET_INTERFACE intf=0 alt=0
+    18.105 |     0.551 |     25.0 |      0 | SET_INTERFACE intf=0 alt=1
+    18.410 |     0.280 |     25.0 |      0 | SET_INTERFACE intf=1 alt=1
+    19.317 |     0.882 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    20.757 |     1.415 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    21.310 |     0.528 |     26.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    26.897 |     5.561 |     31.0 |      0 | GET_STATUS len=1 -> 32
+    27.099 |     0.171 |    117.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    77.884 |    50.668 |     55.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    89.275 |    11.336 |     57.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    89.550 |     0.218 |     56.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    89.920 |     0.314 |     57.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    90.108 |     0.131 |     56.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    90.262 |     0.098 |     57.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    90.414 |     0.095 |     98.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+   141.709 |    51.197 |     33.0 |      0 | GET_STATUS len=1 -> 32
+   141.859 |     0.117 |    213.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 16  [enumeration]  at 38.530708 s, 11 transfers, span 17.170 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     22.0 |  34825 | SET_ADDRESS wValue=0x0002
+     2.431 |     2.409 |     73.0 |      0 | GET_DESCRIPTOR wValue=0x0100 len=18 -> 12 01 00 02 ff ff ff 40 0c 20 37 10 00 01 01 02 03 01
+     2.761 |     0.257 |     30.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=2 -> 1e 03
+     2.966 |     0.175 |     72.0 |      0 | GET_DESCRIPTOR wValue=0x0302 wIndex=0x0409 len=30 -> 1e 03 4a 00 6f 00 63 00 6b 00 65 00 79 00 20 00 33 00 20 00 52 00 65 00 6d 00 69 00 78 00
+     3.256 |     0.218 |     31.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=2 -> 0e 03
+     3.467 |     0.180 |     52.0 |      0 | GET_DESCRIPTOR wValue=0x0301 wIndex=0x0409 len=14 -> 0e 03 72 00 65 00 6c 00 6f 00 6f 00 70 00
+     3.700 |     0.181 |     31.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=2 -> 22 03
+     3.897 |     0.166 |     99.0 |      0 | GET_DESCRIPTOR wValue=0x0303 wIndex=0x0409 len=34 -> 22 03 6e 00 6f 00 20 00 73 00 65 00 72 00 69 00 61 00 6c 00 20 00 6e 00 75 00 6d 00 62 00 65 00 72 00
+    16.034 |    12.038 |     51.0 |      0 | GET_FIRMWARE len=8 -> 31 01 06
+    16.591 |     0.506 |     51.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=9 -> 09 02 49 00 02 01 00 c0 00
+    16.969 |     0.327 |    201.0 |      0 | GET_DESCRIPTOR wValue=0x0200 len=73 -> 09 02 49 00 02 01 00 c0 00 09 04 00 00 00 ff 00 00 00 09 04 00 01 03 ff 00 00 00 07 05 02 05 04 00 01 07 05 83 02 00 02 01 07 05 05 02 00 02 01 09 04 01 00 00 ff 00 00 00 09 04 01 01 01 ff 00
+
+================================================================================================
+EVENT 17  [init+rate]  at 40.578216 s, 16 transfers, span 111.285 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |     28.0 |      0 | SET_CONFIGURATION wValue=0x0001
+     1.425 |     1.397 |     23.0 |      0 | SET_INTERFACE intf=0 alt=1
+    35.959 |    34.511 |     24.0 |      0 | SET_INTERFACE intf=1 alt=1
+    36.896 |     0.913 |     24.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    38.548 |     1.628 |     24.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    39.136 |     0.564 |     24.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    44.750 |     5.590 |     56.0 |      0 | GET_STATUS len=1 -> 12
+    44.989 |     0.183 |    156.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    58.327 |    13.182 |     49.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    58.516 |     0.140 |     50.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    58.925 |     0.359 |     49.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    59.247 |     0.273 |     50.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 44100 Hz
+    59.435 |     0.138 |     50.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+    59.627 |     0.142 |    138.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 44100 Hz
+   110.887 |    51.122 |     49.0 |      0 | GET_STATUS len=1 -> 12
+   111.072 |     0.136 |    213.0 |      0 | SET_STATUS wValue=0x0032
+
+================================================================================================
+EVENT 18  [init+rate]  at 41.085597 s, 18 transfers, span 140.614 ms
+================================================================================================
+     t(ms) |   gap(ms) |  dur(us) | stream | Request
+------------------------------------------------------------------------------------------------
+     0.000 |           |  16865.0 |   2859 | SET_INTERFACE intf=1 alt=0
+    17.979 |     1.114 |     24.0 |      0 | SET_INTERFACE intf=0 alt=0
+    18.555 |     0.552 |     25.0 |      0 | SET_INTERFACE intf=0 alt=1
+    18.854 |     0.274 |     25.0 |      0 | SET_INTERFACE intf=1 alt=1
+    19.741 |     0.862 |     24.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x86
+    21.125 |     1.360 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x05
+    21.676 |     0.526 |     25.0 |      0 | CLEAR_FEATURE(ENDPOINT_HALT) ep=0x83
+    27.258 |     5.557 |     50.0 |      0 | GET_STATUS len=1 -> 32
+    27.453 |     0.145 |    139.0 |      0 | GET_RATE ep=none wValue=0x0100 len=3 -> 44100 Hz
+    77.971 |    50.379 |     56.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    88.664 |    10.637 |     50.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    88.862 |     0.148 |     51.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    89.233 |     0.320 |     50.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    89.414 |     0.131 |     50.0 |      0 | SET_RATE ep=0x05 wValue=0x0100 len=3 -> 96000 Hz
+    89.596 |     0.132 |     50.0 |      0 | SET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+    89.783 |     0.137 |    134.0 |      0 | GET_RATE ep=0x86 wValue=0x0100 len=3 -> 96000 Hz
+   140.141 |    50.224 |     50.0 |      0 | GET_STATUS len=1 -> 32
+   140.398 |     0.207 |    216.0 |      0 | SET_STATUS wValue=0x0032
+

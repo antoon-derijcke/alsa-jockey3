@@ -25,8 +25,16 @@ default 44.1 kHz, so we can confirm how this impacts the initialization sequence
 
 ## Conclusion
 
-TODO -- what the trace actually showed, once analyzed. Link the analysis
-document if there is one.
+Six cold initializations with Traktor configured for 96 kHz. The key result:
+**the cold init is rate-agnostic.** It programs 44100 Hz regardless of the
+application's setting, and a *separate* rate-change event follows about half a
+second later to move the device to 96000 Hz. The two are structurally
+different sequences, not one parameterized sequence.
+
+The ~50 ms quiet window is **not rate-dependent**: 51.076 ms in the 96 kHz
+cold init against 50.227 ms in the 44.1 kHz one, and 51.177/50.211 ms in the
+96 kHz rate change. A fixed 50 ms in the driver is therefore correct at every
+rate. Analyzed in `../init_timing_comparison.md`.
 
 ## Contents (derived)
 
