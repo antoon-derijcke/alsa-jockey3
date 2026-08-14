@@ -62,11 +62,19 @@ reach probe, has never shown the fault.
 
 The practical consequence is that this case cannot be automated through the
 hub. `device_power` is the mode that reproduces it, and it switches the
-device's own supply: a network relay if one is configured (see
-lib/power/), otherwise an operator working the switch by hand. With a
-relay it runs unattended, which is what makes a fault this intermittent
-practical to chase -- three failures in four cycles, but only after a real
-cold boot.
+device's own supply: a network relay if one is configured (see lib/power/),
+otherwise an operator working the switch by hand. With a relay it runs
+unattended, which is what makes a fault this intermittent practical to chase
+-- three failures in four cycles, but only after a real cold boot.
+
+Both take the same four beats, and the operator is not a special case: take
+the device down, watch the bus confirm it went, hold it down for a measured
+interval, put it back. The operator gets two prompts rather than one because
+the hold is the part that matters -- reconnect before the supply has drained
+and the boot is warm, which is the case that already works -- and a person
+asked to "switch it off, wait, and switch it back on" is timing that hold
+themselves. The machine times it instead, and asks for the second action only
+once the first has been observed.
 
 `port_power` is kept anyway: ten clean cycles is a useful regression baseline,
 and if it ever starts failing that is a different and worse defect.
@@ -153,73 +161,150 @@ def wait_for_substreams(idx, timeout):
         time.sleep(0.02)
 
 
-def reenumerate(c, trigger, off_seconds, settle, operator_timeout):
-    """Put the device through the chosen re-entry path.
+class Actuator:
+    """Take the device away, then bring it back.
 
-    Returns (card_index, elapsed_ms) or (None, None) having already recorded
-    the failure.
+    Every trigger is the same four beats -- remove it, watch it go, hold, put
+    it back -- and only the mechanism differs. Keeping that sequence in one
+    place is what lets the operator path behave exactly like the relay path
+    instead of being a special case bolted on: the operator is asked to switch
+    off, the bus confirms it, the hold is timed by the machine rather than by
+    somebody counting, and only then are they asked to switch on.
+
+    In every mode the confirmation is the device disappearing from and
+    reappearing on the bus. Nothing here trusts an actuator's own report, an
+    operator's word included.
+    """
+
+    kind = "?"
+    timeout = 8.0
+    gone_hint = ""
+    back_hint = ""
+
+    def off(self):
+        raise NotImplementedError
+
+    def on(self):
+        raise NotImplementedError
+
+
+class RelayPower(Actuator):
+    """Mains relay on the device's own supply: a true cold boot, unattended."""
+
+    kind = "relay"
+    gone_hint = "is the relay feeding the outlet the device is plugged into?"
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+
+    def off(self):
+        return power.set_state(False)
+
+    def on(self):
+        return power.set_state(True)
+
+
+class OperatorPower(Actuator):
+    """The same cold boot, asked for rather than switched.
+
+    Deliberately two prompts, not one. Asking somebody to "switch it off, wait,
+    and switch it back on" leaves the length of the hold to them, and the hold
+    is the part that matters -- reconnect too early and the boot is warm, which
+    is the case that already works. Splitting it lets the machine time the
+    hold and confirm the first step before requesting the second.
+    """
+
+    kind = "operator"
+    gone_hint = "was the device switched off?"
+    back_hint = "was the device switched back on?"
+
+    def __init__(self, case, timeout):
+        self.case = case
+        self.timeout = timeout
+
+    def off(self):
+        self.case.instruct("Switch the device OFF, and wait for its LEDs to "
+                           "go dark.")
+        return True, "asked"
+
+    def on(self):
+        self.case.instruct("Switch the device ON again.")
+        return True, "asked"
+
+
+class PortPower(Actuator):
+    """Hub port power. A cable unplug for a self-powered device, not a
+    power-off -- kept as a regression baseline, not as a way to reproduce."""
+
+    kind = "port_power"
+    gone_hint = "did the hub actually drop the port?"
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+
+    def _switch(self, action):
+        rc, _out, err = priv.usb_power(action)
+        if rc != 0:
+            return False, f"usb-power {action} failed: {(err or '').strip()[:120]}"
+        return True, action
+
+    def off(self):
+        return self._switch("off")
+
+    def on(self):
+        return self._switch("on")
+
+
+class ModuleReload(Actuator):
+    """Driver only. The device stays powered and enumerated; the card goes."""
+
+    kind = "module_reload"
+    gone_hint = "did the module actually unload?"
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+
+    def off(self):
+        rc, err = priv.unload_module()
+        return (rc == 0), (f"unload failed: {str(err).strip()[:120]}"
+                           if rc else "unloaded")
+
+    def on(self):
+        rc, err = priv.load_module()
+        return (rc == 0), (f"load failed: {str(err).strip()[:120]}"
+                           if rc else "loaded")
+
+
+def reenumerate(c, act, off_seconds):
+    """Remove the device, hold it away, bring it back.
+
+    Returns (card_index, elapsed_ms), or (None, None) having already recorded
+    why. The bus is the witness at both ends.
     """
     t0 = time.time()
 
-    if trigger == "device_power":
-        # The only mode known to reproduce the fault, because it is the only
-        # one that gives the device a cold boot.
-        if power.available():
-            ok, detail = power.set_state(False)
-            if not ok:
-                c.fail(f"could not switch the device off: {detail}")
-                return None, None
-            _idx, gone = wait_for_card(False, settle)
-            if gone is None:
-                c.fail(f"card still present {settle}s after mains power was "
-                       f"cut -- is the relay feeding the right outlet?")
-                return None, None
-            time.sleep(off_seconds)
-            ok, detail = power.set_state(True)
-            if not ok:
-                c.fail(f"could not switch the device back on: {detail}")
-                return None, None
-        else:
-            c.instruct("Switch the device OFF, wait for the LEDs to go dark, "
-                       "then switch it ON again.")
-            # Waiting on a person, not on the bus: the machine settle is far
-            # too short for someone to reach the switch.
-            _idx, gone = wait_for_card(False, operator_timeout)
-            if gone is None:
-                c.fail(f"card still present {operator_timeout}s after the "
-                       f"power-off instruction -- was the device switched "
-                       f"off?")
-                return None, None
-    elif trigger == "port_power":
-        rc, _out, err = priv.usb_power("off")
-        if rc != 0:
-            c.fail(f"usb-power off failed: {(err or '').strip()[:120]}")
-            return None, None
-        _idx, gone = wait_for_card(False, settle)
-        if gone is None:
-            c.fail(f"card still present {settle}s after the port went down")
-            return None, None
-        time.sleep(off_seconds)
-        rc, _out, err = priv.usb_power("on")
-        if rc != 0:
-            c.fail(f"usb-power on failed: {(err or '').strip()[:120]}")
-            return None, None
-    else:
-        rc, err = priv.unload_module()
-        if rc != 0:
-            c.fail(f"module unload failed: {str(err).strip()[:120]}")
-            return None, None
-        time.sleep(off_seconds)
-        rc, err = priv.load_module()
-        if rc != 0:
-            c.fail(f"module load failed: {str(err).strip()[:120]}")
-            return None, None
+    ok, detail = act.off()
+    if not ok:
+        c.fail(f"could not take the device down ({act.kind}): {detail}")
+        return None, None
 
-    back = (operator_timeout if trigger == "device_power"
-            and not power.available() else settle)
-    idx, seen = wait_for_card(True, back)
+    _idx, gone = wait_for_card(False, act.timeout)
+    if gone is None:
+        c.fail(f"card still present {act.timeout:g}s after being taken down "
+               f"({act.kind})" + (f" -- {act.gone_hint}" if act.gone_hint else ""))
+        return None, None
+
+    time.sleep(off_seconds)
+
+    ok, detail = act.on()
+    if not ok:
+        c.fail(f"could not bring the device back ({act.kind}): {detail}")
+        return None, None
+
+    idx, seen = wait_for_card(True, act.timeout)
     if seen is None:
-        c.fail(f"card did not come back within {back}s")
+        c.fail(f"card did not come back within {act.timeout:g}s ({act.kind})"
+               + (f" -- {act.back_hint}" if act.back_hint else ""))
         return None, None
     return idx, round((seen - t0) * 1000, 1)
 
@@ -240,14 +325,20 @@ def main():
         c.blocked("no Jockey 3 behind a ppps-capable hub port")
     if trigger == "device_power":
         # A relay makes this unattended; without one it needs somebody at the
-        # switch, and saying which is in play belongs in the record.
+        # switch. Either satisfies the case, so which one is in play is
+        # recorded rather than required.
         if power.available():
-            c.metric("power_control", "relay")
+            act = RelayPower(settle)
         elif c.attended:
-            c.metric("power_control", "operator")
+            act = OperatorPower(c, operator_timeout)
         else:
             c.blocked("device_power needs either a configured mains relay "
                       "(see lib/power/) or an operator at the switch")
+    elif trigger == "port_power":
+        act = PortPower(settle)
+    else:
+        act = ModuleReload(settle)
+    c.metric("power_control", act.kind)
 
     iterations = int(c.params.get("iterations_per_run", 10))
     # Long enough for the device's own supply to drain: the point is a cold
@@ -269,8 +360,7 @@ def main():
     cycles = 0
 
     for i in range(1, iterations + 1):
-        idx, took = reenumerate(c, trigger, off_seconds, settle,
-                                operator_timeout)
+        idx, took = reenumerate(c, act, off_seconds)
         if idx is None:
             break
         enumerate_ms.append(took)
