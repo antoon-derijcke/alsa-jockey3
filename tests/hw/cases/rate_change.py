@@ -253,6 +253,7 @@ def main():
             raw = os.path.join(c.workdir, f"rate_{changes}_{rate}.raw")
             rec = start_capture(device, rate, seconds, raw) if with_capture \
                 else None
+            rec_t0 = time.time()
             rc, err, played_s = play_briefly(device, rate, seconds)
             if rec is not None:
                 try:
@@ -261,19 +262,32 @@ def main():
                 except subprocess.TimeoutExpired:
                     rec.kill()
                     rec_rc, rec_err = 124, "arecord did not finish"
+                rec_elapsed = time.time() - rec_t0
                 verdict, frac, frames, detail = capture_outcome(
                     rec_rc, rec_err, raw, floor)
-                # Frames against rate x duration is an outside check on the
-                # effective sample rate: GET_RATE only proves the firmware
-                # accepted the value, not that the converters run at it.
-                cap_ratio = rate_ratio(frames, rate * seconds)
-                capture_fracs.append((changes, rate, frac, frames, cap_ratio))
+                # Effective sample rate SOURCED by the device: frames actually
+                # delivered, over the wall-clock time they took to arrive.
+                #
+                # Not frames / requested-duration, which was the first attempt
+                # and measures nothing: arecord -d derives its frame target
+                # from the rate it asked for, so it returns rate x duration
+                # frames whatever the device does, and a device clocking at
+                # half speed simply takes twice as long. The time is where the
+                # truth is, which is the whole point of checking against the
+                # clock rather than against GET_RATE.
+                cap_hz = (frames / rec_elapsed) if rec_elapsed > 0 else None
+                cap_ratio = rate_ratio(cap_hz, rate)
+                # Kept separately: did the stream deliver a full recording at
+                # all? A short capture is a different fault from a slow one.
+                frames_ratio = rate_ratio(frames, rate * seconds)
+                capture_fracs.append((changes, rate, frac, frames, cap_ratio,
+                                      cap_hz, frames_ratio))
                 capture_verdicts[verdict] = capture_verdicts.get(verdict, 0) + 1
                 if verdict == "live" and cap_ratio is not None \
                         and abs(cap_ratio - 1.0) > rate_tol:
                     verdict = "wrongrate"
-                    detail = (f"{frames} frames in {seconds:g}s is "
-                              f"{frames / seconds:.0f} Hz, not {rate} Hz "
+                    detail = (f"{frames} frames in {rec_elapsed:.2f}s is "
+                              f"{cap_hz:.0f} Hz sourced, not {rate} Hz "
                               f"(ratio {cap_ratio})")
                 if verdict != "live":
                     if first_bad_change is None:
@@ -349,12 +363,15 @@ def main():
         if fracs:
             c.metric("capture_nonzero_min", min(fracs))
             c.metric("capture_nonzero_max", max(fracs))
-        for n, rate, frac, frames, ratio in capture_fracs:
+        for n, rate, frac, frames, ratio, hz, fratio in capture_fracs:
             c.metric(f"capture_nonzero_{n}_{rate}",
                      None if frac is None else round(frac, 4))
             c.metric(f"capture_frames_{n}_{rate}", frames)
+            c.metric(f"capture_effective_hz_{n}_{rate}",
+                     None if hz is None else round(hz))
             c.metric(f"capture_rate_ratio_{n}_{rate}", ratio)
-        seen = [r for _, _, _, _, r in capture_fracs if r is not None]
+            c.metric(f"capture_frames_ratio_{n}_{rate}", fratio)
+        seen = [r for _, _, _, _, r, _, _ in capture_fracs if r is not None]
         if seen:
             c.metric("capture_rate_ratio_min", min(seen))
             c.metric("capture_rate_ratio_max", max(seen))
