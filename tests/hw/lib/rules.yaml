@@ -22,9 +22,33 @@ benign:
   - pattern: 'Capture URB has stalled\.'
     metric: stalls_capture
     why: Same as playback -- expected, tracked, not a failure.
+  # Split by which direction actually triggered the reset, because "how often
+  # did a capture stall force a reset" is the question milestone 13 is judged
+  # on and the undifferentiated count cannot answer it. The driver already logs
+  # the reason -- playback_alive, capture_alive, capture_open -- so no driver
+  # change is needed to recover it.
+  #
+  # These must precede the generic rule below: the first matching benign
+  # pattern wins, so a broad pattern placed first would swallow both. Total
+  # resets after a rate change is the sum of the three.
+  - pattern: 'Resetting device to recover from stall after rate change to \d+ Hz \(playback_alive=0'
+    metric: resets_playback_stall
+    why: >
+      Playback died, which always forces a reset -- it carries MIDI OUT in byte
+      480 of every packet, so it may never be left down.
+  - pattern: 'Resetting device to recover from stall after rate change to \d+ Hz \(playback_alive=1, capture_alive=0'
+    metric: resets_capture_stall
+    why: >
+      Playback survived and capture did not, with a capture stream open. This
+      is the milestone 13 fault forcing the heaviest mitigation the driver has,
+      and its rate against rate_changes is the number that says whether the
+      problem is getting better.
   - pattern: 'Resetting device to recover from stall after rate change'
     metric: resets_full
-    why: The documented mitigation working as designed.
+    why: >
+      Any reset after a rate change not attributed above -- which should be
+      none, so a count here means the driver's message format changed and the
+      two rules above have gone stale.
   - pattern: 'waited (\d+) ms for reset completion'
     metric: reset_wait_ms
     capture: 1

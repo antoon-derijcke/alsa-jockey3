@@ -472,9 +472,14 @@ cases:
       rate_tolerance: 0.20
       timing_check_min_seconds: 4.0
     metrics:
-      [stalls, stalls_recovered, resets_full, reset_wait_ms_histogram, failures,
-       capture_silent_changes, first_silent_change, capture_nonzero_min,
-       capture_nonzero_max]
+      [stalls_capture, stalls_playback, resets_capture_stall,
+       resets_playback_stall, resets_full, capture_urb_restart,
+       capture_recovery_on_open, capture_restart_escalated,
+       reset_wait_ms_histogram, failures, capture_live_changes,
+       capture_nodata_changes, capture_silent_changes, capture_error_changes,
+       first_bad_capture_change, capture_nonzero_min, capture_nonzero_max,
+       capture_effective_hz, capture_rate_ratio_min, capture_rate_ratio_max,
+       playback_rate_ratio_min, playback_rate_ratio_max]
     pass: >
       Every rate change ends with working streams in BOTH directions. A stall
       that recovers is a PASS and is counted; a stall that survives a full USB
