@@ -440,6 +440,72 @@ just before the rate burst, is two more four-minute runs and localizes the
 window. A wire capture is far more useful once it is known which transfer to
 look at.
 
+## The answer, 2026-08-14: it is a boot race
+
+A 2 s settling delay before the driver's first control transfer **eliminates
+the fault**.
+
+| | cycles | silent | non-zero fraction |
+|---|---|---|---|
+| baseline, no delay (`f6a71204`) | 9 | **9** | 0.0000 every cycle |
+| 2 s delay (`25355bfe`, commit `4be1ce5`) | 10 | **0** | **1.0000 every cycle** |
+
+Ten for ten, every cycle fully live, against nine for nine bit-exact silent on
+the same rig, same kernel, same production configuration, minutes apart. The
+fault was deterministic in both directions, which is what makes a single run
+of ten decisive rather than suggestive.
+
+The hypothesis this document has carried since it was written is therefore
+confirmed: **the driver was starting to talk before the device had finished
+booting.** The device's USB core answers early enough to enumerate and be
+programmed while whatever brings up its audio engine is still coming up;
+program it inside that window and the engine never starts. Everything the
+earlier evidence predicted holds — it explains why the fault needs a real cold
+boot, why it scales with how *completely* the device is power-cycled, and why
+a debug kernel never showed it.
+
+The competing hypothesis, an internal driver race papered over by the latency
+of dynamic debug printing, is ruled out for practical purposes. The delay was
+placed before the driver's first EP0 transfer, changing nothing about the
+driver's internal ordering; if the race were the driver's own, moving the start
+of an unchanged sequence later would not fix it.
+
+### What the number is not
+
+2 s is a confirmation value, not a threshold, and **this shape cannot ship** --
+a multi-second `msleep()` in USB probe runs on the hub thread and delays
+enumeration of every device behind it. What has to be justified upstream is the
+*minimum* the device requires, which only a bisect against repeated cold boots
+can supply.
+
+Note the delay is on top of an interval that is already long: the device takes
+roughly 4-5 s from mains-on to enumerating, so the driver's first transfer
+was already several seconds after power was applied, and 2 s more still made
+the difference. The number to record at each bisect step is therefore
+power-on to first EP0 transfer, not the sleep value alone. `JT-AUDIO-005` now
+measures exactly that from the kernel log (`power_on_to_first_ep0_ms_*`),
+by writing a marker into `/dev/kmsg` before restoring power and reading the
+delta to the `Firmware 0x.. v..` line that `ploytec_get_firmware()` emits.
+
+### Two harness defects this run exposed
+
+Neither affected the verdict, but both had been latent and would have
+corrupted later measurements:
+
+- **Card readiness was tested by name, not by liveness.** `/proc/asound/card<idx>`
+  and its `id` file are created by `snd_devm_card_new()`/`snd_card_set_id()`,
+  early in probe -- so the case could lock onto a card that
+  `snd_card_register()` had not yet published, and `os.path.exists()` on
+  `/dev/snd/*` was then satisfied by the *previous* incarnation's nodes, which
+  udev had not yet reaped. arecord opened a dead control node and failed with
+  "Cannot get card index". The case now opens the control node instead of
+  stat-ing it. The window was sub-millisecond before; the settling delay
+  widened it to seconds and made it certain.
+- **Two `expect_dmesg` patterns could never match.** YAML single-quoting has no
+  escape sequences, so `'\\d+'` reached `re` as a literal backslash. This is
+  why `jockey3_urb_error_give_up: N callbacks suppressed` sat in the
+  unclassified bucket of every run of this case, baseline included.
+
 ## What this evidence cannot settle
 
 Two hypotheses were live when this document was written: that the device needs
