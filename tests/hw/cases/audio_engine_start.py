@@ -402,11 +402,15 @@ def cycle_timings(lines, marks):
     return out
 
 
-def reenumerate(c, act, off_seconds, mark=None):
+def reenumerate(act, off_seconds, mark=None):
     """Remove the device, hold it away, bring it back.
 
-    Returns (card_index, elapsed_ms), or (None, None) having already recorded
-    why. The bus is the witness at both ends.
+    Returns (card_index, elapsed_ms, None), or (None, None, reason). The reason
+    is handed back rather than recorded here so the caller can print its
+    per-cycle progress line first: the runner reads the LAST line of stderr as
+    the failure reason, so anything emitted after c.fail() would replace it.
+
+    The bus is the witness at both ends.
 
     `mark` is written to the kernel log immediately before power is restored,
     so that the interval from power-on to the driver's first control transfer
@@ -417,14 +421,13 @@ def reenumerate(c, act, off_seconds, mark=None):
 
     ok, detail = act.off()
     if not ok:
-        c.fail(f"could not take the device down ({act.kind}): {detail}")
-        return None, None
+        return None, None, f"could not take the device down ({act.kind}): {detail}"
 
     _idx, gone = wait_for_card(False, act.timeout)
     if gone is None:
-        c.fail(f"card still present {act.timeout:g}s after being taken down "
-               f"({act.kind})" + (f" -- {act.gone_hint}" if act.gone_hint else ""))
-        return None, None
+        return None, None, (
+            f"card still present {act.timeout:g}s after being taken down "
+            f"({act.kind})" + (f" -- {act.gone_hint}" if act.gone_hint else ""))
 
     time.sleep(off_seconds)
 
@@ -433,15 +436,14 @@ def reenumerate(c, act, off_seconds, mark=None):
 
     ok, detail = act.on()
     if not ok:
-        c.fail(f"could not bring the device back ({act.kind}): {detail}")
-        return None, None
+        return None, None, f"could not bring the device back ({act.kind}): {detail}"
 
     idx, seen = wait_for_card(True, act.timeout)
     if seen is None:
-        c.fail(f"card did not come back within {act.timeout:g}s ({act.kind})"
-               + (f" -- {act.back_hint}" if act.back_hint else ""))
-        return None, None
-    return idx, round((seen - t0) * 1000, 1)
+        return None, None, (
+            f"card did not come back within {act.timeout:g}s ({act.kind})"
+            + (f" -- {act.back_hint}" if act.back_hint else ""))
+    return idx, round((seen - t0) * 1000, 1), None
 
 
 def main():
@@ -495,22 +497,36 @@ def main():
     cycles = 0
     marks = []
 
+    # One line per cycle, because this case runs for two minutes with nothing
+    # to show for it otherwise and dmesg was the only way to tell it was alive.
+    # Every exit from a cycle reports before c.fail(), never after: the runner
+    # takes the LAST line of stderr as the failure reason, so a progress line
+    # emitted afterwards would silently become the verdict.
+    def report(i, verdict, detail):
+        c.progress(f"    cycle {i}/{iterations}  {verdict:4}  {detail}")
+
     for i in range(1, iterations + 1):
+        c.status(f"    cycle {i}/{iterations}  ....  power cycling")
         mark = kmsg.Marker(f"{c.id}#cycle{i}")
         marks.append((i, mark))
-        idx, took = reenumerate(c, act, off_seconds, mark)
+        idx, took, why = reenumerate(act, off_seconds, mark)
         if idx is None:
+            report(i, "FAIL", why)
+            c.fail(f"cycle {i}: {why}")
             break
         enumerate_ms.append(took)
 
+        c.status(f"    cycle {i}/{iterations}  ....  waiting for the card")
         settle_ms, missing = wait_for_substreams(idx, settle)
         if missing:
+            report(i, "FAIL", f"no {', '.join(missing)} after {settle:g}s")
             c.fail(f"cycle {i}: no {', '.join(missing)} substream after "
                    f"re-enumeration")
             break
 
         device = alsa.device_name(idx)
         raw = os.path.join(c.workdir, f"engine_{i}.raw")
+        c.status(f"    cycle {i}/{iterations}  ....  capturing {seconds}s")
         try:
             p = subprocess.run(
                 ["arecord", "-D", device, "-d", str(seconds), "-f", FORMAT,
@@ -520,6 +536,7 @@ def main():
         except subprocess.TimeoutExpired:
             rc, err = 124, "arecord did not finish"
         if rc != 0:
+            report(i, "FAIL", f"arecord exited {rc}")
             c.fail(f"cycle {i}: arecord exited {rc}: "
                    f"{(err or '').strip()[:120]}")
             break
@@ -527,9 +544,14 @@ def main():
         frac, frames = nonzero_fraction(raw)
         cycles = i
         if frac is None:
+            report(i, "FAIL", "captured nothing to measure")
             c.fail(f"cycle {i}: captured nothing to measure")
             break
         fractions.append(round(frac, 4))
+
+        report(i, "FAIL" if frac < floor else "pass",
+               f"{frac:7.2%} non-zero of {frames} frames, "
+               f"card ready in {settle_ms:g} ms")
 
         if frac < floor:
             silent_cycles += 1
