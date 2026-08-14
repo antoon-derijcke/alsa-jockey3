@@ -321,30 +321,111 @@ but initialization is not a rate change -- finding 3.
   `0x86` and `0x05`, and does it several hundred milliseconds *after*
   `SET_STATUS`.
 
+## Where this stands, 2026-08-13
+
+The alignment changes are in (findings 1, 2, 3 and 7), and the driver now puts
+a vendor-shaped sequence on the wire -- confirmed in
+`capture_2026-08-13_linux_power-on_events.txt`. **They did not fix the
+problem.** They were necessary; the sequence is right now. What is wrong is
+when it starts.
+
+### The failure has an objective signature
+
+The capture endpoint returns bit-exact zero. A running converter is never
+silent -- it carries a noise floor whether or not anything is patched in, and
+healthy cycles measure 95-99% of frames non-zero with open inputs. An
+entirely-zero capture is a converter that never started, not a quiet input.
+Playback is unaffected on the wire: 100% of packets carry real audio at the
+correct cadence with the MIDI idle and sync bytes in place, every cycle, and
+the device simply does not sound it.
+
+That signature needs neither OpenVizsla nor a listener, which is what makes
+the fault cheap to chase. It is what `JT-AUDIO-005` keys on.
+
+### It takes a cold boot, and then it is deterministic
+
+| what was done | cycles | silent |
+|---|---|---|
+| re-enumeration via the ppps hub switch | 10 | **0** |
+| mains power cycle, by hand | 4 | 3 |
+| mains power cycle, via the network switch | 9 measured | **9** |
+
+The device is self-powered, so cutting VBUS at the hub is a cable unplug and
+not a power-off; the two are not equivalent to it. A re-enumeration returns
+the rate to 44100 Hz and the status byte to 0x12 while leaving the control
+surface LEDs lit -- a partial firmware re-init. Only a cold boot provokes
+this.
+
+**The 100% rate is itself the strongest evidence for the mechanism.** Hand
+switching failed three times in four; the network switch, holding power off a
+measured five seconds with a clean break, fails every time. The more
+completely the device is cold-booted, the more reliably it happens. That is
+what "the driver starts talking before the device has finished booting"
+predicts. A marginal supply or a flaky cable would do the opposite.
+
+It also finally explains the observation this whole document started from: a
+debug kernel is slower to reach probe, so by the time it speaks the device is
+ready.
+
+### The control plane is not where the difference is
+
+Working and failing initializations are byte-identical, transfer by transfer:
+same requests in the same order, same status values, same rate programmed and
+read back, same inter-transfer gaps including the cold-init lead-in and the
+~51 ms window. Whatever separates them is not in what the driver sends.
+
+### The next experiment
+
+Add a settling delay before the first control transfer in
+`ploytec_initialize_device()`. Start high -- 500 ms -- purely to confirm the
+mechanism, and run:
+
+```sh
+cd tests/hw && ./runner.py --case JT-AUDIO-005 --unattended
+```
+
+Ten cold boots, about four minutes, no operator. With a deterministic
+reproducer and an automated detector this is one run rather than a statistical
+argument.
+
+- `silent_cycles` drops to 0 -- bisect the delay down to the real threshold,
+  which is the number that has to be justified for submission. The vendor
+  traces cannot supply it: they show what the vendor chose, never what the
+  device requires.
+- `silent_cycles` stays at 9 -- the boot-race model is wrong. The next
+  instrument is an OpenVizsla trace of a failing cycle, parsed with
+  `parse_openvizsla.py --errors=0`, which will show whether the device NAKs or
+  stalls any control transfer during that window. Nothing in the corpus so far
+  covers a *failing* Linux initialization.
+
 ## What this evidence cannot settle
 
-**The missing 50 ms window is not sufficient on its own to cause failure.**
-`capture_linux` shows an initialization that omits the window entirely -- 2 ms
-where the vendors leave 50 -- and still ends with `GET_STATUS -> 0x32`, the
-streaming bit set. It worked. Both Linux captures available are, as far as
-anyone knows, *successful* inits from unknown builds. So finding 2 identifies
-a real divergence and a plausible mechanism, not a demonstrated cause.
+Two hypotheses were live when this document was written: that the device needs
+a settling period the driver does not give it, or that the driver has an
+internal race which the extra latency of dynamic debug printing papers over.
+The JT-AUDIO-005 results above weigh heavily toward the first -- the failure
+scales with how *complete* the cold boot is, which is a property of the device
+coming up, not of anything the driver races against. They do not close it.
+An internal race whose window happens to be widest right after a cold boot
+would look the same from here.
 
-Two hypotheses fit the debug-versus-production symptom, and the vendor traces
-do not distinguish them:
+What separates them is where the delay is placed. A device that needs time
+after power-on will be fixed by waiting before the first control transfer,
+whichever transfer that is. An internal driver race will not be, or will be
+fixed only by a delay in one specific place. The bisect described above
+therefore answers both questions at once, and its result should be recorded
+here.
 
-1. The device needs a settling period we do not reliably give it.
-2. The driver has an internal race that the extra latency of dynamic debug
-   printing happens to paper over.
+Note also that adding the ~50 ms quiet windows of finding 2 did **not** fix
+this, so that divergence, real as it is, was not the cause. `capture_linux`
+already hinted as much: it omits the window entirely -- 2 ms where the vendors
+leave 50 -- and still came up streaming.
 
-Only a capture of a **failing** initialization on a production kernel, paired
-with a successful one from the same driver build, separates these.
-
-Equally, the vendor traces cannot give the *tolerance*. They show what the
+The vendor traces cannot give the *tolerance* either. They show what the
 vendor chose, never what the device requires; a 50 ms sleep is consistent with
 a device needing 45 ms and with one needing 2 ms. The usable minimum can only
-come from bisecting the delay in our own driver against repeated init attempts
-on a production kernel.
+come from bisecting in our own driver against repeated cold boots, which is
+now a four-minute run rather than an afternoon.
 
 ## Do we need more vendor traces?
 
