@@ -96,7 +96,16 @@ else
 	# point the worktree at that commit. The file list lives in
 	# sync-driver.sh, so a new source file is covered the moment it is added
 	# there rather than in three places.
-	echo "building $("$HERE/use-committed.sh" "$KERNEL_SRC" "$BUILD_TREE" "$BUILD_REF")"
+	# Assigned first, deliberately. Inside `echo "$(...)"` the substitution's
+	# exit status is discarded -- `set -e` sees only the successful echo -- so
+	# a refusal from use-committed.sh was swallowed and the build carried on
+	# with whatever the worktree happened to hold. That is precisely the drift
+	# use-committed.sh exists to prevent, and it wrote a manifest claiming a
+	# clean revision for a binary built from an --uncommitted experiment.
+	if ! ref_desc=$("$HERE/use-committed.sh" "$KERNEL_SRC" "$BUILD_TREE" "$BUILD_REF"); then
+		exit 3
+	fi
+	echo "building $ref_desc"
 fi
 
 make -C "$BUILD_TREE" -j"$(nproc)" O="$OBJ" M=$DST modules
