@@ -92,19 +92,35 @@ def main():
     xruns_before = alsa.xruns(c.card, "pcm0p")
     t0 = time.time()
 
+    # One line per loop, per tests/README.md "Live feedback while a case runs".
+    # A transient line names the rate being exercised and is replaced by the
+    # loop's verdict. Reported before c.fail(), never after: the runner takes
+    # the last line of stderr as the failure reason.
+    total = loops * len(rates)
     for loop in range(1, loops + 1):
+        bad = []
         for rate in rates:
             changes += 1
+            c.status(f"    loop {loop}/{loops}  ....  {rate} Hz "
+                     f"({changes}/{total} changes)")
             rc, err = play_briefly(device, rate, seconds)
             if rc != 0:
                 failures += 1
-                # This is the real failure mode: the stream did not come back
-                # after the change. One is enough to fail the case, but keep
-                # going -- whether it is one rate or every rate is a
-                # different bug, and the counts say which.
-                c.fail(f"loop {loop}, {rate} Hz: playback failed after rate "
-                       f"change (exit {rc}) "
-                       f"{(err or '').strip().splitlines()[-1][:100] if err else ''}")
+                bad.append((rate, rc, err))
+        rates_ok = len(rates) - len(bad)
+        c.progress(f"    loop {loop}/{loops}  "
+                   f"{'FAIL' if bad else 'pass':4}  "
+                   f"{rates_ok}/{len(rates)} rates played"
+                   + (f", failed at {', '.join(str(r) for r, _, _ in bad)} Hz"
+                      if bad else ""))
+        for rate, rc, err in bad:
+            # This is the real failure mode: the stream did not come back
+            # after the change. One is enough to fail the case, but keep
+            # going -- whether it is one rate or every rate is a
+            # different bug, and the counts say which.
+            c.fail(f"loop {loop}, {rate} Hz: playback failed after rate "
+                   f"change (exit {rc}) "
+                   f"{(err or '').strip().splitlines()[-1][:100] if err else ''}")
 
     c.metric("rate_changes", changes)
     c.metric("failures", failures)
