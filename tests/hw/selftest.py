@@ -17,6 +17,7 @@ target is identified as what it actually is.
 import io
 import json
 import ast
+import importlib.util
 import os
 import re
 import subprocess
@@ -1008,6 +1009,118 @@ def test_privilege_boundary():
           "; ".join(early[:4]))
 
 
+def test_rate_change_case_runs():
+    """Execute JT-RATE-001 end to end with the hardware stubbed.
+
+    Every other test here inspects data or helpers; none of them ever runs a
+    case, and that gap has a cost. JT-RATE-001 once completed a full 31-second
+    hardware sweep and then died in its metric loop on "too many values to
+    unpack" -- a record had grown from five fields to seven and one of the
+    three places unpacking it was missed. No hardware is needed to catch that.
+
+    Playback and capture are replaced by stubs, so this exercises the loop, the
+    classification and the metric emission, not ALSA.
+    """
+    print("\nrate-change case, hardware stubbed")
+    import types, tempfile
+    spec = importlib.util.spec_from_file_location(
+        "rate_change_case", os.path.join("cases", "rate_change.py"))
+    m = importlib.util.module_from_spec(spec)
+    sys.modules["rate_change_case"] = m
+    spec.loader.exec_module(m)
+
+    frame = m.CAPTURE_CHANNELS * m.BYTES_PER_SAMPLE
+    workdir = tempfile.mkdtemp()
+
+    class FakeCase:
+        id = "JT-RATE-001"
+        attended = False
+        device = "hw:9,0"
+        card = 9
+
+        def __init__(self, params):
+            self.params = params
+            self.workdir = workdir
+            self.metrics = {}
+            self.fails = []
+            self.notes = []
+
+        def require_card(self): pass
+        def require_tools(self, *a): pass
+        def metric(self, k, v): self.metrics[k] = v
+        def fail(self, t): self.fails.append(t)
+        def note(self, t): self.notes.append(t)
+        def progress(self, t): pass
+        def status(self, t): pass
+        def blocked(self, t): raise AssertionError("blocked: " + t)
+        def done(self): pass
+
+    def run(params, mode):
+        case = FakeCase(params)
+        m.Case = lambda: case
+        m.alsa = types.SimpleNamespace(xruns=lambda *a: 0,
+                                       device_name=lambda *a: "hw:9,0")
+        m.kmsg = types.SimpleNamespace(
+            Marker=lambda label: types.SimpleNamespace(write=lambda: True))
+        m.play_briefly = lambda dev, rate, sec: (0, "", sec * 1.02)
+
+        class Rec:
+            returncode = 0
+
+            def __init__(self, path, rate, sec):
+                self.path, self.rate, self.sec = path, rate, sec
+
+            def communicate(self, timeout=None):
+                if mode == "live":
+                    with open(self.path, "wb") as f:
+                        f.write(bytes([(i * 7) % 256 for i in
+                                       range(frame * int(self.rate * self.sec))]))
+                elif mode == "nodata":
+                    open(self.path, "wb").close()
+                self.returncode = 1 if mode == "error" else 0
+                return ("", "arecord: open failed" if mode == "error" else "")
+
+            def kill(self): pass
+
+        m.start_capture = lambda dev, rate, sec, path: Rec(path, rate, sec)
+        m.main()
+        return case
+
+    healthy = run({"iterations_per_run": 2, "seconds_per_rate": 1}, "live")
+    check(not healthy.fails, "a healthy sweep produces no failures",
+          str(healthy.fails[:1]))
+    check(healthy.metrics.get("capture_live_changes") == 8,
+          "every change is counted as live",
+          str(healthy.metrics.get("capture_live_changes")))
+
+    nodata = run({"iterations_per_run": 1, "seconds_per_rate": 1}, "nodata")
+    check(nodata.metrics.get("capture_nodata_changes") == 4,
+          "an empty capture counts as nodata, not silence",
+          str(nodata.metrics))
+    check(nodata.metrics.get("capture_silent_changes") == 0,
+          "and never as silence -- they are different faults")
+    check(all("no samples" in f for f in nodata.fails),
+          "the failure says no samples, not a dead converter",
+          str(nodata.fails[:1]))
+
+    err = run({"iterations_per_run": 1, "seconds_per_rate": 1}, "error")
+    check(err.metrics.get("capture_error_changes") == 4,
+          "a failing arecord is its own outcome", str(err.metrics))
+
+    short = run({"iterations_per_run": 1, "seconds_per_rate": 1}, "live")
+    check(short.metrics.get("timing_check_enforced") is False,
+          "the timing check is not enforced at 1 s")
+    long_run = run({"iterations_per_run": 1, "seconds_per_rate": 5}, "live")
+    check(long_run.metrics.get("timing_check_enforced") is True,
+          "and is enforced at 5 s")
+
+    blind = run({"iterations_per_run": 1, "seconds_per_rate": 1,
+                 "rates": [44100, 48000]}, "live")
+    check(blind.metrics.get("rate_check_blind_steps", 0) > 0,
+          "a 44.1/48 sweep is reported as unresolvable, not blocked",
+          str(blind.metrics.get("rate_check_blind_steps")))
+
+
 def main():
     rules = load(os.path.join("lib", "rules.yaml"))
     catalog = load("catalog.yaml")
@@ -1032,6 +1145,7 @@ def main():
     test_manual_fallback()
     test_run_resolution()
     test_privilege_boundary()
+    test_rate_change_case_runs()
 
     print(f"\n{_checks - len(_failures)}/{_checks} checks passed")
     if _failures:

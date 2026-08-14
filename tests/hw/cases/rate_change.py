@@ -42,6 +42,7 @@ import os
 import subprocess
 import sys
 import time
+from typing import NamedTuple
 
 sys.path.insert(0, os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
@@ -114,7 +115,7 @@ def start_capture(device, rate, seconds, path):
     return subprocess.Popen(
         ["arecord", "-D", device, "-r", str(rate), "-c",
          str(CAPTURE_CHANNELS), "--format", FORMAT, "-t", "raw",
-         "-d", str(seconds), path],
+         "-d", str(int(round(seconds))), path],
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
 
 
@@ -140,6 +141,23 @@ def play_briefly(device, rate, seconds):
     elapsed = time.time() - t0
     gen.wait(timeout=5)
     return p.returncode, err, elapsed
+
+
+class CaptureRun(NamedTuple):
+    """One capture attempt, kept as a record rather than a bare tuple.
+
+    It was a 5-tuple, then a 7-tuple, and one of the three places that unpacked
+    it was missed -- the case ran the whole 31-second sweep and then died in the
+    metric loop with "too many values to unpack". Named fields make that a
+    typo caught at the point of use instead of after the hardware time is spent.
+    """
+    n: int
+    rate: int
+    fraction: float
+    frames: int
+    rate_ratio: float
+    effective_hz: float
+    frames_ratio: float
 
 
 def sweep_blind_spots(order, tol):
@@ -216,6 +234,20 @@ def main():
     # Generous, because a one-second measurement carries process startup and
     # device open. It is a gross-error check, not a clock-accuracy measurement.
     rate_tol = float(c.params.get("rate_tolerance", 0.20))
+    # Below this duration the elapsed-time check cannot mean anything, so it is
+    # recorded and not enforced.
+    #
+    # Measured on alsa-test, 2026-08-14: playing one second of audio takes
+    # 1.39-1.69 s wall clock when the rate is CORRECT. That is 0.4-0.7 s of
+    # sox and aplay start-up and device open, with ~0.3 s of spread on top --
+    # against a 20% tolerance, i.e. 0.2 s. Enforcing the ratio there failed
+    # all 20 changes of a run whose audio was, by ear, perfectly correct.
+    #
+    # For the ratio to carry signal the fixed cost must be small against the
+    # measurement: at 4 s the same overhead is 10-17% with 7% spread, which a
+    # 20% tolerance can just about hold. Shorter runs still record the number.
+    timing_min_s = float(c.params.get("timing_check_min_seconds", 4.0))
+    timing_enforced = seconds >= timing_min_s
 
     # Some steps are too small for the timing check to resolve -- 44.1 against
     # 48 kHz is 8%, inside any tolerance a one-second measurement can support.
@@ -280,10 +312,12 @@ def main():
                 # Kept separately: did the stream deliver a full recording at
                 # all? A short capture is a different fault from a slow one.
                 frames_ratio = rate_ratio(frames, rate * seconds)
-                capture_fracs.append((changes, rate, frac, frames, cap_ratio,
-                                      cap_hz, frames_ratio))
+                capture_fracs.append(CaptureRun(
+                    changes, rate, frac, frames, cap_ratio, cap_hz,
+                    frames_ratio))
                 capture_verdicts[verdict] = capture_verdicts.get(verdict, 0) + 1
-                if verdict == "live" and cap_ratio is not None \
+                if timing_enforced and verdict == "live" \
+                        and cap_ratio is not None \
                         and abs(cap_ratio - 1.0) > rate_tol:
                     verdict = "wrongrate"
                     detail = (f"{frames} frames in {rec_elapsed:.2f}s is "
@@ -300,7 +334,7 @@ def main():
                         pass
             play_ratio = rate_ratio(played_s, seconds)
             play_ratios.append((changes, rate, play_ratio))
-            if rc == 0 and play_ratio is not None \
+            if rc == 0 and timing_enforced and play_ratio is not None \
                     and abs(play_ratio - 1.0) > rate_tol:
                 failures += 1
                 bad.append((rate, 0,
@@ -345,6 +379,7 @@ def main():
     c.metric("rate_changes", changes)
     c.metric("failures", failures)
     c.metric("rate_check_blind_steps", len(blind))
+    c.metric("timing_check_enforced", timing_enforced)
     for n, rate, ratio in play_ratios:
         c.metric(f"playback_rate_ratio_{n}_{rate}", ratio)
     pr = [r for _, _, r in play_ratios if r is not None]
@@ -359,19 +394,19 @@ def main():
         for verdict in ("live", "nodata", "silent", "error"):
             c.metric(f"capture_{verdict}_changes", capture_verdicts.get(verdict, 0))
         c.metric("first_bad_capture_change", first_bad_change)
-        fracs = [f for _, _, f, _ in capture_fracs if f is not None]
+        fracs = [r.fraction for r in capture_fracs if r.fraction is not None]
         if fracs:
             c.metric("capture_nonzero_min", min(fracs))
             c.metric("capture_nonzero_max", max(fracs))
-        for n, rate, frac, frames, ratio, hz, fratio in capture_fracs:
-            c.metric(f"capture_nonzero_{n}_{rate}",
-                     None if frac is None else round(frac, 4))
-            c.metric(f"capture_frames_{n}_{rate}", frames)
-            c.metric(f"capture_effective_hz_{n}_{rate}",
-                     None if hz is None else round(hz))
-            c.metric(f"capture_rate_ratio_{n}_{rate}", ratio)
-            c.metric(f"capture_frames_ratio_{n}_{rate}", fratio)
-        seen = [r for _, _, _, _, r, _, _ in capture_fracs if r is not None]
+        for r in capture_fracs:
+            c.metric(f"capture_nonzero_{r.n}_{r.rate}",
+                     None if r.fraction is None else round(r.fraction, 4))
+            c.metric(f"capture_frames_{r.n}_{r.rate}", r.frames)
+            c.metric(f"capture_effective_hz_{r.n}_{r.rate}",
+                     None if r.effective_hz is None else round(r.effective_hz))
+            c.metric(f"capture_rate_ratio_{r.n}_{r.rate}", r.rate_ratio)
+            c.metric(f"capture_frames_ratio_{r.n}_{r.rate}", r.frames_ratio)
+        seen = [r.rate_ratio for r in capture_fracs if r.rate_ratio is not None]
         if seen:
             c.metric("capture_rate_ratio_min", min(seen))
             c.metric("capture_rate_ratio_max", max(seen))
@@ -382,6 +417,13 @@ def main():
 
     c.note("stall and reset-delay counts come from the kernel log; a stall "
            "that recovered is expected and is not a failure")
+    if not timing_enforced:
+        c.note(
+            f"the elapsed-time rate check ran at {seconds:g}s per rate and is "
+            f"recorded but NOT enforced below {timing_min_s:g}s: process "
+            f"start-up and device open cost 0.4-0.7s, which swamps a "
+            f"{rate_tol:.0%} tolerance at short durations. Raise "
+            f"seconds_per_rate to {timing_min_s:g} or more to make it bite.")
     if blind:
         c.note(
             f"the timing check cannot resolve {len(blind)} of this sweep's "

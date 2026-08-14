@@ -457,11 +457,20 @@ cases:
     exec: cases/rate_change.py
     params:
       rates: [44100, 48000, 88200, 96000]
-      seconds_per_rate: 1
+      # Four seconds, not one. A one-second measurement is dominated by
+      # process start-up -- 0.4-0.7 s of sox, aplay and device open, measured
+      # on alsa-test -- so the elapsed-time rate check cannot resolve anything
+      # at that length, and a second of audio is thin evidence in its own
+      # right. At four seconds the fixed cost is 10-17% against a 20%
+      # tolerance, which is the point where the ratio starts to mean
+      # something. Profiles that want many iterations rather than accurate
+      # ones override it back down and lose the timing check, knowingly.
+      seconds_per_rate: 4
       iterations_per_run: 10
       capture: true
       min_nonzero_fraction: 0.01
       rate_tolerance: 0.20
+      timing_check_min_seconds: 4.0
     metrics:
       [stalls, stalls_recovered, resets_full, reset_wait_ms_histogram, failures,
        capture_silent_changes, first_silent_change, capture_nonzero_min,
