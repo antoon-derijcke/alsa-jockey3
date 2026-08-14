@@ -704,7 +704,15 @@ cases:
     title: Device audio engine starts after a power cycle
     area: AUDIO
     level: L3
-    mode: semi-automated
+    # Automated, not semi-automated, and the distinction is load-bearing: mode
+    # semi-automated makes the runner derive a need for `human`, which would
+    # withhold this case from exactly the unattended runs the mains switch
+    # exists to enable. That derivation guards cases that ASK something and
+    # would hang waiting for an answer. This one only ever instructs, never
+    # blocks on input, and takes the bus as its witness either way -- so with
+    # device-power it needs nobody. Without it, the case says so and blocks,
+    # and the steps below are how a person does it instead.
+    mode: automated
     status: implemented
     requires: [device, root]
     exec: cases/audio_engine_start.py
