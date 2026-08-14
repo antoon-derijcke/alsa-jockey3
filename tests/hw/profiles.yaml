@@ -46,7 +46,9 @@ profiles:
     overrides:
       armhf-prod:
         JT-PCM-002: {params: {rates: [44100], seconds: 2}}
-        JT-RATE-001: {params: {rates: [44100, 48000], iterations_per_run: 3}}
+        # 44100/48000 is an 8% step, below JT-RATE-001's timing tolerance --
+        # a device that ignored the change would pass. Use the extremes.
+        JT-RATE-001: {params: {rates: [44100, 96000], iterations_per_run: 3}}
       x86_64-debug:
         JT-PROBE-001: {iterations: 5}
 
@@ -100,7 +102,7 @@ profiles:
         JT-PCM-002:   {params: {rates: [44100, 48000], seconds: 2}}
         JT-PCM-004:   {params: {rates: [44100, 48000], seconds: 2}}
         JT-PCM-005:   {params: {rates: [44100]}}
-        JT-RATE-001:  {params: {rates: [44100, 48000], iterations_per_run: 10}}
+        JT-RATE-001:  {params: {rates: [44100, 96000], iterations_per_run: 10}}
         JT-RATE-002:  {iterations: 0}
         JT-AUDIO-001: {params: {rates: [44100, 48000]}}
         JT-PM-001:    {iterations: 0}

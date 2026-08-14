@@ -142,6 +142,32 @@ def play_briefly(device, rate, seconds):
     return p.returncode, err, elapsed
 
 
+def sweep_blind_spots(order, tol):
+    """Transitions where staying at the previous rate would go unnoticed.
+
+    The elapsed-time check can only see a rate that is wrong by more than the
+    tolerance, so the sweep has to be built to make every transition a large
+    one. 44100 against 48000 is 8.1% -- a device that ignored the change and
+    stayed put would sail through a 20% tolerance.
+
+    The default interleave already satisfies this (worst case 0.500 against a
+    0.20 tolerance) because alternating from the ends of a sorted list pairs
+    the extremes. A two-rate list does not: rates [44100, 48000] leaves 8.1%
+    as the only transition, and the check is then blind for the whole run.
+
+    Returned as pairs rather than raised, so the caller can say which
+    configuration is at fault.
+    """
+    bad = []
+    for i, new in enumerate(order):
+        prev = order[i - 1]          # cyclic: the sweep repeats each loop
+        if prev == new:
+            continue
+        if abs(prev / new - 1.0) <= tol:
+            bad.append((prev, new, round(abs(prev / new - 1.0), 3)))
+    return bad
+
+
 def rate_ratio(observed, expected):
     """How far an observed quantity is from what the nominal rate predicts.
 
@@ -190,6 +216,19 @@ def main():
     # Generous, because a one-second measurement carries process startup and
     # device open. It is a gross-error check, not a clock-accuracy measurement.
     rate_tol = float(c.params.get("rate_tolerance", 0.20))
+
+    # A sweep whose steps are smaller than the tolerance cannot detect a rate
+    # that never changed, which is the fault this case exists to find. Refuse
+    # to run rather than report a meaningless pass.
+    blind = sweep_blind_spots(rates, rate_tol)
+    if blind:
+        c.blocked(
+            "the configured rate sweep has steps too small for the "
+            f"{rate_tol:.0%} timing tolerance, so a device that ignored the "
+            "change would pass: "
+            + "; ".join(f"{a} -> {b} is only {d:.1%}" for a, b, d in blind)
+            + ". Use rates that alternate between the extremes, e.g. "
+            "[44100, 96000] for a short sweep.")
     play_ratios = []
     capture_fracs = []
     capture_verdicts = {}
