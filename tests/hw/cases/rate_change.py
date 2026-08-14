@@ -39,6 +39,7 @@ switch, so a sorted sweep would systematically test the easy direction.
 """
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -160,6 +161,52 @@ class CaptureRun(NamedTuple):
     frames_ratio: float
 
 
+# Counted here as well as by the runner's classifier. The classifier gives the
+# run totals after the fact; these give the operator the number while the run is
+# still on screen, and attribute each stall to the change that caused it -- which
+# a run-level total cannot do.
+STALL_RE = {
+    "capture_stall": re.compile(r"Capture URB has stalled"),
+    "playback_stall": re.compile(r"Playback URB has stalled"),
+    "reset_capture": re.compile(
+        r"Resetting device to recover from stall after rate change to \d+ Hz "
+        r"\(playback_alive=1, capture_alive=0"),
+    "reset_playback": re.compile(
+        r"Resetting device to recover from stall after rate change to \d+ Hz "
+        r"\(playback_alive=0"),
+}
+
+
+def attribute_events(lines, marks):
+    """Count driver stall and reset messages per rate change.
+
+    Each change writes a marker into the kernel log before it happens, so the
+    lines between one marker and the next belong to that change. Without this
+    the only available answer is "nine stalls happened somewhere in the run".
+    """
+    starts = []
+    for n, rate, mark in marks:
+        if not mark.written:
+            continue
+        idx = None
+        for i, line in enumerate(lines):
+            if mark.token in line:
+                idx = i
+        if idx is not None:
+            starts.append((idx, n, rate))
+    starts.sort()
+    out = []
+    for pos, (idx, n, rate) in enumerate(starts):
+        end = starts[pos + 1][0] if pos + 1 < len(starts) else len(lines)
+        counts = {}
+        for line in lines[idx + 1:end]:
+            for name, rx in STALL_RE.items():
+                if rx.search(line):
+                    counts[name] = counts.get(name, 0) + 1
+        out.append((n, rate, counts))
+    return out
+
+
 def sweep_blind_spots(order, tol):
     """Transitions where staying at the previous rate would go unnoticed.
 
@@ -261,6 +308,7 @@ def main():
     blind = sweep_blind_spots(rates, rate_tol)
     play_ratios = []
     capture_fracs = []
+    marks = []
     capture_verdicts = {}
     bad_capture = []
     xruns_before = alsa.xruns(c.card, "pcm0p")
@@ -280,7 +328,9 @@ def main():
             # A marker per change, so a stall in the kernel log can be
             # attributed to the change that caused it rather than to the run
             # as a whole -- "when did it start" was previously unanswerable.
-            kmsg.Marker(f"{c.id}#change{changes}@{rate}").write()
+            mark = kmsg.Marker(f"{c.id}#change{changes}@{rate}")
+            mark.write()
+            marks.append((changes, rate, mark))
 
             raw = os.path.join(c.workdir, f"rate_{changes}_{rate}.raw")
             rec = start_capture(device, rate, seconds, raw) if with_capture \
@@ -414,6 +464,31 @@ def main():
     c.metric("elapsed_s", round(time.time() - t0, 1))
     if changes:
         c.metric("failure_rate_pct", round(100.0 * failures / changes, 2))
+
+    # Report what the driver logged, while the run is still on screen. The
+    # runner's classifier produces the same totals, but only into run.json
+    # after the case has exited -- so an operator watching a two-minute sweep
+    # had no idea whether it was provoking any stalls at all.
+    events = attribute_events(kmsg.read_log(), marks)
+    totals = {}
+    stalled_at = []
+    for n, rate, counts in events:
+        for k, v in counts.items():
+            totals[k] = totals.get(k, 0) + v
+        if counts.get("capture_stall"):
+            stalled_at.append(f"{n}@{rate//1000}k")
+        for k, v in counts.items():
+            c.metric(f"{k}_change_{n}_{rate}", v)
+    for k, v in totals.items():
+        c.metric(f"{k}_total", v)
+    c.progress(
+        f"    driver: capture stalled on "
+        f"{len(stalled_at)}/{changes} changes"
+        f", resets {totals.get('reset_capture', 0)} capture"
+        f" + {totals.get('reset_playback', 0)} playback"
+        f", playback stalls {totals.get('playback_stall', 0)}")
+    if stalled_at:
+        c.progress("    stalled at: " + ", ".join(stalled_at))
 
     c.note("stall and reset-delay counts come from the kernel log; a stall "
            "that recovered is expected and is not a failure")

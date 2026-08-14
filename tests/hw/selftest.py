@@ -1060,8 +1060,26 @@ def test_rate_change_case_runs():
         m.Case = lambda: case
         m.alsa = types.SimpleNamespace(xruns=lambda *a: 0,
                                        device_name=lambda *a: "hw:9,0")
-        m.kmsg = types.SimpleNamespace(
-            Marker=lambda label: types.SimpleNamespace(write=lambda: True))
+        # A kernel log that carries each change's marker, plus a capture stall
+        # and a capture-triggered reset after the marker for change 3. The
+        # case must attribute those to change 3 and to no other.
+        log = []
+
+        def make_marker(label):
+            token = f"JT-MARK {label} deadbeef"
+            log.append(f"[100.0] {token}")
+            if label.endswith("#change3@88200"):
+                log.append("[100.1] snd-reloop-jockey3 1-2.2:1.0: "
+                           "Capture URB has stalled.")
+                log.append("[100.2] snd-reloop-jockey3 1-2.2:1.0: Resetting "
+                           "device to recover from stall after rate change to "
+                           "88200 Hz (playback_alive=1, capture_alive=0, "
+                           "capture_open=1)")
+            return types.SimpleNamespace(token=token, written=True,
+                                         write=lambda: True)
+
+        m.kmsg = types.SimpleNamespace(Marker=make_marker,
+                                       read_log=lambda: log)
         m.play_briefly = lambda dev, rate, sec: (0, "", sec * 1.02)
 
         class Rec:
@@ -1119,6 +1137,20 @@ def test_rate_change_case_runs():
     check(blind.metrics.get("rate_check_blind_steps", 0) > 0,
           "a 44.1/48 sweep is reported as unresolvable, not blocked",
           str(blind.metrics.get("rate_check_blind_steps")))
+
+    # Stalls are attributed to the change that caused them, not just totalled.
+    attr = run({"iterations_per_run": 1, "seconds_per_rate": 1}, "live")
+    check(attr.metrics.get("capture_stall_total") == 1,
+          "a capture stall in the log is counted",
+          str(attr.metrics.get("capture_stall_total")))
+    check(attr.metrics.get("reset_capture_total") == 1,
+          "and the reset it caused is attributed to capture",
+          str(attr.metrics.get("reset_capture_total")))
+    check(attr.metrics.get("capture_stall_change_3_88200") == 1,
+          "against the specific change that produced it",
+          str({k: v for k, v in attr.metrics.items() if "_change_" in k}))
+    check(not attr.metrics.get("reset_playback_total"),
+          "and not miscounted as a playback reset")
 
 
 def main():
