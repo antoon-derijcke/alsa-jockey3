@@ -105,6 +105,7 @@ the run that produced them is worth an OpenVizsla trace.
 """
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -113,7 +114,7 @@ sys.path.insert(0, os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
 
 from lib.case import Case          # noqa: E402
-from lib import alsa, power, priv    # noqa: E402
+from lib import alsa, kmsg, power, priv    # noqa: E402
 
 CHANNELS = 6                       # fixed by the driver: min == max
 FORMAT = "S24_3LE"
@@ -337,11 +338,80 @@ class ModuleReload(Actuator):
                            if rc else "loaded")
 
 
-def reenumerate(c, act, off_seconds):
+# dmesg line prefix, e.g. "[69523.605737] ". The kernel stamps the driver's
+# own messages from the same clock, which is the whole point of reading timing
+# from here rather than from time.time() in this process.
+KTIME_RE = re.compile(r"^\[\s*(\d+\.\d+)\]")
+
+# The device announcing itself on the bus, and the driver's first control
+# transfer. "Firmware ... v..." is dev_info, so it survives a production kernel
+# with no dynamic debug -- which is exactly the configuration the cold-boot
+# fault needs. It is logged by ploytec_get_firmware(), the first EP0 transfer
+# of the sequence, so its timestamp is when the driver first spoke to the
+# device.
+ENUM_RE = re.compile(r"usb [\d.-]+: new .* USB device number")
+FIRST_EP0_RE = re.compile(r"Firmware 0x[0-9a-f]+ v")
+
+
+def _ktime(line):
+    m = KTIME_RE.match(line.strip())
+    return float(m.group(1)) if m else None
+
+
+def cycle_timings(lines, marks):
+    """Per-cycle timings, in kernel time, from a marker to the events after it.
+
+    For each cycle this yields how long the device took to enumerate after
+    power was restored, and how long after enumerating before the driver sent
+    its first control transfer. The second number is the one the settling-delay
+    bisect is trying to establish, and it cannot be measured from the harness:
+    the driver's first transfer is not an event userspace can see.
+
+    Anything not found is left out rather than reported as zero. A missing
+    number here means the log did not contain the event, which is worth
+    noticing, and a zero would hide it.
+    """
+    out = {}
+    for i, mark in marks:
+        if not mark.written:
+            continue
+        start = None
+        for n, line in enumerate(lines):
+            if mark.token in line:
+                start = n
+        if start is None:
+            continue
+        t_mark = _ktime(lines[start])
+        if t_mark is None:
+            continue
+        t_enum = t_ep0 = None
+        for line in lines[start + 1:]:
+            ts = _ktime(line)
+            if ts is None:
+                continue
+            if t_enum is None and ENUM_RE.search(line):
+                t_enum = ts
+            elif t_enum is not None and FIRST_EP0_RE.search(line):
+                t_ep0 = ts
+                break
+        if t_enum is not None:
+            out[f"power_on_to_enumerate_ms_{i}"] = round((t_enum - t_mark) * 1000, 1)
+        if t_enum is not None and t_ep0 is not None:
+            out[f"enumerate_to_first_ep0_ms_{i}"] = round((t_ep0 - t_enum) * 1000, 1)
+            out[f"power_on_to_first_ep0_ms_{i}"] = round((t_ep0 - t_mark) * 1000, 1)
+    return out
+
+
+def reenumerate(c, act, off_seconds, mark=None):
     """Remove the device, hold it away, bring it back.
 
     Returns (card_index, elapsed_ms), or (None, None) having already recorded
     why. The bus is the witness at both ends.
+
+    `mark` is written to the kernel log immediately before power is restored,
+    so that the interval from power-on to the driver's first control transfer
+    can be read off the kernel clock rather than measured here -- see
+    cycle_timings().
     """
     t0 = time.time()
 
@@ -357,6 +427,9 @@ def reenumerate(c, act, off_seconds):
         return None, None
 
     time.sleep(off_seconds)
+
+    if mark is not None:
+        mark.write()
 
     ok, detail = act.on()
     if not ok:
@@ -420,9 +493,12 @@ def main():
     silent_cycles = 0
     first_silent = None
     cycles = 0
+    marks = []
 
     for i in range(1, iterations + 1):
-        idx, took = reenumerate(c, act, off_seconds)
+        mark = kmsg.Marker(f"{c.id}#cycle{i}")
+        marks.append((i, mark))
+        idx, took = reenumerate(c, act, off_seconds, mark)
         if idx is None:
             break
         enumerate_ms.append(took)
@@ -480,6 +556,15 @@ def main():
         c.metric("nonzero_fraction_max", max(fractions))
     if enumerate_ms:
         c.metric("enumerate_ms_max", max(enumerate_ms))
+
+    # Timing read off the kernel clock rather than measured here. enumerate_ms
+    # above stops when /proc/asound/card<idx> appears, which is early in probe
+    # and not when the card becomes usable, so it under-reports; and the
+    # driver's first control transfer is not an event userspace can observe at
+    # all. Both are visible in the log, stamped by the same clock as the
+    # driver's own messages.
+    for key, value in cycle_timings(kmsg.read_log(), marks).items():
+        c.metric(key, value)
 
     if silent_cycles:
         c.note(f"{silent_cycles} of {cycles} cycles produced a device that "
