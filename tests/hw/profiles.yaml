@@ -194,6 +194,12 @@ profiles:
       - {id: JT-SOAK-003,  iterations: 1}
       - {id: JT-SOAK-004,  iterations: 1, params: {duration_seconds: 14400}}
       - {id: JT-SOAK-002,  iterations: 1}
+      # Thirty cold boots rather than the usual ten. Ten cycles cannot tell a
+      # true 0% failure rate from about 25%, which is fine while bisecting a
+      # wide interval and useless for confirming the shipped settling delay.
+      # The fault is deterministic when present, so this is about the margin
+      # above the fall-over, not about catching a rare event.
+      - {id: JT-AUDIO-005, iterations: 1, params: {iterations_per_run: 30}}
     overrides:
       armhf-prod:
         JT-SOAK-001: {params: {hours: 2, rate: 44100}}

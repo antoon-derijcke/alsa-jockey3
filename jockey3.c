@@ -2125,21 +2125,36 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 	int rate;
 
 	/*
-	 * EXPERIMENT, not a shipping fix: does the device need time to finish
-	 * booting before it will accept its initialization?
+	 * Let the device finish booting before speaking to it.
 	 *
-	 * After a mains power cycle the capture endpoint comes up bit-exact
-	 * silent every time, while the control plane is byte-identical to a
-	 * working cycle -- so what differs is when the sequence starts, not what
-	 * it contains. See re/usb/init_timing_comparison.md, "Where this stands".
+	 * After a mains power cycle the Jockey 3 enumerates and answers control
+	 * transfers while its audio engine is still coming up. Initialize it in
+	 * that window and the engine never starts: every control transfer
+	 * succeeds, the rate reads back correctly, ALSA accepts playback, and the
+	 * device is silent -- capture returns bit-exact zero and nothing is
+	 * logged. A USB re-enumeration does not provoke it; only a real
+	 * power-off does, because the device is self-powered and a VBUS cut is
+	 * merely a cable unplug to it.
 	 *
-	 * This is the first EP0 transfer of the driver's life: everything above
-	 * in probe() is ALSA and USB core bookkeeping. It sits here rather than
-	 * in ploytec_initialize_device() because that runs twice on a successful
-	 * probe (once here, once via jockey3_set_rate()) and again on every rate
-	 * change, which would blur exactly the distinction being measured.
+	 * Bisected on hardware over 100 cold boots: the device needs between 144
+	 * and 156 ms after enumeration, sharply -- below it the engine fails to
+	 * start every time, above it never. 250 ms is chosen rather than the
+	 * smallest passing value because the ~124 ms this driver otherwise takes
+	 * to reach its first transfer is host-dependent (USB core enumeration
+	 * plus the card, PCM and MIDI registration above), so a value that only
+	 * tops that up would erode on a faster machine. 250 ms satisfies the
+	 * requirement on its own. For reference the vendor drivers wait far
+	 * longer still: Windows ~300 ms from SET_ADDRESS, macOS over a second.
+	 *
+	 * Placed here rather than in ploytec_initialize_device() because that
+	 * runs twice per probe -- once below, once via jockey3_set_rate() -- and
+	 * again on every rate change. This point runs once, and is the last
+	 * before the driver's first EP0 transfer; everything above it in probe()
+	 * is ALSA and USB core bookkeeping.
+	 *
+	 * See re/usb/init_timing_comparison.md for the measurements.
 	 */
-	msleep(2000);
+	msleep(250);
 
 	for (int retry = 10; retry > 0; retry--) {
 		ret = jockey3_initialize_ploytec(chip);

@@ -470,43 +470,103 @@ placed before the driver's first EP0 transfer, changing nothing about the
 driver's internal ordering; if the race were the driver's own, moving the start
 of an unchanged sequence later would not fix it.
 
-### What the number is not
+### The value that ships: 250 ms
 
-2 s is a confirmation value, not a threshold, and **this shape cannot ship** --
-a multi-second `msleep()` in USB probe runs on the hub thread and delays
-enumeration of every device behind it. What has to be justified upstream is the
-*minimum* the device requires, which only a bisect against repeated cold boots
-can supply.
+The bisect below puts the device's requirement between 144 and 156 ms after
+enumeration. The shipped delay is **250 ms**, and it is deliberately not the
+smallest value that passed.
 
-The number to record at each bisect step is power-on to first EP0 transfer,
-not the sleep value alone. `JT-AUDIO-005` measures exactly that from the kernel
-log (`power_on_to_first_ep0_ms_*`), by writing a marker into `/dev/kmsg` before
-restoring power and reading the delta to the `Firmware 0x.. v..` line that
-`ploytec_get_firmware()` emits.
+The reason is that the ~124 ms we already spend between enumeration and the
+first transfer is host-dependent, not a property of the device: it is the USB
+core finishing enumeration plus this driver's own card, PCM and MIDI
+registration before `jockey3_initialize()` runs. A faster machine, or a build
+with less to do in probe, reaches the first transfer sooner and quietly eats
+the margin. Adding 30 ms to a quantity that varies by host is not a fix; a
+delay that on its own exceeds the requirement is. At 250 ms the constraint
+holds even if probe arrived instantly, with about 1.7x margin over the measured
+150 ms.
 
-Measured over the ten passing cycles of 2026-08-14, and this brackets the
-threshold usefully:
+It also lands where the vendors already are. Windows begins initialization
+~300 ms after `SET_ADDRESS` and macOS over a second; 250 ms puts this driver's
+first transfer at ~300 ms, which is Windows' behavior almost exactly. Two
+independent lines of evidence -- a hardware bisect on our unit, and the vendor
+traces -- agree on the same order of magnitude.
 
-| | median | range |
-|---|---|---|
-| power-on to enumeration | 1.40 s | 1.30 - 1.54 s (one outlier at 6.20 s) |
-| enumeration to first EP0 | 2.14 s | 2.128 - 2.148 s |
-| **power-on to first EP0** | **3.51 s** | 3.44 - 3.69 s (outlier 8.33 s) |
+Confirmed at **30 consecutive cold boots, 0 silent**, via the `soak` profile.
+Ten cycles cannot distinguish a true 0% failure rate from about 25%, which is
+adequate for bracketing an interval and not for choosing a shipped value.
 
-The enumeration-to-first-EP0 figure is the 2 s sleep plus about 135 ms of
-probe, and its spread of 20 ms across ten cycles says the delay is the only
-thing of consequence in that interval.
+### The bisect, 2026-08-14
 
-So without the sleep the driver's first transfer landed about **1.5 s** after
-mains-on, and it fails there; with it, about **3.5 s**, and it succeeds. The
-threshold is somewhere in between, and the bisect is looking for it in that
-band rather than anywhere near the 2 s of sleep as such.
+Seven builds, 100 cold boots, each step a `--uncommitted` build so the branch
+kept no history of the search. The controlled variable is the `msleep()`; the
+observable is enumeration to first EP0 transfer, taken from the kernel log.
 
-An earlier draft of this section said the device takes 4-5 s to enumerate.
-That was wrong: it came from `enumerate_ms`, which starts its clock before the
-device is switched *off* and therefore includes the five-second hold. Power-on
-to enumeration is 1.4 s. The distinction matters, because it is the difference
-between a threshold that looks arbitrary and one that sits in a 2 s band.
+| delay | enum -> first EP0 (min-max) | cycles | silent |
+|---|---|---|---|
+| none | 123-124 ms | 10 | **10** |
+| 15 ms | 140-144 ms | 10 | **10** |
+| 30 ms | 156-164 ms | 10 | 0 |
+| 60 ms | 184-188 ms | 10 | 0 |
+| 125 ms | 252-260 ms | 10 | 0 |
+| 250 ms | 380-408 ms | 10 | 0 |
+| 250 ms | (soak profile) | **30** | 0 |
+| 500 ms | 624-652 ms | 10 | 0 |
+| 1000 ms | 1128-1152 ms | 10 | 0 |
+| 2000 ms | 2128-2148 ms | 10 | 0 |
+
+**The device needs between 144 and 156 ms after enumeration.** Below that the
+audio engine never starts, every time; above it, never. Both sides are 10/10,
+so the fall-over is a step and not a probabilistic race -- the device's own
+readiness time barely varies, which is consistent with a fixed firmware boot
+rather than contention.
+
+Two measurement notes. Enumeration-to-first-EP0 is the quantity that
+discriminates: within a run its spread is under 10 ms, and the failing and
+passing sets do not overlap. Power-on-to-first-EP0 does *not* discriminate --
+a cycle at 1739 ms failed while cycles at 1690 ms passed -- because that
+interval also contains the relay's own switching latency and the device's
+enumeration time, which vary by hundreds of milliseconds. Timing from
+enumeration removes both.
+
+That enumeration is the right zero point is itself informative: enumeration is
+device-driven, so it tracks the device's boot rather than floating free of it.
+One cycle took 6.2 s from mains-on to enumerating and still passed with the
+same enum-to-EP0 figure as every other cycle. A delay measured from probe is
+therefore the correct shape, since probe begins after enumeration.
+
+Raw per-cycle data is checked in as `settling_delay_cycles.csv`, regenerated by
+`settling_delay_dataset.py`. The build-id to delay mapping lives in that script
+and is the only record of it -- the builds were deliberately uncommitted, so
+git cannot supply it.
+
+### What the vendors do, and it corroborates the number
+
+The traces answer the same question directly, via `init_start_timing.py`. The
+anchor is `SET_ADDRESS`, the closest wire equivalent of the "new high-speed USB
+device number N" line the Linux hub thread logs.
+
+| | n | `SET_ADDRESS` -> `SET_CONFIGURATION` | -> `SET_STATUS` |
+|---|---|---|---|
+| this driver, before the fix | 4 | **46-47 ms** | 49-94 ms |
+| Windows | 5 | **297-308 ms** | 372-411 ms |
+| macOS | 24 | **1042-2056 ms** | 1148-2171 ms |
+| macOS, after a USB replug | 5 | 2044-3568 ms | 2149-3675 ms |
+
+All three platforms begin the vendor protocol within about 2 ms of
+`SET_CONFIGURATION` -- macOS 1.2 ms after it, Windows 1.7 ms before, this
+driver 0.25 ms after. **What differs is not the sequence but when it starts.**
+We started it at 47 ms; Windows waits ~300 ms and macOS over a second.
+
+Both vendors therefore leave far more than the ~150 ms the device turns out to
+need, and neither is anywhere near the margin we were running on. Windows is
+the tighter of the two at ~300 ms, roughly twice the measured requirement.
+
+This is independent of the hardware bisect -- different method, different
+instrument, different platforms -- and it lands in the same place. It is also
+the first vendor evidence in this document that bears on *when* initialization
+starts rather than what it contains, which is the question every other finding
+here turned out not to answer.
 
 ### Two harness defects this run exposed
 

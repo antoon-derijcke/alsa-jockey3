@@ -569,6 +569,10 @@ def main():
                 pass
 
         c.metric(f"pcm_settle_ms_{i}", settle_ms)
+        # Per cycle, not just the run's min/max: a partial run near the
+        # fall-over is the interesting case, and an aggregate cannot say which
+        # cycles were silent. See re/usb/settling_delay_dataset.py.
+        c.metric(f"nonzero_fraction_{i}", round(frac, 4))
 
     c.metric("cycles", cycles)
     c.metric("silent_cycles", silent_cycles)
