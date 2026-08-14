@@ -130,14 +130,28 @@ def play_briefly(device, rate, seconds):
         stdin=gen.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         text=True)
     gen.stdout.close()
+    t0 = time.time()
     try:
         _out, err = p.communicate(timeout=seconds + 30)
     except subprocess.TimeoutExpired:
         p.kill()
         gen.kill()
-        return 124, "timed out"
+        return 124, "timed out", None
+    elapsed = time.time() - t0
     gen.wait(timeout=5)
-    return p.returncode, err
+    return p.returncode, err, elapsed
+
+
+def rate_ratio(observed, expected):
+    """How far an observed quantity is from what the nominal rate predicts.
+
+    Returned as a ratio rather than a verdict, because it is worth recording
+    even when it passes: drift over time is visible in the metric and not in a
+    pass/fail.
+    """
+    if not expected or observed is None:
+        return None
+    return round(observed / expected, 3)
 
 
 def interleave(rates):
@@ -173,6 +187,10 @@ def main():
     changes = 0
     failures = 0
     first_bad_change = None
+    # Generous, because a one-second measurement carries process startup and
+    # device open. It is a gross-error check, not a clock-accuracy measurement.
+    rate_tol = float(c.params.get("rate_tolerance", 0.20))
+    play_ratios = []
     capture_fracs = []
     capture_verdicts = {}
     bad_capture = []
@@ -198,7 +216,7 @@ def main():
             raw = os.path.join(c.workdir, f"rate_{changes}_{rate}.raw")
             rec = start_capture(device, rate, seconds, raw) if with_capture \
                 else None
-            rc, err = play_briefly(device, rate, seconds)
+            rc, err, played_s = play_briefly(device, rate, seconds)
             if rec is not None:
                 try:
                     _o, rec_err = rec.communicate(timeout=seconds + 30)
@@ -208,8 +226,18 @@ def main():
                     rec_rc, rec_err = 124, "arecord did not finish"
                 verdict, frac, frames, detail = capture_outcome(
                     rec_rc, rec_err, raw, floor)
-                capture_fracs.append((changes, rate, frac, frames))
+                # Frames against rate x duration is an outside check on the
+                # effective sample rate: GET_RATE only proves the firmware
+                # accepted the value, not that the converters run at it.
+                cap_ratio = rate_ratio(frames, rate * seconds)
+                capture_fracs.append((changes, rate, frac, frames, cap_ratio))
                 capture_verdicts[verdict] = capture_verdicts.get(verdict, 0) + 1
+                if verdict == "live" and cap_ratio is not None \
+                        and abs(cap_ratio - 1.0) > rate_tol:
+                    verdict = "wrongrate"
+                    detail = (f"{frames} frames in {seconds:g}s is "
+                              f"{frames / seconds:.0f} Hz, not {rate} Hz "
+                              f"(ratio {cap_ratio})")
                 if verdict != "live":
                     if first_bad_change is None:
                         first_bad_change = changes
@@ -219,7 +247,16 @@ def main():
                         os.unlink(raw)
                     except OSError:
                         pass
-            if rc != 0:
+            play_ratio = rate_ratio(played_s, seconds)
+            play_ratios.append((changes, rate, play_ratio))
+            if rc == 0 and play_ratio is not None \
+                    and abs(play_ratio - 1.0) > rate_tol:
+                failures += 1
+                bad.append((rate, 0,
+                            f"played {seconds:g}s of audio in {played_s:.2f}s "
+                            f"(ratio {play_ratio}) -- the device is not "
+                            f"clocking at {rate} Hz"))
+            elif rc != 0:
                 failures += 1
                 bad.append((rate, rc, err))
         rates_ok = len(rates) - len(bad)
@@ -256,6 +293,12 @@ def main():
 
     c.metric("rate_changes", changes)
     c.metric("failures", failures)
+    for n, rate, ratio in play_ratios:
+        c.metric(f"playback_rate_ratio_{n}_{rate}", ratio)
+    pr = [r for _, _, r in play_ratios if r is not None]
+    if pr:
+        c.metric("playback_rate_ratio_min", min(pr))
+        c.metric("playback_rate_ratio_max", max(pr))
     if with_capture:
         # Reported apart, because they are different faults: no samples means
         # the stream never restarted, all-zero samples mean the converter did
@@ -268,10 +311,15 @@ def main():
         if fracs:
             c.metric("capture_nonzero_min", min(fracs))
             c.metric("capture_nonzero_max", max(fracs))
-        for n, rate, frac, frames in capture_fracs:
+        for n, rate, frac, frames, ratio in capture_fracs:
             c.metric(f"capture_nonzero_{n}_{rate}",
                      None if frac is None else round(frac, 4))
             c.metric(f"capture_frames_{n}_{rate}", frames)
+            c.metric(f"capture_rate_ratio_{n}_{rate}", ratio)
+        seen = [r for _, _, _, _, r in capture_fracs if r is not None]
+        if seen:
+            c.metric("capture_rate_ratio_min", min(seen))
+            c.metric("capture_rate_ratio_max", max(seen))
     c.metric("xruns", max(0, alsa.xruns(c.card, "pcm0p") - xruns_before))
     c.metric("elapsed_s", round(time.time() - t0, 1))
     if changes:

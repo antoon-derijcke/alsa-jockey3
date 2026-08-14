@@ -461,6 +461,7 @@ cases:
       iterations_per_run: 10
       capture: true
       min_nonzero_fraction: 0.01
+      rate_tolerance: 0.20
     metrics:
       [stalls, stalls_recovered, resets_full, reset_wait_ms_histogram, failures,
        capture_silent_changes, first_silent_change, capture_nonzero_min,
@@ -479,6 +480,16 @@ cases:
       stream open, jockey3_pcm_hw_params() takes its reset path on a capture
       stall instead of the deferred one, which is the path that carries the
       risk and was untested while this case only played.
+
+      The rate itself is checked against the clock, not against the device.
+      Playing N samples at R Hz must take about N/R seconds, and recording for
+      D seconds must return about R x D frames; either ratio outside
+      rate_tolerance fails. This is independent of what GET_RATE reports, which
+      only proves the firmware accepted the value into a register -- exactly
+      the gap in which this device's known faults live, where every return code
+      is correct and the stream is not. The tolerance is deliberately loose:
+      process startup and device open are a real fraction of a one-second
+      measurement, so this is a gross-error check, not clock metrology.
     expect_dmesg:
       - 'Playback URB has stalled\.'
       - 'Capture URB has stalled\.'
