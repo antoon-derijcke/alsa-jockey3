@@ -568,6 +568,62 @@ the first vendor evidence in this document that bears on *when* initialization
 starts rather than what it contains, which is the question every other finding
 here turned out not to answer.
 
+### Does the rate-change fault share this mechanism? Probably not -- and the data points elsewhere
+
+Milestone 13's capture-restart problem looks like a natural sibling of the
+cold-boot fault: if the device needs time after power-on, perhaps it needs time
+after being reconfigured. The traces say no, and in doing so suggest a
+different and more mundane cause.
+
+`rate_change_stream_timing.py` measures, per rate-change sequence, when bulk
+traffic resumes relative to `SET_STATUS`:
+
+| | n | sequence span | EP 0x05 resumes | EP 0x86 resumes |
+|---|---|---|---|---|
+| macOS | 47 | 103-142 ms | **0-1 ms** | **1-21 ms** |
+| this driver | 4 | 166-211 ms | 70-76 ms | **70-85 ms** |
+
+**macOS leaves no settling window at all.** It resumes playback within a
+millisecond of `SET_STATUS` and the device produces capture data again within
+21 ms, in every one of 47 sequences across four captures. A device that needed
+time to reconfigure would not behave like that, and the vendor -- whose
+behavior this document takes as correct -- would be waiting for it. So the
+cold-boot mechanism does not transfer: a power cycle restarts the firmware, a
+rate change does not.
+
+What the same table shows instead is a plain arithmetic problem. After a rate
+change `jockey3_pcm_hw_params()` waits **50 ms** for each direction to come
+back alive, via `jockey3_wait_urb_stream_started(..., 50)`. Our own captures
+show capture returning at **70-85 ms** -- later than that wait, in all four
+sequences measured. The driver therefore declares "Capture URB has stalled" and
+escalates into the milestone 13 mitigations for a stream that was about to
+return on its own.
+
+That fits the historical `JT-RATE-001` numbers, which are otherwise hard to
+explain: `stalls_capture` of 77 to 99 per 100 rate changes. A device failing
+four times in five is a broken device; a threshold sitting just under the
+normal restart latency produces exactly this, and produces it *reliably*, which
+is what the runs show.
+
+Two caveats, both material:
+
+- **n=4 for this driver.** The vendor side is well sampled; ours is not. Four
+  sequences from two captures is enough to notice that 70-85 ms exceeds 50 ms,
+  not enough to characterize the distribution.
+- **All of it predates the current build.** The `JT-RATE-001` runs above are
+  from 2026-08-09 and 2026-08-11, before the four vendor-alignment changes of
+  2026-08-13 and before the cold-boot settling delay. The current rate-change
+  reliability is simply unknown.
+
+So the next step is measurement, not a fix: re-run `JT-RATE-001` on the current
+build for a present-day `stalls_capture`. If it is still high, raising the
+50 ms wait to something above the observed restart latency -- 250 ms, matching
+the settling delay -- is a one-line experiment with the same shape as the one
+that resolved milestone 15. It should be tried *before* any further mitigation
+is added, because if this reading is right the existing watchdog, liveness
+polling and queued-reset machinery are compensating for a timeout that is
+simply too short.
+
 ### Two harness defects this run exposed
 
 Neither affected the verdict, but both had been latent and would have
