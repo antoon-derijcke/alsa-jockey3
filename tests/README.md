@@ -90,6 +90,52 @@ The runner executes **on the machine with the hardware attached**, not on a
 build host. That is what lets the same suite run on a Raspberry Pi you plugged
 in five minutes ago.
 
+### Live feedback while a case runs
+
+Hardware cases are slow. `JT-AUDIO-005` takes about 125 seconds, because it
+power-cycles the device ten times and captures two seconds from each. A case
+that prints nothing for that long leaves the operator watching `dmesg` in
+another window to find out whether anything is still happening, which is not
+good enough. **Every case that iterates reports once per iteration.**
+
+The shape, and it is worth following exactly:
+
+```
+    cycle 1/10  ....  power cycling            <- transient, rewritten in place
+    cycle 1/10  ....  waiting for the card
+    cycle 1/10  ....  capturing 2s
+    cycle 1/10  pass  100.00% non-zero of 88200 frames, card ready in 20.4 ms
+    cycle 2/10  FAIL    0.00% non-zero of 88200 frames, card ready in 20.4 ms
+```
+
+Three properties earn their keep:
+
+- **The iteration and the total**, so a long run has a visible end.
+- **The phase, named**, while the iteration is in flight. "Power cycling",
+  "waiting for the card", "capturing 2s" — the operator can tell a slow step
+  from a hung one, and it is obvious which part of the rig to look at.
+- **A verdict per iteration, replacing the phase line.** One permanent line
+  per iteration and no scrollback churn, ending in a summary that says how
+  many passed.
+
+`Case` provides both halves and they compose:
+
+| | |
+|---|---|
+| `c.status(text)` | ends in a carriage return. The runner treats it as transient and `lib/term.py` redraws it in place, padding to erase a longer previous line. |
+| `c.progress(text)` | ends in a newline. Wipes the held transient line first, then prints permanently. |
+
+On a pipe or in CI the terminal handling switches off and each update becomes
+an ordinary line, so a log keeps the whole history rather than a line that
+overwrote itself.
+
+**The ordering trap.** The runner derives a case's failure reason from the
+**last line of stderr**. A per-iteration line printed *after* `c.fail()`
+therefore becomes the recorded verdict, quietly replacing the real reason.
+Report first, fail second — always. In `JT-AUDIO-005` this is why
+`reenumerate()` hands its failure reason back to the caller instead of calling
+`c.fail()` itself.
+
 ### Capabilities, and cases that fall back to being done by hand
 
 A case declares what it needs from its surroundings — a device, a loopback

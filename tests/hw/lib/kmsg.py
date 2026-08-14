@@ -35,7 +35,15 @@ INVESTIGATE = "investigate"  # a defect, not a test failure -> abort
 # counts as ours: when the driver is built with
 # CONFIG_SND_USB_JOCKEY3_CODEC_KUNIT_TEST the codec suite runs at every module
 # load and its TAP output carries the suite name rather than the module name.
-OURS = re.compile(r"snd[-_]reloop[-_]jockey3|ploytec")
+#
+# The bare function name counts too. When the kernel rate-limits one of our
+# dev_*_ratelimited() call sites it emits "<function>: N callbacks suppressed"
+# with no device prefix and no module name, so a line that is unmistakably ours
+# failed the ownership test -- and since a case's expect_dmesg entries are only
+# consulted for messages that are ours, no expect rule could ever whitelist it.
+# That is why "jockey3_urb_error_give_up: N callbacks suppressed" sat in the
+# unclassified bucket of every run the suite has ever produced.
+OURS = re.compile(r"snd[-_]reloop[-_]jockey3|ploytec|jockey3_\w+")
 
 
 class Marker:

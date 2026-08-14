@@ -478,14 +478,35 @@ enumeration of every device behind it. What has to be justified upstream is the
 *minimum* the device requires, which only a bisect against repeated cold boots
 can supply.
 
-Note the delay is on top of an interval that is already long: the device takes
-roughly 4-5 s from mains-on to enumerating, so the driver's first transfer
-was already several seconds after power was applied, and 2 s more still made
-the difference. The number to record at each bisect step is therefore
-power-on to first EP0 transfer, not the sleep value alone. `JT-AUDIO-005` now
-measures exactly that from the kernel log (`power_on_to_first_ep0_ms_*`),
-by writing a marker into `/dev/kmsg` before restoring power and reading the
-delta to the `Firmware 0x.. v..` line that `ploytec_get_firmware()` emits.
+The number to record at each bisect step is power-on to first EP0 transfer,
+not the sleep value alone. `JT-AUDIO-005` measures exactly that from the kernel
+log (`power_on_to_first_ep0_ms_*`), by writing a marker into `/dev/kmsg` before
+restoring power and reading the delta to the `Firmware 0x.. v..` line that
+`ploytec_get_firmware()` emits.
+
+Measured over the ten passing cycles of 2026-08-14, and this brackets the
+threshold usefully:
+
+| | median | range |
+|---|---|---|
+| power-on to enumeration | 1.40 s | 1.30 - 1.54 s (one outlier at 6.20 s) |
+| enumeration to first EP0 | 2.14 s | 2.128 - 2.148 s |
+| **power-on to first EP0** | **3.51 s** | 3.44 - 3.69 s (outlier 8.33 s) |
+
+The enumeration-to-first-EP0 figure is the 2 s sleep plus about 135 ms of
+probe, and its spread of 20 ms across ten cycles says the delay is the only
+thing of consequence in that interval.
+
+So without the sleep the driver's first transfer landed about **1.5 s** after
+mains-on, and it fails there; with it, about **3.5 s**, and it succeeds. The
+threshold is somewhere in between, and the bisect is looking for it in that
+band rather than anywhere near the 2 s of sleep as such.
+
+An earlier draft of this section said the device takes 4-5 s to enumerate.
+That was wrong: it came from `enumerate_ms`, which starts its clock before the
+device is switched *off* and therefore includes the five-second hold. Power-on
+to enumeration is 1.4 s. The distinction matters, because it is the difference
+between a threshold that looks arbitrary and one that sits in a 2 s band.
 
 ### Two harness defects this run exposed
 
