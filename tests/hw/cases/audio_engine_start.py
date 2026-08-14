@@ -159,6 +159,21 @@ def wait_for_card(present, timeout):
     return idx, None
 
 
+def _control_is_live(path):
+    """Is this control node backed by a card that is actually there?
+
+    A stale node left behind by a departed card still stats fine; opening it
+    is what tells the two apart, and it is also precisely what alsa-lib does
+    when resolving "hw:<idx>,0" -- so this asks the same question arecord will.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return False
+    os.close(fd)
+    return True
+
+
 def wait_for_substreams(idx, timeout):
     """Poll until the card is not just present but openable.
 
@@ -169,22 +184,37 @@ def wait_for_substreams(idx, timeout):
     get card index for 1" having passed the /proc check in 0.1 ms -- the card
     was there and the node was not.
 
-    The control node belongs in that list too, and its absence cost another
-    cycle. Waiting on the two PCM nodes is not enough: the device is named
-    "hw:<idx>,0", and resolving that name sends ALSA through
-    snd_config_get_card(), which opens /dev/snd/controlC<idx> -- so arecord can
-    fail with exactly the same "Cannot get card index" message while both PCM
-    nodes are already present. It surfaced when a settling delay was added to
-    probe, which shifted udev's timing enough to reorder the three.
+    Existence is not the test, though, and assuming it was cost two more runs.
+    A node can be present and dead: /dev/snd entries from the previous
+    incarnation survive a disconnect until udev reaps them, which is
+    asynchronous and slower than probe. Worse, the card they belong to is
+    indistinguishable by name from the new one, because /proc/asound/card<idx>
+    and its "id" file are created by snd_devm_card_new() and snd_card_set_id()
+    -- both of which run early in probe, before the device is initialized and
+    long before snd_card_register() publishes the character devices. So
+    find_card() can return an index for a card that does not yet exist as far
+    as userspace is concerned, and os.path.exists() then passes against the
+    stale nodes of its predecessor.
+
+    That window used to be sub-millisecond and nothing noticed. Adding a
+    settling delay to probe widened it to seconds and it failed immediately.
+
+    The fix is to open the control node rather than stat it: opening the stale
+    node of a departed card fails with ENODEV, and the new one does not appear
+    until registration. Deliberately the *control* device and not a PCM one --
+    opening capture would run the driver's deferred capture-recovery path and
+    perturb the very thing the case measures.
     """
     t0 = time.time()
     deadline = t0 + timeout
-    nodes = (f"/dev/snd/controlC{idx}",
-             f"/dev/snd/pcmC{idx}D0c", f"/dev/snd/pcmC{idx}D0p")
+    control = f"/dev/snd/controlC{idx}"
+    nodes = (f"/dev/snd/pcmC{idx}D0c", f"/dev/snd/pcmC{idx}D0p")
     while True:
         subs = alsa.substreams(idx)
         missing = [w for w in ("playback", "capture") if not subs[w]]
         missing += [n for n in nodes if not os.path.exists(n)]
+        if not _control_is_live(control):
+            missing.append(f"{control} (not openable)")
         if not missing or time.time() >= deadline:
             return round((time.time() - t0) * 1000, 1), missing
         time.sleep(0.02)
