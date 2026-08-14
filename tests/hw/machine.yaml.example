@@ -17,7 +17,7 @@ version: 1
 
 # What is physically attached. Declared rather than probed, because no probe
 # can tell whether a cable is in the right socket. A declaration can only ever
-# take a capability AWAY: "usb-switch: false" is a useful "do not power-cycle
+# take a capability AWAY: "usb-power: false" is a useful "do not power-cycle
 # today", while "loopback-cable: true" does not put a cable in the socket.
 capabilities:
   loopback-cable: false     # outputs cabled back into the device's inputs
@@ -25,21 +25,24 @@ capabilities:
   speakers: false           # monitoring connected and audible
   two-devices: false        # a second Jockey 3 for multi-card tests
   quiet-machine: false      # nothing else contending for CPU or the bus
-  relay: false              # bench relay, unrelated to power_switch below
 
-# Mains relay on the device's OWN supply. JT-AUDIO-005 needs a cold boot, and
-# cutting VBUS at the hub is only a cable unplug: the device is self-powered
-# and does not treat the two alike. With this set the case runs unattended;
-# without it, it asks an operator to work the switch.
+# Control over the device's OWN mains supply -- the device-power capability.
+# JT-AUDIO-005 needs a cold boot, and cutting VBUS at the hub is only a cable
+# unplug: the device is self-powered and does not treat the two alike. With
+# this set the case runs unattended; without it, it asks an operator.
+#
+# Whether the switching is done by a relay, a MOSFET or a triac is the
+# backend's business. The capability names what is controlled.
 #
 # Env: JOCKEY3_POWER_SWITCH, JOCKEY3_POWER_SWITCH_TYPE,
 #      JOCKEY3_POWER_SWITCH_USER, JOCKEY3_POWER_SWITCH_PASSWORD
 #
 # power_switch:
 #   type: tasmota           # optional; tasmota is the default and the only
-#                           # backend so far -- see lib/power/
-#   url: http://relay.example.com
-#   user: admin             # only if the relay has a password set
+#                           # backend so far -- see lib/power/. The switching
+#                           # hardware is the backend's business, not a test's.
+#   url: http://powerswitch.example.com
+#   user: admin             # only if the switch has a password set
 #   password: secret
 
 # Where actions/reload_driver.sh fetches a built module from, when it is not

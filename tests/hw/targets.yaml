@@ -51,7 +51,7 @@
 #                inside it would sync one machine's rig to every other.
 #   invocation   `human` comes from whether --unattended was passed
 #
-# A declaration can only ever take a capability AWAY. Declaring usb-switch
+# A declaration can only ever take a capability AWAY. Declaring usb-power
 # false is a useful opt-out; declaring loopback-cable true does not put a
 # cable in the socket.
 #
@@ -72,17 +72,16 @@ capabilities:
   mixxx:            Mixxx is installed and configured for the device
   rtc-wake:         rtcwake can suspend and wake the machine
   python-mido:      mido and python-rtmidi are available
-  usb-switch:       A ppps-capable hub port, switchable with uhubctl
+  usb-power:        Control over VBUS at the device's hub port (ppps, uhubctl)
   gadget-emulation: USB gadget or dummy_hcd for malformed-descriptor tests
-  device-power:     A network relay on the device's own mains supply,
-                    for the cold boot JT-AUDIO-005 needs. Configured in
-                    the same local file; see lib/power/
+  device-power:     Control over the device's own mains supply, for the
+                    cold boot JT-AUDIO-005 needs. Configured in the local
+                    machine file; see lib/power/
   # declared locally
   speakers:         Monitoring is connected and audible
   loopback-cable:   Outputs are cabled back into the device's own inputs
   signal-source:    A signal source is connected to the device's inputs
   two-devices:      Both Jockey 3 units are available to swap between
-  relay:            Programmable mains relay for power cycling
   quiet-machine:    The machine is otherwise idle, for trustworthy benchmarks
   # from the invocation
   human:            An operator is present to observe and answer

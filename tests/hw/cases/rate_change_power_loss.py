@@ -143,7 +143,7 @@ def main():
     ok, why = priv.available()
     if not ok:
         c.blocked(f"cannot switch port power: {why}")
-    if not priv.usb_switch_available():
+    if not priv.usb_power_available():
         c.blocked("no Jockey 3 behind a ppps-capable hub port")
 
     iterations = int(c.params.get("iterations_per_run", 6))

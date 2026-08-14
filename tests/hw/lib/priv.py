@@ -125,7 +125,7 @@ def usb_power(action, *args, timeout=60):
     return call("usb-power", action, *args, timeout=timeout)
 
 
-def usb_switch_available():
+def usb_power_available():
     rc, _out, _err = call("usb-power", "status", timeout=30)
     return rc == 0
 

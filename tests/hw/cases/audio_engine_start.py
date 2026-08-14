@@ -76,7 +76,7 @@ asked to "switch it off, wait, and switch it back on" is timing that hold
 themselves. The machine times it instead, and asks for the second action only
 once the first has been observed.
 
-`port_power` is kept anyway: ten clean cycles is a useful regression baseline,
+`usb_power` is kept anyway: ten clean cycles is a useful regression baseline,
 and if it ever starts failing that is a different and worse defect.
 
 `module_reload` leaves the device alone and re-probes an already-running one.
@@ -188,11 +188,14 @@ class Actuator:
         raise NotImplementedError
 
 
-class RelayPower(Actuator):
-    """Mains relay on the device's own supply: a true cold boot, unattended."""
+class DevicePower(Actuator):
+    """The device's own mains supply: a true cold boot, unattended.
 
-    kind = "relay"
-    gone_hint = "is the relay feeding the outlet the device is plugged into?"
+    Whether that is a relay, a solid-state switch or something else is
+    lib/power/'s business, not this case's."""
+
+    kind = "device-power"
+    gone_hint = "is the switch feeding the outlet the device is plugged into?"
 
     def __init__(self, timeout):
         self.timeout = timeout
@@ -232,11 +235,11 @@ class OperatorPower(Actuator):
         return True, "asked"
 
 
-class PortPower(Actuator):
-    """Hub port power. A cable unplug for a self-powered device, not a
+class UsbPower(Actuator):
+    """VBUS at the hub port. A cable unplug for a self-powered device, not a
     power-off -- kept as a regression baseline, not as a way to reproduce."""
 
-    kind = "port_power"
+    kind = "usb-power"
     gone_hint = "did the hub actually drop the port?"
 
     def __init__(self, timeout):
@@ -258,7 +261,7 @@ class PortPower(Actuator):
 class ModuleReload(Actuator):
     """Driver only. The device stays powered and enumerated; the card goes."""
 
-    kind = "module_reload"
+    kind = "module-reload"
     gone_hint = "did the module actually unload?"
 
     def __init__(self, timeout):
@@ -319,23 +322,23 @@ def main():
         c.blocked(f"privileged helper unavailable: {why}")
 
     trigger = c.params.get("trigger", "device_power")
-    if trigger not in ("device_power", "port_power", "module_reload"):
+    if trigger not in ("device_power", "usb_power", "module_reload"):
         c.blocked(f"unknown trigger {trigger!r}")
-    if trigger == "port_power" and not priv.usb_switch_available():
+    if trigger == "usb_power" and not priv.usb_power_available():
         c.blocked("no Jockey 3 behind a ppps-capable hub port")
     if trigger == "device_power":
         # A relay makes this unattended; without one it needs somebody at the
         # switch. Either satisfies the case, so which one is in play is
         # recorded rather than required.
         if power.available():
-            act = RelayPower(settle)
+            act = DevicePower(settle)
         elif c.attended:
             act = OperatorPower(c, operator_timeout)
         else:
             c.blocked("device_power needs either a configured mains relay "
                       "(see lib/power/) or an operator at the switch")
-    elif trigger == "port_power":
-        act = PortPower(settle)
+    elif trigger == "usb_power":
+        act = UsbPower(settle)
     else:
         act = ModuleReload(settle)
     c.metric("power_control", act.kind)

@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Mains power to the device, switched remotely.
+"""Control over the device's own mains power.
+
+Named for what is controlled, not for what does the controlling: behind this
+may be a relay, a solid-state switch or anything else, and no test has any
+business caring which. That belongs to a backend.
 
 The Jockey 3 is self-powered, and that turns out to matter: cutting VBUS at
 the hub is a cable unplug, not a power-off, and the device does not treat the
@@ -12,8 +16,8 @@ WHAT IS HERE AND WHAT IS NOT
 This module is the interface: is a switch present, what state is it in, put it
 in another one, cycle it. It knows nothing about how any particular switch is
 spoken to. Each backend in this package implements the same three methods and
-keeps its protocol to itself, so replacing the relay means adding a file here
-and changing one line of configuration -- not touching a test.
+keeps its protocol to itself, so replacing the switching hardware means adding a
+file here and changing one line of configuration -- not touching a test.
 
 A backend is a class with:
 
@@ -22,26 +26,26 @@ A backend is a class with:
     set_state(on)      -> (ok, detail)  switch, and confirm it took
 
 `cycle()` is deliberately not a backend method. Off, wait, on is the same
-sequence whichever relay is in the rack, and the waiting is the part that
+sequence whichever switch is in the rack, and the waiting is the part that
 carries the reasoning.
 
 WHERE THE ADDRESS COMES FROM, AND WHY NOT FROM HERE
 ---------------------------------------------------
-Nowhere in this package. The relay lives on somebody's private network under
+Nowhere in this package. The switch lives on somebody's private network under
 somebody's hostname, and this repository is headed for mainline; a personal
 address baked into it would be wrong on both counts and useless to anyone
 else. It is read from the environment or from the machine-local config
 file, the same one that already records what is plugged into this machine and
 which deliberately sits outside the working tree -- see lib/machineconf.py.
 
-    export JOCKEY3_POWER_SWITCH=http://relay.example.com
+    export JOCKEY3_POWER_SWITCH=http://powerswitch.example.com
 
 or, in ~/.config/jockey3/machine.yaml, alongside the capabilities block:
 
     power_switch:
       type: tasmota                    # optional, tasmota is the default
-      url: http://relay.example.com
-      user: admin                      # only if the relay has a password
+      url: http://powerswitch.example.com
+      user: admin                      # only if the switch has a password
       password: secret
 
 An absent setting is not an error. It means this machine cannot switch the
@@ -53,7 +57,7 @@ SAFETY
 This cuts mains power to hardware. Nothing here runs on import, nothing polls,
 and `cycle()` is the only function that turns anything off -- everything else
 reads. Backends confirm by reading the state back rather than trusting the
-reply, because a relay that accepts a command and does not act is exactly the
+reply, because a switch that accepts a command and does not act is exactly the
 failure that would make a test look like a driver bug.
 """
 

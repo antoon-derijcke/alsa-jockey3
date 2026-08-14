@@ -234,7 +234,7 @@ cases:
     level: L3
     mode: automated
     status: implemented
-    requires: [device, usb-switch]
+    requires: [device, usb-power]
     exec: cases/hotplug_cycle.py
     params:
       iterations_per_run: 10
@@ -558,7 +558,7 @@ cases:
     level: L3
     mode: automated
     status: implemented
-    requires: [device, root, usb-switch, sox]
+    requires: [device, root, usb-power, sox]
     exec: cases/rate_change_power_loss.py
     params:
       iterations_per_run: 6
@@ -743,7 +743,7 @@ cases:
       case blocks itself if neither is available, which is why device-power
       and human are not listed as requirements -- either will do.
 
-      Set trigger:port_power for the automated regression baseline, or
+      Set trigger:usb_power for the automated regression baseline, or
       trigger:module_reload to re-probe a device that stayed powered.
     steps:
       - >

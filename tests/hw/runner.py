@@ -149,7 +149,7 @@ def capability_gap(case, available):
 # operator -- there is no controller to test -- and neither can a missing
 # loopback cable or a missing sox. Treating those as demotable produced a
 # checklist politely asking somebody to test hardware that was not plugged in.
-SUBSTITUTABLE = {"usb-switch", "relay"}
+SUBSTITUTABLE = {"usb-power", "device-power"}
 
 # `human` demotes too, but for a different reason, and conflating the two
 # would be a mistake worth naming. An actuator is missing EQUIPMENT that a

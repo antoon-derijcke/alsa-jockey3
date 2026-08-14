@@ -528,10 +528,10 @@ def test_capability_gating():
           "and runs when one is there")
 
     auto = {"id": "X", "mode": "automated", "level": "L3",
-            "requires": ["device", "usb-switch"]}
-    check(runner.capability_gap(auto, {"device"}) == ["usb-switch"],
+            "requires": ["device", "usb-power"]}
+    check(runner.capability_gap(auto, {"device"}) == ["usb-power"],
           "a missing capability is named")
-    check(runner.capability_gap(auto, {"device", "human"}) == ["usb-switch"],
+    check(runner.capability_gap(auto, {"device", "human"}) == ["usb-power"],
           "an automated case does not need a human")
 
     build = {"id": "X", "mode": "automated", "level": "L1",
@@ -540,13 +540,13 @@ def test_capability_gating():
           "build levels are exempt -- they check for themselves")
 
     steps = {"steps": ["do a thing"]}
-    check(runner.demotes_to_manual(steps, ["usb-switch"]),
+    check(runner.demotes_to_manual(steps, ["usb-power"]),
           "a missing actuator demotes to manual -- a person can unplug it")
-    check(not runner.demotes_to_manual({}, ["usb-switch"]),
+    check(not runner.demotes_to_manual({}, ["usb-power"]),
           "unless nobody wrote down how")
     check(not runner.demotes_to_manual(steps, ["device"]),
           "a missing DEVICE never demotes: there is nothing to test by hand")
-    check(not runner.demotes_to_manual(steps, ["usb-switch", "device"]),
+    check(not runner.demotes_to_manual(steps, ["usb-power", "device"]),
           "and one substitutable gap does not excuse an unsubstitutable one")
 
 
@@ -821,7 +821,7 @@ def test_manual_fallback():
              "reason": "manual -- answer via checklist.py"},
             {"id": "JT-PROBE-003", "status": results.PENDING, "mode": "manual",
              "params": {"iterations_per_run": 3},
-             "reason": "no usb-switch -- do it by hand via checklist.py"},
+             "reason": "no usb-power -- do it by hand via checklist.py"},
             {"id": "JT-PCM-002", "status": results.PASS, "mode": "automated",
              "params": {}},
             {"id": "JT-AUDIO-002", "status": results.BLOCKED,

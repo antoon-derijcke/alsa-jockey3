@@ -25,7 +25,7 @@ declared     For things no probe can settle -- whether a cable is in the right
              socket, whether anyone is listening. Read from a small local file.
 invocation   `human` comes from how the runner was started, not from the room.
 
-A declaration can only ever take a capability AWAY. Declaring `usb-switch:
+A declaration can only ever take a capability AWAY. Declaring `usb-power:
 false` when the hub is present is a useful opt-out ("it is plugged in, but do
 not power-cycle today"); declaring `loopback-cable: true` when it is not
 plugged in cannot make it so, and for probed capabilities the machine wins.
@@ -55,13 +55,13 @@ DEFAULT_PATH = "~/.config/jockey3/capabilities.yaml"
 
 # Settled by asking the machine. Never declared, never in a file.
 PROBED = ("device", "root", "kernel-tree", "cross-toolchains", "qemu", "sox",
-          "mixxx", "python-mido", "rtc-wake", "usb-switch", "gadget-emulation",
+          "mixxx", "python-mido", "rtc-wake", "usb-power", "gadget-emulation",
           "device-power")
 
 # No probe exists, or none can exist. These come from the local file, and
 # default to false when it is absent.
 DECLARED = ("loopback-cable", "signal-source", "speakers", "two-devices",
-            "relay", "quiet-machine")
+            "quiet-machine")
 
 # Supplied by how the runner was invoked.
 INVOCATION = ("human",)
@@ -161,16 +161,21 @@ def _probe_gadget_emulation():
 
 
 def _probe_device_power():
-    """A network relay on the device's own mains supply.
+    """Control over the device's own mains supply.
 
-    Probed rather than declared: the relay either answers or it does not, and
+    Named for what is controlled rather than for what does the controlling: it
+    may be a relay today and a solid-state switch tomorrow, and no test has
+    any business caring which. The protocol lives in lib/power/, behind a
+    backend.
+
+    Probed rather than declared: the switch either answers or it does not, and
     a declaration that it is present when the network is down would block
     JT-AUDIO-005 with a confusing error instead of demoting it to manual.
     """
     return power.available()
 
 
-def _probe_usb_switch():
+def _probe_usb_power():
     """Is a Jockey 3 sitting behind a switchable hub port?
 
     Asked through the privileged helper rather than by running uhubctl here:
@@ -194,7 +199,7 @@ PROBES = {
     "mixxx": lambda: _which("mixxx"),
     "python-mido": _probe_python_mido,
     "rtc-wake": _probe_rtc_wake,
-    "usb-switch": _probe_usb_switch,
+    "usb-power": _probe_usb_power,
     "device-power": _probe_device_power,
     "gadget-emulation": _probe_gadget_emulation,
 }
@@ -255,12 +260,12 @@ def example_file():
         "#",
         "# Absent file or absent entry means false. Nothing here can grant a",
         "# capability the machine does not have; a `false` can withhold one",
-        "# that it does (usb-switch: false stops tests power-cycling the",
+        "# that it does (usb-power: false stops tests power-cycling the",
         "# device without unplugging the hub).",
         "version: 1",
         "capabilities:",
     ]
     for name in DECLARED:
         lines.append(f"  {name}:{' ' * (16 - len(name))}false")
-    lines.append("  # usb-switch is probed; set false only to veto it")
+    lines.append("  # usb-power is probed; set false only to veto it")
     return "\n".join(lines) + "\n"

@@ -134,7 +134,7 @@ def main():
     ok, why = priv.available()
     if not ok:
         c.blocked(f"cannot switch port power: {why}")
-    if not priv.usb_switch_available():
+    if not priv.usb_power_available():
         # The runner normally catches this and demotes the case to manual
         # before it ever starts. Reaching it here means the hub went away
         # between the capability probe and now, which is worth saying plainly
