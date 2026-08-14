@@ -376,9 +376,8 @@ read back, same inter-transfer gaps including the cold-init lead-in and the
 
 ### The next experiment
 
-Add a settling delay before the first control transfer in
-`ploytec_initialize_device()`. Start high -- 500 ms -- purely to confirm the
-mechanism, and run:
+Add a settling delay before the driver's first control transfer, high enough
+to confirm the mechanism rather than to be shippable, and run:
 
 ```sh
 cd tests/hw && ./runner.py --case JT-AUDIO-005 --unattended
@@ -397,6 +396,49 @@ argument.
   `parse_openvizsla.py --errors=0`, which will show whether the device NAKs or
   stalls any control transfer during that window. Nothing in the corpus so far
   covers a *failing* Linux initialization.
+
+### Where the delay goes, and how big
+
+Not in `ploytec_initialize_device()`, despite that being the obvious reading
+of "before the first control transfer". That function runs **twice** on a
+successful probe -- `jockey3_initialize_ploytec()` calls it, and then
+`jockey3_set_rate()` calls it again -- up to eleven times on a failing one,
+since the retry loop wraps the first call, and once more on every rate change
+thereafter. A delay there is applied a variable number of times, half of it
+landing *after* the first sequence has already gone out, which blurs precisely
+the distinction being measured.
+
+It goes in `jockey3_initialize()`, immediately before the retry loop. That is
+the last point before the driver's first EP0 transfer of the device's life --
+everything above it in `probe()` is ALSA and USB-core bookkeeping, with no
+control request among it -- and it runs exactly once, touching neither the
+retry path nor rate changes.
+
+**2 s for the confirmation run, not 500 ms.** The run costs the same at any
+delay, so a small first value buys nothing but a weaker result: 9/9 silent at
+500 ms cannot distinguish "the boot-race model is wrong" from "the device
+needs longer than 500 ms", which is the entire question. Overshoot to
+establish the mechanism, then bisect 2000 -> 1000 -> 500 -> 250 for the
+threshold.
+
+One thing to watch in the result: `enumerate_ms_max` was 9432 ms at baseline
+against a `settle_seconds` of 8, so the added delay eats into a budget that
+was already not generous. If it overruns, `JT-AUDIO-005` fails with "no
+playback, capture substream after re-enumeration" -- a timeout, loudly
+distinct from a silent capture, and not the fault being chased.
+
+**The sleep itself cannot ship**, whatever the threshold turns out to be: a
+multi-second `msleep()` in USB probe runs on the hub thread and delays
+enumeration of every device behind it. The deliverable here is the number, not
+the code.
+
+If the run comes back all-silent at 2 s, the cheaper next instrument than
+OpenVizsla is this document's own discriminator -- an internal race is fixed
+only by a delay in one *specific* place. Moving the same delay to just before
+`ploytec_start_streaming()`, the transfer that arms the engine, and then to
+just before the rate burst, is two more four-minute runs and localizes the
+window. A wire capture is far more useful once it is known which transfer to
+look at.
 
 ## What this evidence cannot settle
 
