@@ -179,7 +179,22 @@ targets:
       it earns a bounded smoke pass rather than a scaled-down full suite.
     constraints:
       - Very slow; keep total runtime under ~20 minutes.
-      - High sample rates are unreliable; run 44.1 and 48 kHz only.
+      - >
+        UNVERIFIED: "high sample rates are unreliable, run 44.1 and 48 kHz
+        only". This was an expectation from early work, never a measurement,
+        and it predates the optimized 32-bit codec -- which is precisely the
+        path this target exists to exercise, and which may well have bought
+        enough headroom for 96 kHz. Assuming the limit without testing it is
+        not a sound basis for excluding coverage, so the exclusion stands only
+        until it is measured.
+
+        What settles it, cheapest first: tests/codec/codecbench.py bench on the
+        Pi itself, which needs no driver and no device and says whether the
+        codec alone can keep up; then JT-PCM-002 and JT-AUDIO-001 at 96 kHz on
+        the device, watching xruns and the rate ratios. Note that a rate-change
+        timing check is impossible here without a high rate at all: 44.1 and 48
+        differ by 8%, below JT-RATE-001's tolerance, so "low rates only" and "a
+        meaningful rate-change check" cannot both hold on this target.
       - No Mixxx, no benchmarking.
 
   i386-prod:

@@ -46,8 +46,12 @@ profiles:
     overrides:
       armhf-prod:
         JT-PCM-002: {params: {rates: [44100], seconds: 2}}
-        # 44100/48000 is an 8% step, below JT-RATE-001's timing tolerance --
-        # a device that ignored the change would pass. Use the extremes.
+        # Deliberately includes 96 kHz, which this target's constraints say
+        # to avoid -- see targets.yaml, where that claim is now marked
+        # UNVERIFIED. It cannot be honored here anyway: 44100/48000 is an 8%
+        # step, below JT-RATE-001's timing tolerance, so a low-rates-only
+        # sweep makes the check blind. Either the Pi manages 96 kHz and this
+        # passes, or it does not and we finally have the measurement.
         JT-RATE-001: {params: {rates: [44100, 96000], iterations_per_run: 3}}
       x86_64-debug:
         JT-PROBE-001: {iterations: 5}
