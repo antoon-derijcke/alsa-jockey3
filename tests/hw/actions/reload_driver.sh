@@ -32,13 +32,27 @@ set -eu
 MODULE=snd-reloop-jockey3
 HELPER=/usr/local/sbin/jockey3-testctl
 KO=${1:-}
-BUILD_HOST=${JT_BUILD_HOST:-alsa-dev}
-BUILD_PATH=${JT_BUILD_PATH:-~/sound/sound/usb/jockey3/$MODULE.ko}
+# Where the built module comes from is a property of this machine, so it is
+# read from ~/.config/jockey3/machine.yaml with JT_BUILD_* still overriding for
+# a one-off. The old default pointed at ~/sound, which is the in-tree build for
+# the build host's OWN kernel -- deploying that to a target gives a vermagic
+# mismatch, since the loadable per-target module is what build_module.sh puts
+# in ~/sound-build. Hence no built-in default for the path any more: an
+# unconfigured machine should say so rather than fetch the wrong file.
+CONF=$(dirname "$0")/../lib/machineconf.py
+BUILD_HOST=$(python3 "$CONF" get paths.build_host JT_BUILD_HOST alsa-dev)
+BUILD_PATH=$(python3 "$CONF" get paths.build_path JT_BUILD_PATH || true)
 DEST=/lib/modules/$(uname -r)/kernel/sound/usb/jockey3
 
 if [ -z "$KO" ]; then
+	if [ -z "$BUILD_PATH" ]; then
+		echo "no module path configured: set paths.build_path in" >&2
+		echo "~/.config/jockey3/machine.yaml, export JT_BUILD_PATH," >&2
+		echo "or pass the .ko as an argument." >&2
+		exit 2
+	fi
 	KO=$(mktemp -d)/$MODULE.ko
-	echo "fetching from $BUILD_HOST..."
+	echo "fetching $BUILD_PATH from $BUILD_HOST..."
 	scp -q "$BUILD_HOST:$BUILD_PATH" "$KO"
 fi
 [ -f "$KO" ] || { echo "no module at $KO" >&2; exit 2; }

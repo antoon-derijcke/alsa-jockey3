@@ -30,13 +30,13 @@ WHERE THE ADDRESS COMES FROM, AND WHY NOT FROM HERE
 Nowhere in this package. The relay lives on somebody's private network under
 somebody's hostname, and this repository is headed for mainline; a personal
 address baked into it would be wrong on both counts and useless to anyone
-else. It is read from the environment or from the machine-local capabilities
+else. It is read from the environment or from the machine-local config
 file, the same one that already records what is plugged into this machine and
-which deliberately sits outside the working tree.
+which deliberately sits outside the working tree -- see lib/machineconf.py.
 
     export JOCKEY3_POWER_SWITCH=http://relay.example.com
 
-or, in ~/.config/jockey3/capabilities.yaml, alongside the capabilities block:
+or, in ~/.config/jockey3/machine.yaml, alongside the capabilities block:
 
     power_switch:
       type: tasmota                    # optional, tasmota is the default
@@ -60,10 +60,7 @@ failure that would make a test look like a driver bug.
 import os
 import time
 
-try:
-    import yaml
-except ImportError:                                  # pragma: no cover
-    yaml = None
+from lib import machineconf
 
 DEFAULT_TYPE = "tasmota"
 DEFAULT_OFF_SECONDS = 5.0
@@ -78,18 +75,8 @@ def _settings():
                 "url": url,
                 "user": os.environ.get("JOCKEY3_POWER_SWITCH_USER"),
                 "password": os.environ.get("JOCKEY3_POWER_SWITCH_PASSWORD")}
-    path = os.path.abspath(os.path.expanduser(
-        os.environ.get("JOCKEY3_CAPABILITIES")
-        or "~/.config/jockey3/capabilities.yaml"))
-    if yaml is None or not os.path.exists(path):
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-    except (OSError, ValueError):
-        return None
-    cfg = data.get("power_switch")
-    if not isinstance(cfg, dict) or not cfg.get("url"):
+    cfg = dict(machineconf.section("power_switch"))
+    if not cfg.get("url"):
         return None
     cfg.setdefault("type", DEFAULT_TYPE)
     return cfg

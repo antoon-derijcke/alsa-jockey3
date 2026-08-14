@@ -40,7 +40,7 @@ import os
 import shutil
 import subprocess
 
-from lib import env, power, priv
+from lib import env, machineconf, power, priv
 
 try:
     import yaml
@@ -70,8 +70,7 @@ ALL = PROBED + DECLARED + INVOCATION
 
 
 def config_path():
-    return os.path.abspath(os.path.expanduser(
-        os.environ.get("JOCKEY3_CAPABILITIES") or DEFAULT_PATH))
+    return machineconf.path()
 
 
 def load_declared(path=None):
@@ -81,21 +80,28 @@ def load_declared(path=None):
     connected. A malformed one IS worth surfacing, because the failure it
     causes otherwise is a case mysteriously blocked.
     """
-    path = path or config_path()
-    if not os.path.exists(path):
-        return {}, None
-    if yaml is None:                                 # pragma: no cover
-        return {}, f"PyYAML missing, cannot read {path}"
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-    except (OSError, ValueError) as e:
-        return {}, f"{path} is unreadable: {e}"
+    if path:
+        # An explicit path is still honoured for tests that write one.
+        if not os.path.exists(path):
+            return {}, None
+        if yaml is None:                             # pragma: no cover
+            return {}, f"PyYAML missing, cannot read {path}"
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except (OSError, ValueError) as e:
+            return {}, f"{path} is unreadable: {e}"
+    else:
+        data, note = machineconf.load()
+        if note:
+            return {}, note
+        path = machineconf.path()
     caps = data.get("capabilities")
     if caps is None:
         # Tolerate a bare mapping at the top level; the wrapper is a
         # convention, not a requirement worth failing over.
-        caps = {k: v for k, v in data.items() if k != "version"}
+        caps = {k: v for k, v in data.items()
+                if k not in ("version", "power_switch", "paths", "profiles")}
     if not isinstance(caps, dict):
         return {}, f"{path}: 'capabilities' is not a mapping"
     out, unknown = {}, []

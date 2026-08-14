@@ -49,7 +49,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import alsa, capabilities, env, kmsg, priv, results, term  # noqa: E402
+from lib import (alsa, capabilities, env, kmsg, machineconf, priv,  # noqa: E402
+                 results, term)
 
 try:
     import yaml
@@ -531,7 +532,13 @@ def preflight(target_name, target_spec, plan, args):
 
 def main():
     ap = argparse.ArgumentParser(description="Run a Jockey 3 test profile.")
-    ap.add_argument("--profile", "-p", default="smoke")
+    # No default here: it comes from this machine's config, so that the bare
+    # command does the right thing on the build server and on the bench
+    # without anyone having to remember which. --list still works with none.
+    ap.add_argument("--profile", "-p", default=None)
+    ap.add_argument("--force", action="store_true",
+                    help="run a profile this machine does not list as "
+                         "applicable")
     ap.add_argument("--target", "-t", help="override target auto-detection")
     ap.add_argument("--case", "-c", action="append",
                     help="run only these case ids (repeatable)")
@@ -559,6 +566,23 @@ def main():
     if args.list:
         cmd_list(cases, targets, profiles)
         return 0
+
+    if not args.profile:
+        args.profile = machineconf.get("profiles.default", env="JOCKEY3_PROFILE",
+                                       default="smoke")
+
+    # Advisory only, and deliberately so. Which cases CAN run here is already
+    # settled by capabilities, case by case and with a reason attached; a
+    # second list saying which profiles belong on this machine would be a
+    # second source of truth about the same thing, and would silently exclude
+    # cases the moment the two drifted. So this catches "wrong window" -- a
+    # regression pass started on the build server -- and gets out of the way.
+    applicable = machineconf.section("profiles").get("applicable")
+    if applicable and args.profile not in applicable and not args.force:
+        print(f"warning: {args.profile} is not listed as applicable on this "
+              f"machine ({', '.join(applicable)}).", file=sys.stderr)
+        print("Cases that cannot run here will be recorded as skipped with a "
+              "reason. Pass --force to silence this.", file=sys.stderr)
 
     # The plan needs the target (for per-target overrides) and the target needs
     # the plan (to know whether this run touches a running driver at all).

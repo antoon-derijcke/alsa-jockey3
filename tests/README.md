@@ -102,15 +102,50 @@ Three sources, and only one of them is a file you edit:
 | | |
 |---|---|
 | **probed** | the machine is asked — device, root, sox, qemu, the ppps hub |
-| **declared** | `~/.config/jockey3/capabilities.yaml` — speakers, loopback cable, signal source, relay, second unit, quiet machine |
+| **declared** | `~/.config/jockey3/machine.yaml` — speakers, loopback cable, signal source, relay, second unit, quiet machine |
 | **invocation** | `human`, from whether `--unattended` was passed |
 
-The declarations file lives outside the repository on purpose: the working
-tree is a Seafile share, so a file inside it would sync one machine's rig to
-every other. Absent file means everything false, which costs coverage and
-never invents it. A declaration can only take a capability **away** —
-`usb-switch: false` is a useful "do not power-cycle today"; `loopback-cable:
-true` does not put a cable in the socket.
+That file lives outside the repository on purpose: the working tree is a
+Seafile share, so a file inside it would sync one machine's rig to every
+other — and this driver is headed for mainline, where a personal hostname or
+home directory would be plainly wrong. Absent file means everything false,
+which costs coverage and never invents it. A declaration can only take a
+capability **away** — `usb-switch: false` is a useful "do not power-cycle
+today"; `loopback-cable: true` does not put a cable in the socket.
+
+### machine.yaml
+
+Capabilities are one section of it. The same file carries everything else that
+is a property of this machine rather than of the driver — see
+`hw/machine.yaml.example` for the full schema, and `lib/machineconf.py` for
+the loader.
+
+```yaml
+capabilities:      # declared-only; can subtract, never add
+  loopback-cable: true
+power_switch:      # mains relay on the device's own supply, for JT-AUDIO-005
+  url: http://relay.example.com
+paths:             # where a built module is fetched from, per machine
+  build_host: alsa-dev
+  build_path: ~/sound-build/sound/usb/jockey3/snd-reloop-jockey3.ko
+profiles:
+  default: smoke                                    # what a bare run does here
+  applicable: [smoke, functional, regression, soak] # advisory, not a gate
+```
+
+Every setting can be overridden by an environment variable for a single run,
+and the variable wins. `profiles.default` is what makes `./runner.py` with no
+arguments do the right thing on the build server and on the bench without
+anyone having to remember which.
+
+`profiles.applicable` is deliberately **advisory**: it warns and continues,
+and `--force` silences it. What can actually run here is already settled by
+capabilities, case by case and with a reason attached; a second list would be
+a second source of truth and would silently drop cases as soon as the two
+drifted.
+
+The older `capabilities.yaml` name is still read when `machine.yaml` is
+absent, so machines already set up keep working.
 
 ```sh
 ./runner.py --profile smoke              # attended: a person is here

@@ -1,0 +1,69 @@
+# Machine-local configuration for the hardware test suite.
+#
+# Copy to ~/.config/jockey3/machine.yaml and edit. Nothing here belongs in the
+# repository: these are properties of one machine, the working tree is a
+# Seafile share that would sync them to every other, and the driver is headed
+# for mainline where a personal hostname or home directory would be plainly
+# wrong.
+#
+# Every setting can be overridden by an environment variable for a single run,
+# and the variable wins. Absent settings are not errors -- they mean this
+# machine cannot do that thing, and the affected cases say so rather than
+# failing.
+#
+# See lib/machineconf.py for the loader and tests/README.md for the overview.
+
+version: 1
+
+# What is physically attached. Declared rather than probed, because no probe
+# can tell whether a cable is in the right socket. A declaration can only ever
+# take a capability AWAY: "usb-switch: false" is a useful "do not power-cycle
+# today", while "loopback-cable: true" does not put a cable in the socket.
+capabilities:
+  loopback-cable: false     # outputs cabled back into the device's inputs
+  signal-source: false      # something driving the device's inputs
+  speakers: false           # monitoring connected and audible
+  two-devices: false        # a second Jockey 3 for multi-card tests
+  quiet-machine: false      # nothing else contending for CPU or the bus
+  relay: false              # bench relay, unrelated to power_switch below
+
+# Mains relay on the device's OWN supply. JT-AUDIO-005 needs a cold boot, and
+# cutting VBUS at the hub is only a cable unplug: the device is self-powered
+# and does not treat the two alike. With this set the case runs unattended;
+# without it, it asks an operator to work the switch.
+#
+# Env: JOCKEY3_POWER_SWITCH, JOCKEY3_POWER_SWITCH_TYPE,
+#      JOCKEY3_POWER_SWITCH_USER, JOCKEY3_POWER_SWITCH_PASSWORD
+#
+# power_switch:
+#   type: tasmota           # optional; tasmota is the default and the only
+#                           # backend so far -- see lib/power/
+#   url: http://relay.example.com
+#   user: admin             # only if the relay has a password set
+#   password: secret
+
+# Where actions/reload_driver.sh fetches a built module from, when it is not
+# given one on the command line.
+#
+# build_path must be the per-target module -- what build_module.sh puts in
+# ~/sound-build -- and NOT ~/sound, which is the in-tree build for the build
+# host's own kernel. Deploying that to a target gives a vermagic mismatch.
+#
+# Env: JT_BUILD_HOST, JT_BUILD_PATH
+#
+# paths:
+#   build_host: alsa-dev
+#   build_path: ~/sound-build/sound/usb/jockey3/snd-reloop-jockey3.ko
+
+# default:    what `./runner.py` with no --profile does on this machine. The
+#             build server wants "build"; a bench wants "smoke".
+# applicable: advisory only. It warns and continues, and --force silences it.
+#             What can actually run here is settled by capabilities, case by
+#             case and with a reason attached; this only catches a regression
+#             pass started in the wrong window.
+#
+# Env: JOCKEY3_PROFILE
+#
+# profiles:
+#   default: smoke
+#   applicable: [smoke, functional, regression, soak]
