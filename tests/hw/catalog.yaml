@@ -459,11 +459,26 @@ cases:
       rates: [44100, 48000, 88200, 96000]
       seconds_per_rate: 1
       iterations_per_run: 10
+      capture: true
+      min_nonzero_fraction: 0.01
     metrics:
-      [stalls, stalls_recovered, resets_full, reset_wait_ms_histogram, failures]
+      [stalls, stalls_recovered, resets_full, reset_wait_ms_histogram, failures,
+       capture_silent_changes, first_silent_change, capture_nonzero_min,
+       capture_nonzero_max]
     pass: >
-      Every rate change ends with a working stream. A stall that recovers is a
-      PASS and is counted; a stall that survives a full USB reset is a FAIL.
+      Every rate change ends with working streams in BOTH directions. A stall
+      that recovers is a PASS and is counted; a stall that survives a full USB
+      reset is a FAIL, and so is a capture that comes back bit-exact silent.
+
+      Capture is judged exactly as in JT-AUDIO-005: a running converter carries
+      a noise floor whether or not anything is patched in, so an all-zero
+      capture is an engine that never restarted, not a quiet input. The floor
+      is 1% of frames non-zero, against >95% observed when healthy.
+
+      Recording also matters for what it makes the DRIVER do: with a capture
+      stream open, jockey3_pcm_hw_params() takes its reset path on a capture
+      stall instead of the deferred one, which is the path that carries the
+      risk and was untested while this case only played.
     expect_dmesg:
       - 'Playback URB has stalled\.'
       - 'Capture URB has stalled\.'
