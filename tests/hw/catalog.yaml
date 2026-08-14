@@ -754,9 +754,19 @@ cases:
       Set trigger:usb_power for the automated regression baseline, or
       trigger:module_reload to re-probe a device that stayed powered.
     expect_dmesg:
-      - 'jockey3_urb_error_give_up: \\d+ callbacks suppressed$'
+      # Single backslashes. YAML single-quoting has no escape sequences, so
+      # '\\d' reaches re as a literal backslash followed by 'd' and matches
+      # nothing -- which is how 'callbacks suppressed' sat in the unclassified
+      # bucket of every run this case ever produced, including the baseline.
+      #
+      # MIDI IN belongs in the "stopped after" alternation alongside Playback
+      # and Capture: cutting the mains kills all three streams, and the MIDI
+      # line is not covered by the benign rule in lib/rules.yaml because that
+      # one anchors on "; deferring recovery", which only Playback and Capture
+      # emit.
+      - 'jockey3_urb_error_give_up: \d+ callbacks suppressed$'
       - '(?:Playback|Capture|MIDI IN) URB error: -71'
-      - '(?:Playback|Capture) stopped after \\d+ consecutive URB errors'
+      - '(?:Playback|Capture|MIDI IN) stopped after \d+ consecutive URB errors'
       - 'Failed to resubmit MIDI IN URB: -19$'
     steps:
       - >
