@@ -44,7 +44,17 @@ IT TAKES A DEVICE POWER CYCLE, AND THAT IS THE FINDING
 -----------------------------------------------------
 Measured 2026-08-13: ten consecutive re-enumerations driven through the ppps
 hub switch, and the device came back correctly every time. Not one silent
-cycle.
+cycle. Ten mains power cycles through the switch, the same evening, and every
+single one came back silent -- nine measured, 0.0000% non-zero in all of them,
+playback confirmed dead by ear afterwards.
+
+That the switched cycle fails 100% of the time where hand-flicking the power
+failed three times in four is itself evidence. The switch holds power off for
+a measured five seconds and breaks it cleanly; a hand on a rocker is quicker
+and leaves residual charge. The more completely the device is cold-booted, the
+more reliably this happens -- which is what "the driver starts talking before
+the device has finished booting" predicts, and the opposite of what a flaky
+cable or a marginal supply would do.
 
 The Jockey 3 is self-powered (bmAttributes 0xc0), so cutting VBUS at the hub
 is a cable unplug and not a device power-off, and evidently the two are not
@@ -150,12 +160,22 @@ def wait_for_card(present, timeout):
 
 
 def wait_for_substreams(idx, timeout):
-    """Poll until playback and capture substreams exist. See JT-HOTPLUG-005."""
+    """Poll until the card is not just present but openable.
+
+    Two separate events, and conflating them cost a cycle. The PCM substreams
+    appearing in /proc/asound says probe created the devices; the character
+    devices under /dev/snd appearing says udev has caught up and arecord can
+    actually open them. Cycle 10 of the first ten-cycle run failed with "Cannot
+    get card index for 1" having passed the /proc check in 0.1 ms -- the card
+    was there and the node was not.
+    """
     t0 = time.time()
     deadline = t0 + timeout
+    nodes = (f"/dev/snd/pcmC{idx}D0c", f"/dev/snd/pcmC{idx}D0p")
     while True:
         subs = alsa.substreams(idx)
         missing = [w for w in ("playback", "capture") if not subs[w]]
+        missing += [n for n in nodes if not os.path.exists(n)]
         if not missing or time.time() >= deadline:
             return round((time.time() - t0) * 1000, 1), missing
         time.sleep(0.02)

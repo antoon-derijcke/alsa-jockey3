@@ -753,6 +753,11 @@ cases:
 
       Set trigger:usb_power for the automated regression baseline, or
       trigger:module_reload to re-probe a device that stayed powered.
+    expect_dmesg:
+      - 'jockey3_urb_error_give_up: \\d+ callbacks suppressed$'
+      - '(?:Playback|Capture|MIDI IN) URB error: -71'
+      - '(?:Playback|Capture) stopped after \\d+ consecutive URB errors'
+      - 'Failed to resubmit MIDI IN URB: -19$'
     steps:
       - >
         Switch the device off, wait for the LEDs to go dark, and switch it
