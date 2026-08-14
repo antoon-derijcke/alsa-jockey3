@@ -16,6 +16,7 @@ target is identified as what it actually is.
 
 import io
 import json
+import ast
 import os
 import re
 import subprocess
@@ -951,6 +952,60 @@ def test_privilege_boundary():
             if re.search(r'["\[]\s*"sudo"|geteuid\(\)\s*!=\s*0', body):
                 strays.append(f"{sub}/{name}")
     check(not strays, "only priv.py reaches for privilege", str(strays))
+
+    # A local read before it is assigned. Python only notices at run time, and
+    # a dry run never executes a case body -- so JT-AUDIO-005 shipped with its
+    # actuator chosen from a `settle` that was parsed three lines later, and
+    # the first anyone knew was an UnboundLocalError on the bench.
+    #
+    # Deliberately conservative: names bound by a loop or comprehension are
+    # skipped, since those legitimately read what an earlier iteration bound.
+    # It catches straight-line ordering mistakes, which is the one that bit.
+    early = []
+    for sub in ("lib", "cases", "actions", "."):
+        base = os.path.join(HERE, sub)
+        for name in sorted(os.listdir(base)):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(base, name)
+            try:
+                tree = ast.parse(open(path, encoding="utf-8").read(), path)
+            except SyntaxError as e:
+                early.append(f"{sub}/{name}: {e}")
+                continue
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                bound, loopy = {}, set()
+                for node in ast.walk(fn):
+                    if isinstance(node, (ast.For, ast.While)):
+                        for sub2 in ast.walk(node):
+                            if (isinstance(sub2, ast.Name)
+                                    and isinstance(sub2.ctx, ast.Store)):
+                                loopy.add(sub2.id)
+                    if isinstance(node, ast.comprehension):
+                        for sub2 in ast.walk(node.target):
+                            if isinstance(sub2, ast.Name):
+                                loopy.add(sub2.id)
+                    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                        bound[node.id] = min(bound.get(node.id, node.lineno),
+                                             node.lineno)
+                args = {a.arg for a in fn.args.args + fn.args.kwonlyargs}
+                if fn.args.vararg:
+                    args.add(fn.args.vararg.arg)
+                if fn.args.kwarg:
+                    args.add(fn.args.kwarg.arg)
+                for node in ast.walk(fn):
+                    if (isinstance(node, ast.Name)
+                            and isinstance(node.ctx, ast.Load)
+                            and node.id in bound and node.id not in args
+                            and node.id not in loopy
+                            and node.lineno < bound[node.id]):
+                        early.append(f"{sub}/{name}:{node.lineno}: "
+                                     f"{fn.name}() reads '{node.id}' before "
+                                     f"line {bound[node.id]} assigns it")
+    check(not early, "no local is read before it is assigned",
+          "; ".join(early[:4]))
 
 
 def main():

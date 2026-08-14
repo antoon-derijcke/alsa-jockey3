@@ -321,6 +321,17 @@ def main():
     if not ok:
         c.blocked(f"privileged helper unavailable: {why}")
 
+    iterations = int(c.params.get("iterations_per_run", 10))
+    # Long enough for the device's own supply to drain: the point is a cold
+    # boot, and reconnecting mains too early gives a warm one, which is the
+    # case that already works.
+    off_seconds = float(c.params.get("off_seconds", 5))
+    settle = float(c.params.get("settle_seconds", 8))
+    seconds = int(c.params.get("seconds", 2))
+    rate = int(c.params.get("rate", 44100))
+    floor = float(c.params.get("min_nonzero_fraction", 0.01))
+    operator_timeout = float(c.params.get("operator_timeout_seconds", 120))
+
     trigger = c.params.get("trigger", "device_power")
     if trigger not in ("device_power", "usb_power", "module_reload"):
         c.blocked(f"unknown trigger {trigger!r}")
@@ -335,24 +346,13 @@ def main():
         elif c.attended:
             act = OperatorPower(c, operator_timeout)
         else:
-            c.blocked("device_power needs either a configured mains relay "
+            c.blocked("device_power needs either a configured mains switch "
                       "(see lib/power/) or an operator at the switch")
     elif trigger == "usb_power":
         act = UsbPower(settle)
     else:
         act = ModuleReload(settle)
     c.metric("power_control", act.kind)
-
-    iterations = int(c.params.get("iterations_per_run", 10))
-    # Long enough for the device's own supply to drain: the point is a cold
-    # boot, and reconnecting mains too early gives a warm one, which is the
-    # case that already works.
-    off_seconds = float(c.params.get("off_seconds", 5))
-    settle = float(c.params.get("settle_seconds", 8))
-    seconds = int(c.params.get("seconds", 2))
-    rate = int(c.params.get("rate", 44100))
-    floor = float(c.params.get("min_nonzero_fraction", 0.01))
-    operator_timeout = float(c.params.get("operator_timeout_seconds", 120))
 
     c.metric("trigger", trigger)
     c.metric("rate", rate)
