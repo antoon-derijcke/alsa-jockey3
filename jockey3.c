@@ -2124,6 +2124,23 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 	int ret;
 	int rate;
 
+	/*
+	 * EXPERIMENT, not a shipping fix: does the device need time to finish
+	 * booting before it will accept its initialization?
+	 *
+	 * After a mains power cycle the capture endpoint comes up bit-exact
+	 * silent every time, while the control plane is byte-identical to a
+	 * working cycle -- so what differs is when the sequence starts, not what
+	 * it contains. See re/usb/init_timing_comparison.md, "Where this stands".
+	 *
+	 * This is the first EP0 transfer of the driver's life: everything above
+	 * in probe() is ALSA and USB core bookkeeping. It sits here rather than
+	 * in ploytec_initialize_device() because that runs twice on a successful
+	 * probe (once here, once via jockey3_set_rate()) and again on every rate
+	 * change, which would blur exactly the distinction being measured.
+	 */
+	msleep(2000);
+
 	for (int retry = 10; retry > 0; retry--) {
 		ret = jockey3_initialize_ploytec(chip);
 		if (ret == 0)
