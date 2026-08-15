@@ -64,10 +64,19 @@ Tests are worth writing where failure is plausible. For this driver that is:
 
 - **Capture stall after a sample-rate change.** Known, documented, and
   *mitigated rather than root-caused*. The endpoint stops delivering after a
-  rate change — worst on a downward switch — despite the control transfer
-  reporting success. Recovery escalates from a lightweight URB restart to a
-  full USB reset. This is the single most important area to test, and it has
-  the most counter-intuitive pass criterion (see §9).
+  rate change despite the control transfer reporting success. Recovery
+  escalates from a lightweight URB restart to a full USB reset. This is the
+  single most important area to test, and it has the most counter-intuitive
+  pass criterion (see §9).
+
+  As of 2026-08-15 it is also measured rather than suspected: across two
+  `JT-RATE-001` runs of 20 changes each, **every stall fell on a downward
+  transition and none on an upward one** (6/10 and 9/10 down, 0/9 up). The
+  headline figure is `resets_per_change_pct` — how often a rate change costs a
+  USB device reset — which must trend to zero. It read 30% and 45% on those two
+  runs of the same build, so a short run indicates rather than measures; the
+  statistically useful version is `JT-RATE-003`. Working document:
+  `re/rate_change_stall.md`.
 - **URB lifecycle.** The `callbacks_active` safe-zone counter, `sync_stop`
   draining with a 1000 ms cap, the `stopping` flag checked inside the same
   critical section that resubmits. Use-after-free lives here.
