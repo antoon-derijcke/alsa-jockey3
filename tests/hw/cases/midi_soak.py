@@ -105,12 +105,15 @@ def stall_counts():
 # jockey3_get_next_midi_out_byte(). Bytes per second.
 CEILING_BPS = 3125
 
-# Note On / Note Off for the deck Load LEDs -- three bytes each, the same
-# messages JT-MIDI-002 uses. Chosen because they are known to be accepted and
-# have a visible effect, so a soak that is running is obvious from across the
+# Note On / Note Off for the 4 Hot Cue LEDs on both decks. 
+# Gives a visible effect, so a soak that is running is obvious from across the
 # room.
-ON = "90 0B 7F"
-OFF = "90 0B 00"
+# A single led would result in a blink frequency hardly visible to the human 
+# eye. Choosing a set of LEDs will result is a lower update frequency due to
+# the number of bytes to be sent.
+
+ON = "90 0B 7F 90 0C 7F 90 0D 7F 90 0E 7F 91 0B 7F 91 0C 7F 91 0D 7F 91 0E 7F"
+OFF = "90 0B 00 90 0C 00 90 0D 00 90 0E 00 91 0B 00 91 0C 00 91 0D 00 91 0E 00"
 
 
 def find_port(c):
