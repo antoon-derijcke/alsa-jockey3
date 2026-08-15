@@ -224,17 +224,39 @@ cases:
     area: PROBE
     level: L3
     mode: automated
-    status: planned
+    status: implemented
     requires: [device, root]
+    exec: cases/probe_bind_unbind.py
     params:
       iterations_per_run: 50
-    metrics: [bind_ms, unbind_ms]
+      settle_seconds: 5
+    metrics: [bind_ms, unbind_ms, bind_call_ms, unbind_call_ms, slots_used]
     pass: No memory errors, no double free, no leak across the cycles.
     notes: >
       Derived from scripts-alsa-dev/bind_unbind_test.sh. The reason it exists:
       devres was replaced with manual devm actions (jockey3_kfree_action), so
       the plausible regression is a leak or double free on the init-failure and
       disconnect paths. Only meaningful on a KASAN kernel.
+
+      Unlike JT-PROBE-001 this drives the driver's bind/unbind through sysfs
+      (/sys/bus/usb/drivers/snd-reloop-jockey3/{bind,unbind}) via
+      jockey3-testctl rather than modprobe/rmmod: the module stays loaded and
+      the device stays on the bus, so this exercises jockey3_probe() and
+      jockey3_disconnect() specifically rather than module init/exit as well.
+      This case does not classify dmesg itself -- that stays the runner's job
+      per lib/case.py -- it only runs enough cycles for lib/rules.yaml's
+      existing BUG:/KASAN: rules to have something to catch.
+
+      bind_ms/unbind_ms are measured from when the jockey3-testctl call
+      returns, not from when it starts, because the sysfs unbind write is
+      synchronous and the helper call itself (sudo, bash, resolving the
+      interface by vendor/product id) is tool cost, not driver work -- see
+      hotplug_cycle.py's switch_ms for the same split done for JT-PROBE-003.
+      That cost is recorded separately as bind_call_ms/unbind_call_ms so it
+      cannot be mistaken for the thing being measured. slots_used repeats the
+      JT-PROBE-003 card-index-reuse check, since a slot leak is exactly the
+      shape a devm double-free would take if it corrupted card teardown
+      instead of crashing outright.
 
   - id: JT-PROBE-003
     title: Card slot reuse across repeated unplug and replug

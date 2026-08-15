@@ -93,6 +93,14 @@ def unload_module(timeout=60):
     return call("unload", timeout=timeout)
 
 
+def unbind(timeout=30):
+    return call("unbind", timeout=timeout)
+
+
+def bind(timeout=30):
+    return call("bind", timeout=timeout)
+
+
 def dmesg_read(timeout=30):
     rc, out, _err = call("dmesg-read", timeout=timeout)
     return out.splitlines() if rc == 0 else []

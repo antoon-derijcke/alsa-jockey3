@@ -88,6 +88,10 @@ usage() {
 #   status                 report that the helper is installed and usable
 #   load                   modprobe the driver and its soundcore dependencies
 #   unload                 rmmod the driver (no-op when not loaded)
+#   unbind                 detach the driver from the device's interface 0
+#                          (no-op if already unbound)
+#   bind                   reattach the driver to interface 0
+#                          (no-op if already bound)
 #   dmesg-read             print the kernel log
 #   dmesg-mark <token>     write a JT-MARK boundary token to /dev/kmsg
 #   dyndbg-firmware on|off enable/disable the firmware-revision probe message
@@ -128,6 +132,42 @@ card_proc() {
 	n=$(awk '/Jockey3|Reloop Jockey 3/ {print $1; exit}' /proc/asound/cards 2>/dev/null)
 	[ -n "$n" ] && [ -d "/proc/asound/card$n" ] || return 1
 	printf '/proc/asound/card%s' "$n"
+}
+
+# Print the sysfs kernel name of the Jockey 3's interface 0 (e.g. "1-1:1.0"),
+# or fail.
+#
+# jockey3_probe() rejects every interface but 0 (see the check at the top of
+# jockey3_probe() in jockey3.c), so interface 0 is the only kernel name that
+# is ever bound to this driver by the bus's own driver model -- interface 1
+# is claimed internally from inside that same probe() call, not matched
+# through id_table. Unbinding/binding interface 0 is therefore what drives
+# jockey3_disconnect()/jockey3_probe() for the whole device.
+#
+# Resolved fresh from idVendor/idProduct every time, the same way usb_resolve()
+# is: the location must never be a caller-supplied argument, or this verb
+# could be pointed at any USB interface on the machine.
+usb_iface0_resolve() {
+	local id f base d ifnum
+	for id in $JOCKEY3_USB_IDS; do
+		for f in /sys/bus/usb/devices/*/idVendor; do
+			base=$(dirname "$f")
+			[ "$(cat "$f" 2>/dev/null)" = "${id%%:*}" ] || continue
+			[ "$(cat "$base/idProduct" 2>/dev/null)" = "${id##*:}" ] || continue
+			for d in "$base":*; do
+				[ -f "$d/bInterfaceNumber" ] || continue
+				# sysfs renders this as two hex digits ("00", not "0"), so
+				# it is decoded as hex rather than string-matched.
+				ifnum=$(cat "$d/bInterfaceNumber" 2>/dev/null)
+				[[ $ifnum =~ ^[0-9a-fA-F]+$ ]] || continue
+				if [ "$((16#$ifnum))" -eq 0 ]; then
+					basename "$d"
+					return 0
+				fi
+			done
+		done
+	done
+	return 1
 }
 
 # Print "<hub-location> <port> <hub-id>" for the port a Jockey 3 is plugged
@@ -204,6 +244,26 @@ unload)
 	[ $# -eq 0 ] || die "unload takes no arguments"
 	grep -q "^${MODULE_U} " /proc/modules || exit 0
 	exec rmmod "$MODULE"
+	;;
+
+unbind)
+	[ $# -eq 0 ] || die "unbind takes no arguments"
+	[ -d "/sys/bus/usb/drivers/$MODULE" ] || die "driver not loaded"
+	kname=$(usb_iface0_resolve) || die "no Reloop Jockey 3 interface 0 found"
+	[ -e "/sys/bus/usb/drivers/$MODULE/$kname" ] || exit 0
+	echo "$kname" > "/sys/bus/usb/drivers/$MODULE/unbind" \
+		|| die "unbind failed for $kname"
+	exit 0
+	;;
+
+bind)
+	[ $# -eq 0 ] || die "bind takes no arguments"
+	[ -d "/sys/bus/usb/drivers/$MODULE" ] || die "driver not loaded"
+	kname=$(usb_iface0_resolve) || die "no Reloop Jockey 3 interface 0 found"
+	[ -e "/sys/bus/usb/drivers/$MODULE/$kname" ] && exit 0
+	echo "$kname" > "/sys/bus/usb/drivers/$MODULE/bind" \
+		|| die "bind failed for $kname"
+	exit 0
 	;;
 
 dmesg-read)
