@@ -199,10 +199,10 @@ profiles:
     description: >
       Endurance only. Run overnight, on one target at a time. The metric that
       matters is drift, not the final verdict. This profile's own cases run
-      for hours (JT-SOAK-001, JT-SOAK-004), well past runner.py's default
-      --timeout of 3600s -- pass --timeout comfortably above the longest
-      configured duration or those cases are killed partway through with no
-      result.
+      for hours (JT-SOAK-001, JT-SOAK-004, JT-RATE-003), well past runner.py's
+      default --timeout of 3600s -- pass --timeout comfortably above the
+      longest configured duration or those cases are killed partway through
+      with no result.
     cases:
       - {id: JT-PROBE-001, iterations: 1}
       - {id: JT-SOAK-001,  iterations: 1}
@@ -231,6 +231,9 @@ profiles:
         # less ground; the point here is the memory checking, not the mileage.
         JT-SOAK-001: {params: {hours: 4}}
         # The wedge this hunts is a device-side fault, so mileage on a fast
-        # prod kernel is worth more than memory checking on a slow one.
+        # prod kernel is worth more than memory checking on a slow one. Same
+        # reasoning as armhf-prod/arm64-prod above: fewer changes on a kernel
+        # that is already slow for other reasons.
+        JT-RATE-003: {params: {iterations_per_run: 1000}}
         JT-SOAK-004: {params: {duration_seconds: 3600}}
         JT-SOAK-002: {iterations: 0}

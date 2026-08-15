@@ -760,22 +760,108 @@ cases:
     area: RATE
     level: L5
     mode: automated
-    status: planned
+    status: implemented
     requires: [device, sox]
+    exec: cases/rate_change.py
     params:
+      # Same case as JT-RATE-001, run long instead of accurate: no
+      # seconds_per_rate override, so it keeps the script's 1 s default
+      # rather than JT-RATE-001's 4 s. At 5000 iterations x 4 rates that is
+      # already the historical ~10 hour mileage; spending 4 s per change on
+      # top would take this past a day for no endurance benefit. The
+      # steady-state pointer measurement still runs at 1 s -- it just
+      # resolves fewer of the changes, which is recorded as
+      # steady_unmeasured_* rather than failed. rate_change_stream is left at
+      # the script default (capture), so a JT-RATE-003 run is directly
+      # comparable to a default JT-RATE-001 run on resets_per_change_pct.
       iterations_per_run: 5000
-    metrics: [resets_per_change_pct, stalls_per_change_pct, stalls_per_1000,
-              resets_full, failures]
-    pass: Stall rate stable, every stall recovered, no escalation to give-up.
+    metrics:
+      # Identical to JT-RATE-001's list, on purpose: the whole point of this
+      # case is that resets_per_change_pct and its companions are the SAME
+      # measurement taken long instead of short, so a drift between the two
+      # is visible as a difference rather than as two incomparable numbers.
+      [resets_per_change_pct, resets_total_device, stalls_per_change_pct,
+       urb_restarts_that_avoided_a_reset,
+       stalls_capture, stalls_playback, resets_capture_stall,
+       resets_playback_stall, resets_full, capture_urb_restart,
+       capture_recovery_on_open, capture_restart_escalated,
+       failures, capture_live_changes,
+       capture_nodata_changes, capture_silent_changes, capture_error_changes,
+       first_bad_capture_change, capture_nonzero_min, capture_nonzero_max,
+       capture_effective_hz, capture_rate_ratio_min, capture_rate_ratio_max,
+       playback_rate_ratio_min, playback_rate_ratio_max,
+       capture_stall_hw_params_total, capture_stall_on_open_total,
+       capture_stall_after_urb_restart_total, capture_stall_after_reset_total,
+       reset_on_rate_change_total, reset_after_urb_restart_total,
+       stalled_after_full_reset_total, reset_timeout_total,
+       branch_reset, branch_recovered_on_open, branch_deferred, branch_clean,
+       stalls_direction_up, stalls_direction_down, stalls_direction_first,
+       stalls_family_cross, stalls_family_within,
+       rate_change_stream, gap_seconds, lead_stream_configure_timeouts,
+       steady_ratio_playback_min, steady_ratio_playback_max,
+       steady_ratio_capture_min, steady_ratio_capture_max,
+       steady_error_playback_pct, steady_error_capture_pct,
+       steady_unmeasured_playback, steady_unmeasured_capture,
+       startup_s_playback_min, startup_s_playback_max,
+       startup_s_capture_min, startup_s_capture_max,
+       pointer_plateau_changes_playback, pointer_plateau_changes_capture,
+       pointer_quantum_max, xruns,
+       buffer_size_playback, period_size_playback,
+       buffer_size_capture, period_size_capture]
+    pass: >
+      Same per-change criterion as JT-RATE-001 -- a stall that recovers is a
+      pass, a stall that survives a full USB reset or a capture that comes
+      back bit-exact silent is a fail -- run over thousands of changes instead
+      of ten. What this case exists to answer is not "does it pass" but "does
+      resets_per_change_pct drift": ledger.py trends it per target, and a
+      build where the short JT-RATE-001 number looks fine but this one climbs
+      has not fixed Milestone 13's fault, only kept it below the noise floor
+      of a short run.
+    expect_dmesg:
+      - 'Playback URB has stalled\.'
+      - 'Capture URB has stalled\.'
+      - 'Resetting device to recover from stall after rate change'
+      - 'Capture URB stalled when opening capture stream'
+      - 'Restarting URBs to recover stalled Capture stream'
     notes: >
       The long-running version of JT-RATE-001, historically run for ten hours
-      at a time. The metric that matters is whether the stall rate drifts.
+      at a time -- same script (cases/rate_change.py), same metrics, same
+      pass criterion, only iterations_per_run differs. See JT-RATE-001 for
+      why the criterion is "stalled and recovered = pass" rather than
+      "no stall", and re/rate_change_stall.md for the working notes this case
+      was written to serve.
 
       resets_per_change_pct is the same headline figure JT-RATE-001 prints, and
       is what makes the two comparable: a short run and a ten-hour one both
       answer "how often does a rate change cost a device reset", so a rate that
       is good in the small and bad in the large is visible as a difference
       between them rather than as two incomparable numbers.
+
+      Run with --timeout comfortably above the expected duration, same as any
+      other soak-profile case -- runner.py's default is 3600s and this case is
+      designed to run far longer than that.
+
+      KNOWN DEGRADATION on a long run: attribution is read from ONE
+      kmsg.read_log() call after the last change, and the kernel ring buffer
+      is finite while this run is not. At thousands of changes x two markers
+      each, plus every stall/reset line, a long run can outlast the buffer,
+      and the early part of the log -- including some of the markers this
+      depends on -- can already be gone by the time it is read.
+
+      That degrades visibly rather than silently: markers_found_in_log vs
+      markers_written, and attribution_trustworthy, say so, and per-change
+      figures (branch_change_*, stalls_direction_*, etc.) are suppressed
+      rather than shown wrong when it happens. The RUN-TOTAL figures --
+      resets_per_change_pct, stalls_per_change_pct and their *_total
+      companions -- are NOT suppressed and remain the pass/fail and trend
+      metrics, but on a wrapped run they become a LOWER bound: events that
+      scrolled out of the buffer before the read are undercounted, never
+      double-counted, so a wrapped run can only ever read better than it
+      actually was. A continuous-capture fix (following the log as it is
+      written, rather than reading it once at the end) would remove this
+      bound; it was scoped out here as a larger change than this case's
+      wiring, deliberately, rather than risk a fix that double-counts
+      instead -- see re/rate_change_stall.md.
 
   - id: JT-RATE-004
     title: Rate change while the device is being removed

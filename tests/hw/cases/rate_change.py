@@ -701,6 +701,15 @@ def main():
     gaps = []
     capture_verdicts = {}
     bad_capture = []
+    # Raw captures are kept on a bad verdict, for an operator to listen to or
+    # inspect. That is unbounded on a healthy-length run, but not on an
+    # endurance one: a device that wedges early and stays wedged -- exactly
+    # the failure this case is built to catch -- would otherwise keep one
+    # ~1 MB raw file per remaining change, thousands of them over a
+    # multi-hour JT-RATE-003 run. The verdict and detail string are recorded
+    # regardless; only the file past this cap is discarded.
+    MAX_KEPT_BAD_CAPTURES = 50
+    kept_bad_captures = 0
     prev_rate = None
     t0 = time.time()
 
@@ -855,6 +864,13 @@ def main():
                     if first_bad_change is None:
                         first_bad_change = changes
                     bad_capture.append((rate, verdict, detail))
+                    if kept_bad_captures >= MAX_KEPT_BAD_CAPTURES:
+                        try:
+                            os.unlink(raw)
+                        except OSError:
+                            pass
+                    else:
+                        kept_bad_captures += 1
                 else:
                     try:
                         os.unlink(raw)
@@ -1068,6 +1084,15 @@ def main():
     # runner's classifier produces the same totals, but only into run.json
     # after the case has exited -- so an operator watching a two-minute sweep
     # had no idea whether it was provoking any stalls at all.
+    #
+    # A single read of a finite ring buffer, taken after a run that can run
+    # for hours (JT-RATE-003): on a long enough run the early part of the log
+    # -- including some of the markers this attribution depends on -- can be
+    # gone by the time this line runs. That degrades gracefully rather than
+    # silently: markers_found_in_log/markers_written and
+    # attribution_trustworthy below say so, and totals are then a LOWER bound
+    # (events that scrolled out are undercounted, never double-counted) on
+    # resets_per_change_pct and its companions. See re/rate_change_stall.md.
     log = kmsg.read_log()
     # Every window this case reports rests on the markers having landed. When
     # they have not, the windows do not merely lose detail -- they SHIFT, and
