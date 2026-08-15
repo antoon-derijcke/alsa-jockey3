@@ -457,6 +457,22 @@ def memory_kb():
     return None
 
 
+def slab_kb():
+    """Reclaimable + unreclaimable kernel slab memory, in kB.
+
+    Total RAM does not move; slab does, when something leaks. A soak case
+    reads this at the start and the end and reports the difference -- growth
+    across an eight-hour run is the signal, not the absolute figure, which
+    varies by kernel and workload before the run even begins.
+    """
+    for line in _read("/proc/meminfo").splitlines():
+        if line.startswith("Slab:"):
+            parts = line.split()
+            if len(parts) >= 2 and parts[1].isdigit():
+                return int(parts[1])
+    return None
+
+
 def board_model():
     dt = _read("/proc/device-tree/model")
     if dt:

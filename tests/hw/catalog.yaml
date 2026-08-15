@@ -1343,41 +1343,74 @@ cases:
   # ------------------------------------------------------------------- SOAK
 
   - id: JT-SOAK-001
-    title: Sustained playback
+    title: Sustained duplex playback and capture
     area: SOAK
     level: L5
-    mode: manual
+    mode: automated
     status: implemented
-    requires: [device, sox, human]
+    requires: [device]
+    exec: cases/pcm.py
+    args: [soak]
     params:
       hours: 8
       rate: 44100
-    metrics: [xruns_per_hour, stalls, memory_growth_kb]
-    pass: No xrun accumulation, no memory growth, no degradation over the run.
-    steps:
-      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
-      - 'Record the starting point: free -k and grep Slab /proc/meminfo.'
-      - >
-        Start playback for the configured duration, e.g.
-        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 44100 /dev/urandom
-        under nohup, and note the start time.
-      - Leave it running. Check back at the end rather than watching it.
-      - >
-        At the end: confirm playback is still running and has not silently
-        stopped, then compare free -k and Slab against the starting figures.
-      - >
-        Read dmesg for the whole window. Count stalls and confirm every one
-        recovered; any oops, hung task or KASAN report is a defect regardless
-        of the audio still working.
+      report_interval_minutes: 10
+    metrics:
+      - xruns_playback
+      - xruns_capture
+      - xruns_per_hour
+      - stalls_playback
+      - stalls_capture
+      - avail_max_playback
+      - avail_max_capture
+      - memory_growth_kb
+      - rms_dbfs_timeline
+      - capture_gaps
+      - capture_gap_max_s
+    pass: >
+      No xrun accumulation, no capture gap longer than 30s while the
+      substream reports RUNNING, no memory growth, no degradation over the
+      run.
+    expect_dmesg:
+      - 'Playback URB has stalled\.'
+      - 'Capture URB has stalled\.'
     notes: >
-      From test_44100_long.sh and test_96000_long.sh.
+      Supersedes the manual steps built from test_44100_long.sh and
+      test_96000_long.sh, which timed a single playback stream and checked
+      dmesg and /proc/meminfo by hand at the two ends. Automated now via
+      cases/pcm.py's soak mode, which runs playback AND capture concurrently
+      for the whole duration rather than playback alone -- the capture side
+      is what turns "still running" into something machine-checkable: a
+      stream that keeps delivering frames is audio-engine liveness, checked
+      continuously rather than sampled at the end.
+
+      The capture stream is never written to a file -- an 8-hour raw
+      S24_3LE capture at 96 kHz is upward of 5 GB, and nothing here needs it
+      kept. It is piped straight into the case, read and discarded in large
+      chunks, with only a short RMS snapshot retained per
+      report_interval_minutes. rms_dbfs_timeline is that snapshot series,
+      printed live on the terminal as the case runs and kept in run.json for
+      after-the-fact analysis if something looked strange partway through.
+      The level is informational only, exactly as in JT-PCM-005: with
+      nothing plugged into the inputs a noise floor around -90 to -110 dBFS
+      is correct, and playback here is /dev/urandom on all four channels, so
+      a loopback rig will read close to full scale rather than a floor.
+
+      capture_gaps / capture_gap_max_s come from the pipe itself going quiet
+      for more than 30s while /proc's substream state still reads RUNNING --
+      a dead transport that an xrun count alone would not show, since an
+      xrun is the ALSA core noticing, and a stalled URB stream does not
+      always produce one.
 
       /dev/urandom rather than a file so the run is not bounded by file
       length, and so the codec sees varied data rather than a repeating
-      pattern that might mask a packing error.
+      pattern that might mask a packing error -- unchanged from the manual
+      steps this replaces.
 
-      Manual is a poor fit here -- the value is in the numbers at the two ends
-      and nobody should be awake for either. Worth automating early.
+      hours defaults to 8; the runner's own --timeout (default 3600s) is
+      separate and must be raised to comfortably exceed hours * 3600 when
+      invoking a profile that includes this case, the same operational
+      requirement JT-SOAK-004's duration_seconds overrides already carry.
 
   - id: JT-SOAK-002
     title: Mixxx session

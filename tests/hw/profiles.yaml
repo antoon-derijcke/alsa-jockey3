@@ -198,7 +198,11 @@ profiles:
   soak:
     description: >
       Endurance only. Run overnight, on one target at a time. The metric that
-      matters is drift, not the final verdict.
+      matters is drift, not the final verdict. This profile's own cases run
+      for hours (JT-SOAK-001, JT-SOAK-004), well past runner.py's default
+      --timeout of 3600s -- pass --timeout comfortably above the longest
+      configured duration or those cases are killed partway through with no
+      result.
     cases:
       - {id: JT-PROBE-001, iterations: 1}
       - {id: JT-SOAK-001,  iterations: 1}
