@@ -1457,13 +1457,26 @@ cases:
     area: SOAK
     level: L5
     mode: automated
-    status: planned
+    status: implemented
     requires: [device, root]
+    exec: cases/probe_bind_unbind.py
     params:
       iterations_per_run: 5000
-    metrics: [memory_growth_kb, failures]
+      settle_seconds: 5
+    metrics: [bind_ms, unbind_ms, bind_call_ms, unbind_call_ms, slots_used]
     pass: No leak and no failure across thousands of cycles.
-    notes: Only meaningful on a KASAN kernel. The long form of JT-PROBE-002.
+    notes: >
+      Only meaningful on a KASAN kernel. The long form of JT-PROBE-002 --
+      same case, cases/probe_bind_unbind.py, run for 5000 cycles instead of
+      50. The metrics list matches JT-PROBE-002's rather than the
+      memory_growth_kb/failures pair originally sketched here: the case
+      breaks on the first failed cycle rather than counting failures across
+      the run (consistent with probe_cycle.py and hotplug_cycle.py, and with
+      the fact that classifying dmesg for a leak is the runner's job, not
+      this case's -- see the JT-PROBE-002 notes above), so there is nothing
+      for a "failures" metric to report beyond pass/fail. A slab-memory
+      growth metric could be added later if a non-KASAN endurance signal
+      turns out to be worth having, but the case script does not attempt it.
 
   - id: JT-SOAK-004
     title: Sustained MIDI OUT, watched for a URB stall
