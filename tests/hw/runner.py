@@ -103,6 +103,35 @@ def resolve_plan(profile_name, target_name, cases, profiles):
     return plan
 
 
+def parse_param_overrides(items):
+    """Turn --param KEY=VALUE strings into a parameter dict.
+
+    Values go through json.loads first and fall back to the raw string, so
+    that `capture=false` is the boolean False and `rates=[44100,96000]` is a
+    list, while `mode=race` stays a string. The fallback is what makes the
+    flag pleasant to type; the JSON attempt is what makes it correct. A bare
+    "false" left as a string is truthy, and a run asked to turn capture off
+    would quietly have run it on -- which, for the parameter sweeps this flag
+    exists to serve, is worse than no flag at all.
+
+    The last occurrence of a key wins, so a wrapper script can append its own
+    overrides after the operator's.
+    """
+    out = {}
+    for item in items or []:
+        if "=" not in item:
+            raise SystemExit(f"--param needs KEY=VALUE, got '{item}'")
+        key, _, raw = item.partition("=")
+        key = key.strip()
+        if not key:
+            raise SystemExit(f"--param needs a key, got '{item}'")
+        try:
+            out[key] = json.loads(raw)
+        except ValueError:
+            out[key] = raw
+    return out
+
+
 # Levels that test the source and the build rather than a running driver.
 BUILD_LEVELS = {"L1", "L2"}
 
@@ -542,6 +571,13 @@ def main():
     ap.add_argument("--target", "-t", help="override target auto-detection")
     ap.add_argument("--case", "-c", action="append",
                     help="run only these case ids (repeatable)")
+    ap.add_argument("--param", "-P", action="append", metavar="KEY=VALUE",
+                    help="override a case parameter for this run (repeatable, "
+                         "applies to every planned case). The value is parsed "
+                         "as JSON when it can be, so capture=false is the "
+                         "boolean and rates=[44100,96000] is the list; "
+                         "anything else is taken as a string. The resolved "
+                         "parameters are what run.json records.")
     ap.add_argument("--list", "-l", action="store_true")
     ap.add_argument("--dry-run", "-n", action="store_true")
     ap.add_argument("--operator", default=os.environ.get("USER", ""))
@@ -610,6 +646,15 @@ def main():
                     print(f"error: unknown case {cid}", file=sys.stderr)
                     return 3
 
+    # Applied last, over the catalog, the profile entry and the per-target
+    # override alike -- the operator on the bench is the most specific source
+    # there is. Applied to every planned case, which is why it is normally
+    # paired with --case: a parameter sweep is a run of one case at a time.
+    overrides = parse_param_overrides(args.param)
+    if overrides:
+        plan = [(case, iterations, {**params, **overrides})
+                for case, iterations, params in plan]
+
     caps, cap_detail = capabilities.resolve(attended=not args.unattended)
 
     card, cid, problems = preflight(target_name, target_spec, plan, args)
@@ -624,6 +669,10 @@ def main():
           f"[identified from the {kernel.get('source') or '?'}]")
     print(f"machine  {os.uname().nodename}   (context only, not the target)")
     print(f"profile  {args.profile}")
+    if overrides:
+        print("param    " + ", ".join(f"{k}={json.dumps(v)}"
+                                      for k, v in sorted(overrides.items()))
+              + "   [--param, applied to every case in the plan]")
     print(f"card     {'hw:%d (%s)' % (card, cid) if card is not None else 'not found'}")
     print(f"have     {', '.join(sorted(caps)) or 'nothing detected'}"
           + ("   [--unattended: no human]" if args.unattended else ""))

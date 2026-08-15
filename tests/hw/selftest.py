@@ -32,7 +32,7 @@ try:
 except ImportError:
     sys.exit("PyYAML is required: apt install python3-yaml")
 
-from lib import env, kmsg, results          # noqa: E402
+from lib import alsa, env, kmsg, results    # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = "snd-reloop-jockey3 1-3:1.0: "
@@ -62,6 +62,13 @@ def test_classifier(rules):
     c = kmsg.Classifier(rules)
 
     # Timestamped, as dmesg actually renders them -- see test_kunit_on_target.
+    #
+    # NOTE: the two "waited N ms for reset completion" lines below are a rule
+    # the driver no longer exercises. 775b70e added that dev_dbg and c8fff65
+    # ("prepare for batching") removed it, so reset_wait_ms has been empty ever
+    # since and this fixture only proves the rule agrees with itself. Kept so
+    # the rule still works if the line is restored -- see
+    # re/rate_change_stall.md, which is where the decision to restore it lives.
     T = "[ 5870.058393] "
     lines = [
         T + DRIVER + "Capture URB has stalled.",
@@ -1009,6 +1016,50 @@ def test_privilege_boundary():
           "; ".join(early[:4]))
 
 
+# What the stubbed streams pretend the hardware is doing. Set by the fake
+# aplay/arecord, read by the fake watcher when it is stopped -- which is the
+# real order of events, so the fake trace describes the stream that just ran.
+CLOCK = {"rate": 48000, "scale": 1.0, "plateau": 0.0}
+
+
+class FakeWatch:
+    """A watch_pcm that synthesizes a hw_ptr trace instead of reading /proc.
+
+    Times are real monotonic readings offset arithmetically, not slept
+    through: the point is to exercise the measurement, not to spend four
+    seconds per change proving that time passes.
+    """
+
+    def __init__(self, index, pcm="pcm0p", sub="sub0", interval=0.02):
+        self.pcm, self.interval = pcm, interval
+        self.trace, self.xruns, self.avail_max = [], 0, 0
+        self.hw_params = {}
+        self.state = None
+        self._t0 = None
+
+    def start(self):
+        self._t0 = time.monotonic()
+        self.state = "RUNNING"
+
+    def stop(self):
+        self.hw_params = {"buffer_size": 4096, "period_size": 1024,
+                          "rate": CLOCK["rate"]}
+        hz = CLOCK["rate"] * CLOCK["scale"]
+        startup, duration = 0.30, 4.0
+        ptr, t = 0, self._t0 + startup
+        end = self._t0 + startup + duration
+        # A plateau in the middle, when asked for: the pointer stops and then
+        # resumes, which is what a stall looks like from here.
+        hold_at = self._t0 + startup + 1.8
+        while t <= end:
+            self.trace.append((t, ptr))
+            if not (CLOCK["plateau"] and
+                    hold_at <= t < hold_at + CLOCK["plateau"]):
+                ptr += int(hz * self.interval)
+            t += self.interval
+        return self
+
+
 def test_rate_change_case_runs():
     """Execute JT-RATE-001 end to end with the hardware stubbed.
 
@@ -1068,7 +1119,7 @@ def test_rate_change_case_runs():
         def make_marker(label):
             token = f"JT-MARK {label} deadbeef"
             log.append(f"[100.0] {token}")
-            if label.endswith("#change3@88200"):
+            if label.endswith("#change3-88200"):
                 log.append("[100.1] snd-reloop-jockey3 1-2.2:1.0: "
                            "Capture URB has stalled.")
                 log.append("[100.2] snd-reloop-jockey3 1-2.2:1.0: Resetting "
@@ -1080,7 +1131,19 @@ def test_rate_change_case_runs():
 
         m.kmsg = types.SimpleNamespace(Marker=make_marker,
                                        read_log=lambda: log)
-        m.play_briefly = lambda dev, rate, sec: (0, "", sec * 1.02)
+        m.alsa.substreams = lambda i: {"playback": ["pcm0p"],
+                                       "capture": ["pcm0c"], "rawmidi": []}
+        # Configured immediately, so wait_configured() returns at once and the
+        # rate_change_stream ordering is exercised without any real sleeping.
+        m.alsa.pcm_status = lambda i, p, *a: {"state": "RUNNING"}
+        m.alsa.pointer_rate = alsa.pointer_rate
+        m.alsa.watch_pcm = FakeWatch
+        def fake_play(dev, rate, sec):
+            CLOCK["rate"] = rate
+            return (None, None)
+
+        m.start_playback = fake_play
+        m.finish_playback = lambda p, g, sec, t0: (0, "", sec * 1.02)
 
         class Rec:
             returncode = 0
@@ -1100,7 +1163,11 @@ def test_rate_change_case_runs():
 
             def kill(self): pass
 
-        m.start_capture = lambda dev, rate, sec, path: Rec(path, rate, sec)
+        def fake_rec(dev, rate, sec, path):
+            CLOCK["rate"] = rate
+            return Rec(path, rate, sec)
+
+        m.start_capture = fake_rec
         m.main()
         return case
 
@@ -1132,25 +1199,363 @@ def test_rate_change_case_runs():
     check(long_run.metrics.get("timing_check_enforced") is True,
           "and is enforced at 5 s")
 
+    # 44.1 against 48 kHz is 8.1%. The elapsed-time check could not resolve it
+    # at a 20% tolerance and the case warned about it on every run; the
+    # steady-state measurement at 5% sees it plainly. The blind-spot report
+    # follows the tolerance that is actually enforced, so it now says nothing.
+    seen = run({"iterations_per_run": 1, "seconds_per_rate": 1,
+                "rates": [44100, 48000]}, "live")
+    check(seen.metrics.get("rate_check_blind_steps") == 0,
+          "a 44.1/48 sweep is resolvable at the 5% steady-state tolerance",
+          str(seen.metrics.get("rate_check_blind_steps")))
     blind = run({"iterations_per_run": 1, "seconds_per_rate": 1,
-                 "rates": [44100, 48000]}, "live")
+                 "rates": [44100, 48000], "steady_tolerance": 0.20}, "live")
     check(blind.metrics.get("rate_check_blind_steps", 0) > 0,
-          "a 44.1/48 sweep is reported as unresolvable, not blocked",
+          "and is reported as unresolvable again if the tolerance is widened",
           str(blind.metrics.get("rate_check_blind_steps")))
+
+    # The measurement itself, through the case: a device clocking at half the
+    # requested rate must be caught, and a stall must not be reported as one.
+    steady_ok = run({"iterations_per_run": 1, "seconds_per_rate": 4}, "live")
+    check(not steady_ok.fails, "a correct clock passes the steady-state check",
+          str(steady_ok.fails[:1]))
+    check(steady_ok.metrics.get("steady_error_capture_pct") is not None
+          and steady_ok.metrics["steady_error_capture_pct"] < 5.0,
+          "and the measured error is inside the 5% target",
+          str(steady_ok.metrics.get("steady_error_capture_pct")))
+    check(steady_ok.metrics.get("startup_s_capture_max") is not None,
+          "the excluded start-up cost is measured, not assumed",
+          str(steady_ok.metrics.get("startup_s_capture_max")))
+
+    CLOCK["scale"] = 0.5
+    try:
+        halved = run({"iterations_per_run": 1, "seconds_per_rate": 4}, "live")
+    finally:
+        CLOCK["scale"] = 1.0
+    check(any("not " in f and "Hz" in f for f in halved.fails),
+          "a device clocking at half the requested rate fails",
+          str(halved.fails[:1]))
+
+    CLOCK["plateau"] = 0.5
+    try:
+        stalled = run({"iterations_per_run": 1, "seconds_per_rate": 4}, "live")
+    finally:
+        CLOCK["plateau"] = 0.0
+    check(stalled.metrics.get("pointer_plateau_changes_capture") == 4,
+          "a pointer that stops and resumes is counted as a stall",
+          str(stalled.metrics.get("pointer_plateau_changes_capture")))
+    check(not stalled.fails,
+          "and is NOT reported as a wrong clock -- the rate is measured "
+          "around the plateau, not through it", str(stalled.fails[:1]))
 
     # Stalls are attributed to the change that caused them, not just totalled.
     attr = run({"iterations_per_run": 1, "seconds_per_rate": 1}, "live")
-    check(attr.metrics.get("capture_stall_total") == 1,
+    check(attr.metrics.get("capture_stall_hw_params_total") == 1,
           "a capture stall in the log is counted",
-          str(attr.metrics.get("capture_stall_total")))
-    check(attr.metrics.get("reset_capture_total") == 1,
-          "and the reset it caused is attributed to capture",
-          str(attr.metrics.get("reset_capture_total")))
-    check(attr.metrics.get("capture_stall_change_3_88200") == 1,
+          str(attr.metrics.get("capture_stall_hw_params_total")))
+    check(attr.metrics.get("reset_on_rate_change_total") == 1,
+          "and so is the reset it caused",
+          str(attr.metrics.get("reset_on_rate_change_total")))
+    check(attr.metrics.get("capture_stall_hw_params_change_3_88200") == 1,
           "against the specific change that produced it",
           str({k: v for k, v in attr.metrics.items() if "_change_" in k}))
-    check(not attr.metrics.get("reset_playback_total"),
-          "and not miscounted as a playback reset")
+    check(attr.metrics.get("branch_change_3_88200") == "reset",
+          "and the change is recorded as having taken the reset branch",
+          str(attr.metrics.get("branch_change_3_88200")))
+    check(attr.metrics.get("branch_reset") == 1
+          and attr.metrics.get("branch_clean") == 3,
+          "with the other three changes recorded as clean",
+          str({k: v for k, v in attr.metrics.items()
+               if k.startswith("branch_") and "_change_" not in k}))
+    check(attr.metrics.get("stalls_direction_up") == 1
+          and attr.metrics.get("changes_direction_up") == 1,
+          "grouped by direction: 88200 after 44100 is an upward step",
+          str({k: v for k, v in attr.metrics.items()
+               if "_direction_" in k}))
+    check(attr.metrics.get("stalls_pair_44100_to_88200") == 1
+          and attr.metrics.get("changes_pair_44100_to_88200") == 1,
+          "and by the specific transition, as numbers ledger.py can trend",
+          str({k: v for k, v in attr.metrics.items() if "_pair_" in k}))
+    check(attr.metrics.get("transition_change_1") == "start->96000",
+          "the first change has no predecessor and does not borrow one",
+          str(attr.metrics.get("transition_change_1")))
+
+    # The key metric: how often a rate change costs a device reset. The fake
+    # log carries one stall and one reset over four changes.
+    check(attr.metrics.get("resets_per_change_pct") == 25.0,
+          "resets per rate change is reported as a percentage of changes",
+          str(attr.metrics.get("resets_per_change_pct")))
+    check(attr.metrics.get("resets_total_device") == 1,
+          "with the reset count it came from",
+          str(attr.metrics.get("resets_total_device")))
+    check(attr.metrics.get("stalls_per_change_pct") == 25.0,
+          "beside the stall rate, so the two can move independently",
+          str(attr.metrics.get("stalls_per_change_pct")))
+    # It must NOT come from the per-change attribution: markers can fail to
+    # land, and on 2026-08-15 that turned a real 30% into a headline of zero.
+    check(attr.metrics.get("attribution_trustworthy") is not None,
+          "and the run says whether its per-change attribution can be trusted")
+
+    # The arm being run has to be recorded, or a comparison between arms is
+    # comparing two things it cannot name.
+    pb = run({"iterations_per_run": 1, "seconds_per_rate": 1,
+              "rate_change_stream": "playback"}, "live")
+    check(pb.metrics.get("rate_change_stream") == "playback",
+          "the stream that performs the change is recorded")
+    check(pb.metrics.get("lead_stream_configure_timeouts") == 0,
+          "and the leading stream reached hw_params on every change",
+          str(pb.metrics.get("lead_stream_configure_timeouts")))
+    noc = run({"iterations_per_run": 1, "seconds_per_rate": 1,
+               "capture": False}, "live")
+    check(noc.metrics.get("rate_change_stream") == "playback",
+          "capture=false forces the change onto playback and says so",
+          str(noc.metrics.get("rate_change_stream")))
+    check(any("re-detected" in n for n in noc.notes),
+          "and warns that its stall count is not per-change incidence",
+          str(noc.notes))
+
+
+def test_rate_change_log_attribution():
+    """The four call sites that share one stall message, told apart.
+
+    jockey3_wait_urb_stream_started() logs the identical "Capture URB has
+    stalled." from hw_params(), from prepare(), and twice inside
+    jockey3_recover_capture_stream(). Counting the string counts neither
+    stalls nor changes, so the case resolves each one by the context line that
+    follows it. This is where that resolution is checked, because getting it
+    wrong silently inflates the one number milestone 13 is judged on.
+    """
+    print("\nrate-change log attribution")
+    spec = importlib.util.spec_from_file_location(
+        "rate_change_case2", os.path.join("cases", "rate_change.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+
+    def names(body):
+        return [n for n, _ in m.classify_events([DRIVER + s for s in body])]
+
+    # The deferred branch, in full: hw_params stalls and says nothing further
+    # (its explanation is dev_dbg), the next capture open stalls again and
+    # announces itself, the URB restart fails, the full reset fails.
+    seq = names([
+        "Capture URB has stalled.",
+        "Capture URB has stalled.",
+        "Capture URB stalled when opening capture stream; attempting recovery",
+        "Restarting URBs to recover stalled Capture stream",
+        "Capture URB has stalled.",
+        "Capture stream still stalled after URB restart; queuing full USB reset",
+        "Capture URB has stalled.",
+        "Capture stream still stalled after full USB reset; hardware may need "
+        "power-cycling",
+    ])
+    check(seq.count("capture_stall_hw_params") == 1,
+          "the rate change's own stall is counted exactly once",
+          str(seq))
+    check(seq.count("capture_stall_on_open") == 1,
+          "the one from the capture open is not confused with it", str(seq))
+    check(seq.count("capture_stall_after_urb_restart") == 1
+          and seq.count("capture_stall_after_reset") == 1,
+          "and the two recovery retries are their own events", str(seq))
+
+    # The reset branch: one stall, then the reset line. Nothing else follows,
+    # so the stall must still land on hw_params.
+    seq = names([
+        "Capture URB has stalled.",
+        "Resetting device to recover from stall after rate change to 44100 Hz "
+        "(playback_alive=1, capture_alive=0, capture_open=1)",
+    ])
+    check(seq == ["capture_stall_hw_params", "reset_on_rate_change"],
+          "a stall followed by the reset line is the hw_params one", str(seq))
+
+    # A playback stall must never be absorbed by a capture context line.
+    seq = names([
+        "Playback URB has stalled.",
+        "Capture URB has stalled.",
+        "Capture URB stalled when opening capture stream; attempting recovery",
+    ])
+    check(seq.count("playback_stall") == 1
+          and seq.count("capture_stall_on_open") == 1
+          and "capture_stall_hw_params" not in seq,
+          "playback and capture stalls are resolved independently", str(seq))
+
+    # A stall with no context at all -- the playback-only run, where the
+    # deferred branch is the end of the story.
+    check(names(["Capture URB has stalled."]) == ["capture_stall_hw_params"],
+          "an unexplained stall belongs to the rate change")
+
+    # Windows: a reset completing after the streams closed belongs to the gap,
+    # not to whatever change runs next.
+    class Mark:
+        def __init__(self, token):
+            self.token, self.written = token, True
+
+    marks = [("change", 1, Mark("MARK-C1")), ("gap", 1, Mark("MARK-G1")),
+             ("change", 2, Mark("MARK-C2"))]
+    lines = ["MARK-C1", "during one", "MARK-G1", "after one closed", "MARK-C2",
+             "during two"]
+    win = {(k, n): body for k, n, body in m.window_lines(lines, marks)}
+    check(win[("change", 1)] == ["during one"],
+          "the change window ends when its streams close", str(win))
+    check(win[("gap", 1)] == ["after one closed"],
+          "and the late line is charged to the gap, not to the next change",
+          str(win))
+
+
+def test_marker_labels():
+    """A marker the privileged helper will reject is a marker that never lands.
+
+    The helper validates the token it is handed and rejects anything outside
+    its charset; priv.dmesg_mark() then returns False and Marker.write()
+    carries on, because a missing marker is not fatal. It is not fatal, but it
+    is not harmless either: JT-RATE-001 wrote "#change3@88200", every start
+    marker was rejected while every end marker got through, and each window
+    shifted by one change. The case reported "capture stalled on 0/20 changes"
+    beside six resets and passed.
+
+    The charset here is checked against the helper's own regex, read from the
+    script, so the two cannot drift apart silently.
+    """
+    print("\nkernel-log marker labels")
+    helper = os.path.join(HERE, "priv", "jockey3-testctl")
+    with open(helper, "r", encoding="utf-8") as f:
+        src = f.read()
+    m = re.search(r"\^JT-MARK\\ \[([^\]]+)\]\{1,64\}", src)
+    check(m is not None, "the helper's marker regex is still findable")
+    if m:
+        check(m.group(1) == "A-Za-z0-9._:#+-",
+              "and lib/kmsg.py's LABEL_OK matches it", m.group(1))
+
+    mk = kmsg.Marker("JT-RATE-001#change3@88200")
+    check("@" not in mk.token, "a label with '@' is sanitized, not rejected",
+          mk.token)
+    check(re.match(r"^JT-MARK [A-Za-z0-9._:#+-]{1,64} [0-9a-f]{8,32}$",
+                   mk.token) is not None,
+          "and the resulting token passes the helper's own validation",
+          mk.token)
+    check(kmsg.Marker("plain#gap12").label == "plain#gap12",
+          "while a label that was already fine is left alone")
+    check(len(kmsg.Marker("x" * 200).label) <= 64,
+          "and an over-long label is truncated to what the helper accepts")
+
+
+def test_pointer_rate():
+    """The steady-state rate measurement, on synthetic traces.
+
+    Timing a whole aplay/arecord invocation charges process start-up and device
+    open to the sample rate and reads 10-17% low at four seconds. hw_ptr is the
+    device's own frame counter, so its slope in steady state is the rate with
+    all of that outside the window. These traces check that the window really
+    does exclude what it claims to, because on hardware every one of these
+    situations looks like a plausible number.
+    """
+    print("\nsteady-state rate from the hardware pointer")
+
+    def trace(hz, seconds, startup=0.4, step=0.02, hold=None, reset_at=None):
+        out, t, ptr = [], 0.0, 0
+        while t < startup:                     # open, hw_params, prepare
+            out.append((t, 0))
+            t += step
+        end = startup + seconds
+        while t <= end:
+            out.append((t, ptr))
+            if reset_at is not None and abs(t - (startup + reset_at)) < step / 2:
+                ptr = 0                        # a device reset restarts hw_ptr
+            elif hold is None or not (hold[0] <= t - startup < hold[0] + hold[1]):
+                ptr += int(hz * step)
+            t += step
+        return out
+
+    r = alsa.pointer_rate(trace(48000, 4.0), 0.0)
+    check(r.hz is not None and abs(r.hz / 48000 - 1.0) < 0.01,
+          "a clean trace measures the rate to within 1%", repr(r))
+    check(abs(r.first_motion_s - 0.4) < 0.05,
+          "and reports the start-up it excluded", str(r.first_motion_s))
+
+    # The whole point: the same trace timed end to end reads low, and by how
+    # much is exactly the start-up over the duration.
+    naive = 48000 * 4.0 / (4.0 + 0.4)
+    check(abs(naive / 48000 - 1.0) > 0.08,
+          "while timing the whole invocation would read 9% low",
+          f"{naive:.0f} Hz")
+
+    # A stall must not be averaged into the rate. Dragged through, a 1.5 s
+    # plateau in a 4 s run reads ~37% slow -- which would report the fault this
+    # driver has as the one it does not.
+    r = alsa.pointer_rate(trace(48000, 4.0, hold=(1.0, 1.5)), 0.0)
+    check(r.plateaus == 1 and abs(r.plateau_max_s - 1.5) < 0.05,
+          "a plateau is reported as a stall, with its duration", repr(r))
+    check(r.hz is not None and abs(r.hz / 48000 - 1.0) < 0.01,
+          "and the rate is measured around it, not through it", repr(r))
+
+    # The stream ending is not a stall. The watcher keeps sampling for a moment
+    # after the process stops and before the substream closes, so every healthy
+    # change ends with a static run -- counted, it would report a stall on all
+    # of them and make the plateau count useless for finding real ones.
+    tail = [(t, p) for t, p in trace(48000, 3.0)]
+    tail += [(tail[-1][0] + 0.02 * i, tail[-1][1]) for i in range(1, 30)]
+    r = alsa.pointer_rate(tail, 0.0)
+    check(r.plateaus == 0 and r.tail_hold_s > 0.15,
+          "a pointer still at the end of the trace is the stream stopping, "
+          "not stalling", repr(r))
+    check(r.hz is not None and abs(r.hz / 48000 - 1.0) < 0.01,
+          "and it is still excluded from the measurement window", repr(r))
+
+    # hw_ptr restarting at zero is a reset, not a stall, and must not produce a
+    # negative or absurd rate.
+    r = alsa.pointer_rate(trace(48000, 5.0, reset_at=2.0), 0.0)
+    check(r.breaks == 1, "a backwards pointer is a break, not a plateau", repr(r))
+    check(r.hz is not None and abs(r.hz / 48000 - 1.0) < 0.01,
+          "and the rate is still measured, on one side of it", repr(r))
+
+    # Settling is excluded, so a stream that starts slow and settles reads at
+    # its settled rate rather than at the average of the two.
+    slow_start = [(t, p) for t, p in trace(48000, 4.0)]
+    r = alsa.pointer_rate(slow_start, 0.0, settle_s=0.5)
+    check(r.window_start_s is not None and r.window_start_s >= 0.9,
+          "the window starts after the settling time, not at the first frame",
+          str(r.window_start_s))
+
+    # Degenerate inputs must say why rather than divide by zero.
+    check(alsa.pointer_rate([], 0.0).hz is None, "an empty trace has no rate")
+    dead = alsa.pointer_rate([(t / 50, 0) for t in range(200)], 0.0)
+    check(dead.hz is None and "never advanced" in dead.reason,
+          "a pointer that never moves says so", repr(dead))
+    short = alsa.pointer_rate(trace(48000, 0.6), 0.0)
+    check(short.hz is None and "plateau-free window" in short.reason,
+          "and so does a stream too short to measure", repr(short))
+
+
+def test_param_overrides():
+    """--param must yield typed values, not strings.
+
+    The flag exists so that a parameter sweep does not require editing
+    catalog.yaml between runs. That only works if `capture=false` turns off
+    capture: left as the string "false" it is truthy, and the run would
+    silently be the arm the operator was trying to compare against.
+    """
+    print("\nparameter overrides")
+    sys.path.insert(0, HERE)
+    import runner
+
+    got = runner.parse_param_overrides(
+        ["capture=false", "seconds_per_rate=4", "gap_seconds=2.5",
+         "rates=[44100,96000]", "rate_change_stream=playback"])
+    check(got["capture"] is False, "a JSON false is the boolean",
+          repr(got["capture"]))
+    check(got["seconds_per_rate"] == 4 and got["gap_seconds"] == 2.5,
+          "numbers are numbers", repr(got))
+    check(got["rates"] == [44100, 96000], "and a list is a list", repr(got))
+    check(got["rate_change_stream"] == "playback",
+          "while a bare word stays a string", repr(got["rate_change_stream"]))
+    check(runner.parse_param_overrides(["k=a=b"])["k"] == "a=b",
+          "only the first = separates key from value")
+    check(runner.parse_param_overrides(["k=1", "k=2"])["k"] == 2,
+          "the last occurrence of a key wins")
+    try:
+        runner.parse_param_overrides(["nokey"])
+        check(False, "a value with no key is rejected")
+    except SystemExit:
+        check(True, "a value with no key is rejected")
 
 
 def main():
@@ -1178,6 +1583,10 @@ def main():
     test_run_resolution()
     test_privilege_boundary()
     test_rate_change_case_runs()
+    test_rate_change_log_attribution()
+    test_marker_labels()
+    test_pointer_rate()
+    test_param_overrides()
 
     print(f"\n{_checks - len(_failures)}/{_checks} checks passed")
     if _failures:

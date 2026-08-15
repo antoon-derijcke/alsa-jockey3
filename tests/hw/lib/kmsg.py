@@ -46,12 +46,30 @@ INVESTIGATE = "investigate"  # a defect, not a test failure -> abort
 OURS = re.compile(r"snd[-_]reloop[-_]jockey3|ploytec|jockey3_\w+")
 
 
+# The label charset the privileged helper accepts. It validates the token it is
+# handed -- a token carrying a space or a newline could forge a boundary or
+# split a log line in two -- and rejects anything else with "malformed marker
+# token". priv.dmesg_mark() then returns False, Marker.write() treats that as
+# non-fatal, and the marker is simply absent.
+#
+# That silence is expensive. A JT-RATE-001 run used '@' in its labels to write
+# "#change3@88200"; every start marker was rejected, every end marker (no '@')
+# got through, and the windows each shifted by one change. The case then
+# reported "capture stalled on 0/20 changes" alongside six resets, and looked
+# like a clean run rather than a broken instrument.
+#
+# So labels are sanitized here, against the helper's own charset, rather than
+# left to be rejected on the far side of a subprocess. Keep this in step with
+# priv/jockey3-testctl.
+LABEL_OK = re.compile(r"[^A-Za-z0-9._:#+-]")
+
+
 class Marker:
     """A boundary written into the kernel log."""
 
     def __init__(self, label):
-        self.label = label
-        self.token = f"{MARKER_PREFIX} {label} {uuid.uuid4().hex[:12]}"
+        self.label = LABEL_OK.sub("-", str(label))[:64]
+        self.token = f"{MARKER_PREFIX} {self.label} {uuid.uuid4().hex[:12]}"
         self.written = False
 
     def write(self):

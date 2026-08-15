@@ -82,6 +82,22 @@ sudo priv/install.sh                      # once per machine; the only password
 ./selftest.py                             # check the framework itself
 ```
 
+Parameters come from `catalog.yaml`, then the profile entry, then the
+per-target override, and `--param KEY=VALUE` last — the operator at the bench
+is the most specific source there is. It applies to every case in the plan, so
+it is normally paired with `--case`, and the value is parsed as JSON when it
+can be, so `capture=false` is the boolean and `rates=[44100,96000]` is a list:
+
+```sh
+./runner.py --case JT-RATE-001 --unattended \
+    --param rate_change_stream=playback --param gap_seconds=3
+```
+
+This is how a parameter sweep is run without editing the catalog between arms.
+`run.json` records the **resolved** parameters, so each arm identifies itself
+afterwards and two runs can be told apart without reconstructing what was
+edited when.
+
 The runner is **not** run under sudo. Playback, capture, MIDI and sysfs need no
 privilege; the few operations that do go through `priv/jockey3-testctl`. The
 test user needs to be in the `audio` group, and nothing more.

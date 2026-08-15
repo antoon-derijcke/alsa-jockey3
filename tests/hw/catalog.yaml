@@ -470,20 +470,108 @@ cases:
       capture: true
       min_nonzero_fraction: 0.01
       rate_tolerance: 0.20
+      # Wider than rate_tolerance on purpose. The capture ratio's denominator
+      # is wall clock from process start, so it carries arecord start-up and
+      # device open and reads 10-17% low even when the device is clocking
+      # perfectly. It is now only a fallback for changes where no pointer
+      # window could be measured, and only gross error is failed.
+      capture_rate_gross_tolerance: 0.50
       timing_check_min_seconds: 4.0
+      # The rate measurement that actually decides the verdict: the slope of
+      # the device's own hw_ptr, sampled from /proc/asound while the stream
+      # runs. settle_seconds is skipped after the pointer first moves, then the
+      # rate is taken across the longest span of at least
+      # steady_min_window_seconds in which the pointer never stops for longer
+      # than plateau_seconds. Start-up, device open and every buffer in the
+      # path are outside that window instead of averaged into it; buffer size
+      # does not enter it at all, since a buffer shifts latency and not rate.
+      #
+      # 5% is the target: enough to settle "did the rate change take effect",
+      # which is the only question being asked. The instrument is roughly ten
+      # times better than that, and is deliberately not tightened to what it
+      # can do -- at that point it would start reporting the device's crystal.
+      steady_tolerance: 0.05
+      settle_seconds: 0.5
+      plateau_seconds: 0.15
+      steady_min_window_seconds: 1.0
+      pointer_poll_seconds: 0.02
+      # Which stream performs the rate change, and therefore which branch of
+      # jockey3_pcm_hw_params() is under test. capture -> capture_open=1, so a
+      # capture stall resets on the spot. playback -> capture_open=0, so it is
+      # deferred to the capture open that follows. race -> whichever process
+      # won, which is what this case did before the parameter existed and is
+      # kept only for reproducing older runs.
+      # interleave alternates from the ends of the sorted list, which makes
+      # every step large and alternating -- the shape that provokes the fault.
+      # as-given uses `rates` verbatim, which is how a sweep is built to
+      # separate hypotheses the default order cannot: with these four rates
+      # both downward steps cross clock families and both upward steps stay
+      # within one, so direction and family are perfectly correlated.
+      sweep_order: interleave
+      rate_change_stream: capture
+      # Idle time between changes, with nothing open. Kept separate from
+      # seconds_per_rate so that "the device needs recovery time between
+      # changes" can be tested without also changing the length of the
+      # measurement. The reset that hw_params queues is not waited for, so at
+      # zero gap consecutive changes are not independent events.
+      gap_seconds: 0
     metrics:
-      [stalls_capture, stalls_playback, resets_capture_stall,
+      # THE metric for milestone 13: how often a rate change costs the user an
+      # audible device reset. It must trend to zero. Counted from the run
+      # totals rather than the per-change attribution, so a marker that failed
+      # to land cannot quietly turn it into a clean result. Its companions say
+      # which way it moved -- fewer stalls, or the same stalls handled by a URB
+      # restart instead of a reset, which is progress that would otherwise be
+      # invisible.
+      [resets_per_change_pct, resets_total_device, stalls_per_change_pct,
+       urb_restarts_that_avoided_a_reset,
+       stalls_capture, stalls_playback, resets_capture_stall,
        resets_playback_stall, resets_full, capture_urb_restart,
        capture_recovery_on_open, capture_restart_escalated,
-       reset_wait_ms_histogram, failures, capture_live_changes,
+       failures, capture_live_changes,
        capture_nodata_changes, capture_silent_changes, capture_error_changes,
        first_bad_capture_change, capture_nonzero_min, capture_nonzero_max,
        capture_effective_hz, capture_rate_ratio_min, capture_rate_ratio_max,
-       playback_rate_ratio_min, playback_rate_ratio_max]
+       playback_rate_ratio_min, playback_rate_ratio_max,
+       # The rate change's own stall, told apart from the three later call
+       # sites that share its message. This is the incidence figure.
+       capture_stall_hw_params_total, capture_stall_on_open_total,
+       capture_stall_after_urb_restart_total, capture_stall_after_reset_total,
+       # Both of these end in usb_queue_reset_device(); what differs is
+       # only what was tried first, never how big the reset is.
+       reset_on_rate_change_total, reset_after_urb_restart_total,
+       stalled_after_full_reset_total, reset_timeout_total,
+       # Which recovery path each change actually took, counted over the run.
+       branch_reset, branch_recovered_on_open, branch_deferred, branch_clean,
+       # Incidence grouped the three ways open question 2 of
+       # re/rate_change_stall.md asks for.
+       stalls_direction_up, stalls_direction_down, stalls_direction_first,
+       stalls_family_cross, stalls_family_within,
+       rate_change_stream, gap_seconds, lead_stream_configure_timeouts,
+       # The steady-state clock measurement, and the start-up cost it excludes.
+       steady_ratio_playback_min, steady_ratio_playback_max,
+       steady_ratio_capture_min, steady_ratio_capture_max,
+       steady_error_playback_pct, steady_error_capture_pct,
+       steady_unmeasured_playback, steady_unmeasured_capture,
+       startup_s_playback_min, startup_s_playback_max,
+       startup_s_capture_min, startup_s_capture_max,
+       # A pointer that stops and resumes is a stall seen from the host, at the
+       # poll interval rather than at the watchdog's one second.
+       pointer_plateau_changes_playback, pointer_plateau_changes_capture,
+       pointer_quantum_max, xruns,
+       buffer_size_playback, period_size_playback,
+       buffer_size_capture, period_size_capture]
     pass: >
       Every rate change ends with working streams in BOTH directions. A stall
       that recovers is a PASS and is counted; a stall that survives a full USB
       reset is a FAIL, and so is a capture that comes back bit-exact silent.
+
+      resets_per_change_pct is not part of the pass criterion and deliberately
+      so -- a threshold would have to be picked, and any value above zero would
+      bless the fault. It is the number the driver is judged on over time
+      instead: it must trend to zero, and a build where it has not moved has
+      survived the fault rather than fixed it. The case prints it at the end of
+      every run for that reason.
 
       Capture is judged exactly as in JT-AUDIO-005: a running converter carries
       a noise floor whether or not anything is patched in, so an all-zero
@@ -496,25 +584,66 @@ cases:
       risk and was untested while this case only played.
 
       The rate itself is checked against the clock, not against the device.
-      Playing N samples at R Hz must take about N/R seconds, and recording for
-      D seconds must return about R x D frames; either ratio outside
-      rate_tolerance fails. This is independent of what GET_RATE reports, which
-      only proves the firmware accepted the value into a register -- exactly
-      the gap in which this device's known faults live, where every return code
-      is correct and the stream is not. The tolerance is deliberately loose:
-      process startup and device open are a real fraction of a one-second
-      measurement, so this is a gross-error check, not clock metrology.
+      This is independent of what GET_RATE reports, which only proves the
+      firmware accepted the value into a register -- exactly the gap in which
+      this device's known faults live, where every return code is correct and
+      the stream is not.
+
+      It is measured from hw_ptr, the device's own frame counter, sampled from
+      /proc/asound while the stream runs, and taken in steady state: after
+      settle_seconds, across the longest plateau-free span, in BOTH directions.
+      Either direction outside steady_tolerance fails. Timing a whole aplay or
+      arecord invocation instead -- which is what this case used to do -- gives
+      rate / (1 + startup/duration) and reads 10-17% low at four seconds even
+      when the device is perfect; the excluded cost is now measured and
+      reported as startup_s_*, rather than charged to the sample rate. Buffer
+      size does not enter the measurement: a buffer shifts latency, not rate.
+
+      A pointer that stops and later resumes is a STALL, reported as such with
+      its onset and duration, and the rate is measured around it rather than
+      through it. Averaging a stall into the rate would report the fault this
+      driver has as the fault it does not, in the same bucket.
+
+      The elapsed-time ratios are still recorded as cross-checks, and are all
+      that is left where no pointer window could be measured; there they are
+      judged only against capture_rate_gross_tolerance.
+
+      Which branch was under test is part of the result. rate_change_stream
+      fixes whether hw_params sees capture_open=1 (reset on the spot) or 0
+      (defer to the next capture open); branch_change_* records what each
+      change actually did, so a run that drifted onto the other branch is
+      visible rather than assumed away. Two runs may only be compared as
+      measurements of the same quantity if they used the same arm -- and a
+      capture:false run is never such a measurement: with nothing to recover a
+      deferred stall, capture stays dead and hw_params re-logs the stall at
+      every later change, so its count is one outage re-detected, not
+      per-change incidence.
     expect_dmesg:
       - 'Playback URB has stalled\.'
       - 'Capture URB has stalled\.'
       - 'Resetting device to recover from stall after rate change'
-      - 'waited \d+ ms for reset completion'
+      - 'Capture URB stalled when opening capture stream'
+      - 'Restarting URBs to recover stalled Capture stream'
     notes: >
       THE most important case in this catalog, and the one with the least
       obvious criterion. Capture stall after a rate change is expected on a
       healthy build -- the driver logs it deliberately so frequency can be
       tracked. "No warnings" would fail every run on a perfectly good driver.
       Worst case is a downward switch, so the rate list should not be sorted.
+
+      The parameter sweeps this case exists to serve are run with --param
+      rather than by editing the values above, e.g.
+
+        ./runner.py --case JT-RATE-001 --unattended \
+            --param rate_change_stream=playback --param gap_seconds=3
+
+      run.json records the resolved parameters, so every arm identifies itself.
+
+      No reset_wait_ms metric is listed: the message lib/rules.yaml looks for,
+      "waited N ms for reset completion", is not in the driver.
+      jockey3_wait_for_reset_completion() logs only a dev_dbg on entry and a
+      dev_warn on timeout, so the reset duration is not currently observable
+      from the log at all. See re/rate_change_stall.md.
 
   - id: JT-RATE-002
     title: Sample-rate change under full duplex
@@ -586,11 +715,18 @@ cases:
     requires: [device, sox]
     params:
       iterations_per_run: 5000
-    metrics: [stalls_per_1000, resets_full, reset_wait_ms_histogram, failures]
+    metrics: [resets_per_change_pct, stalls_per_change_pct, stalls_per_1000,
+              resets_full, failures]
     pass: Stall rate stable, every stall recovered, no escalation to give-up.
     notes: >
       The long-running version of JT-RATE-001, historically run for ten hours
       at a time. The metric that matters is whether the stall rate drifts.
+
+      resets_per_change_pct is the same headline figure JT-RATE-001 prints, and
+      is what makes the two comparable: a short run and a ten-hour one both
+      answer "how often does a rate change cost a device reset", so a rate that
+      is good in the small and bad in the large is visible as a difference
+      between them rather than as two incomparable numbers.
 
   - id: JT-RATE-004
     title: Rate change while the device is being removed
