@@ -868,6 +868,14 @@ def main():
 
     run.unclassified = ctx["unclassified"][:200]
     run.ended = results.utc_iso()
+    if not run.env["driver"]["loaded"]:
+        # A build-only run never loads anything, so driver_info() (captured
+        # before the gates ran) can only ever say "unknown". By now the
+        # "build" gate, if it ran, has produced a .ko and a manifest for it --
+        # read the identity back from the file instead of leaving it unknown.
+        built = env.built_driver_info(kernel.get("tree") or "")
+        if built and built.get("build"):
+            run.env["driver"] = built
     run.env["firmware"] = env.firmware_from_log(kmsg.read_log())
     if run.env["firmware"] is None and run.env["driver"]["loaded"]:
         run.env["firmware_note"] = (

@@ -41,6 +41,9 @@ Unlike most modern DJ controllers, the Reloop Jockey 3 does not use a class-comp
 - Confirmation of other Reloop Jockey 3 hardware
 - Kernel tree integration (eventual goal)
 
+See [`docs/test_status.md`](docs/test_status.md) for hardware test coverage by
+target — what's passed, what hasn't, and whether that result is still current.
+
 ## Supported Devices
 
 | Device                        | Status              | Notes                     |

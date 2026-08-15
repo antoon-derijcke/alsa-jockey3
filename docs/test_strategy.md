@@ -621,6 +621,57 @@ letting it masquerade as current. Whole-repository commit distance is used
 deliberately — attributing relevance per source file would be false precision
 in a driver where nearly every change touches `jockey3.c`.
 
+The table above answers "is JT-RATE-001 covered" for someone who already knows
+the catalog. It does not answer "how is this project doing" at a glance, which
+is what a GitHub visitor wants. `ledger.py --matrix` renders the same index as
+a pivot — cases down, targets across, one glyph per cell — and drops the
+detail (revision, commit count, age) down to a legend instead of a column, on
+purpose: a pivot that also tries to carry that detail stops being readable
+from across the room. Freshness collapses to two states instead of a number —
+tested against the exact commit HEAD is at now, or not proven current, which
+covers both a real commit gap and a machine with no checkout to measure one
+from. The published copy lives at [`test_status.md`](test_status.md); like the
+coverage table it is republished by hand — run the command, paste the output
+over the generated section, commit.
+
+The matrix reflects committed code only. A run against a dirty tree —
+bench iterations, work in progress — is dropped from consideration entirely
+rather than labelled: a pass on a scratch edit that never got committed has
+no place in a status published to the repository, even amber. Dirtiness is
+read from the driver-scoped `kernel_driver_dirty` flag the build manifest
+carries, the same one `driver_rev()` prefers, so a classification-rule edit
+elsewhere in this repository does not disqualify a driver build that was
+verbatim the committed source. `ledger.py`'s plain coverage table is
+unaffected — it is the working view, and a developer looking at it wants to
+see the run they just took, dirty tree or not.
+
+L1 and L2 are source-level checks, not per-target ones, so they only ever
+populate the `(source)` column — and only when collected. `checkpatch`,
+`build_jockey3.sh` and the KUnit/bench runners produce no `run.json` on their
+own; running them directly, as the day-to-day build commands earlier in this
+document do, leaves that column blank forever. The `build` profile in
+`profiles.yaml` exists to close that gap: `./runner.py --profile build` on
+the build host runs the same gates through `cases/build_gate.py`,
+`cases/codec_kunit.py` and `cases/codec_bench.py` and records the result.
+Because a build-only run never loads the module, its driver identity cannot
+come from the usual "what is loaded" check — `env.built_driver_info()`
+reads the git revision back from the manifest the build step just wrote for
+the `.ko` on disk, so these rows get a real freshness verdict instead of
+sitting permanently amber for having no loaded module to point at.
+
+**Freshness is scoped to the driver's own source files, not the whole
+repository, and this is load-bearing rather than cosmetic.** Publishing
+`test_status.md` is itself a commit, and whole-repository commit distance
+would count that commit against every result the matrix had just reported as
+current — the act of publishing a fresh matrix would immediately relabel it
+stale on the next run, before a single line of driver source had changed.
+`commits_since()` restricts `git rev-list --count` to the file list
+`sync-driver.sh --list` already maintains as the single point of truth for
+what a build actually compiles, so a commit that only touches docs, RE notes,
+the test framework, or this ledger's own published output does not move the
+counter. Whole-repository distance was tried first and rejected for exactly
+this reason.
+
 ---
 
 ## 11a. When the instrumentation runs out: wire-level tracing

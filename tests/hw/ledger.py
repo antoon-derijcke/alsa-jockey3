@@ -6,6 +6,7 @@
     ./ledger.py --target x86_64-debug  one target, and drop the target column
     ./ledger.py --metrics              metric trends per target
     ./ledger.py --markdown             as markdown for publishing
+    ./ledger.py --matrix               one-glance pass/fail pivot, all targets
 
 The question this answers is "am I looking at stale data?". A pass from three
 weeks ago still means something; it just means less. Showing the age and the
@@ -30,13 +31,19 @@ as the latest word -- a hardware run skips them by design, and letting that
 stand reported "skip" for a gate that had passed on the build host an hour
 earlier.
 
-Commit distance is measured across the whole repository on purpose. Attributing
-relevance per source file would be false precision in a driver where nearly
-every change touches jockey3.c. It is only computable where the git repository
-is, so it reads "?" on a test machine, which has the results but no checkout.
+Commit distance is scoped to the driver's own source files -- the list
+sync-driver.sh copies into a kernel tree -- not the whole repository.
+Attributing relevance per individual file would be false precision in a
+driver where nearly every change touches jockey3.c, but whole-repository
+distance turned out to be too coarse in the other direction: this repository
+also holds RE notes, documentation and the test framework, so a commit that
+only published this ledger's own output moved HEAD and read as the driver
+having changed. It is only computable where the git repository is, so it
+reads "?" on a test machine, which has the results but no checkout.
 """
 
 import argparse
+import functools
 import glob
 import json
 import os
@@ -75,14 +82,53 @@ def load_runs(root):
     return runs
 
 
-def commits_since(git_hash):
-    """How much has changed since the revision that was tested."""
-    if not git_hash:
-        return None
+@functools.lru_cache(maxsize=None)
+def driver_paths():
+    """The exact source files a build actually compiles into the module.
+
+    Read from `sync-driver.sh --list` -- the one file list this repository
+    already maintains as the single point of truth for what ships, so a new
+    source file added there is picked up here for free instead of needing a
+    second list that can drift from the first.
+
+    Cached for the process: this is called once per indexed run, and the
+    list does not change mid-invocation.
+    """
     try:
         p = subprocess.run(
-            ["git", "-C", REPO, "rev-list", "--count", f"{git_hash}..HEAD"],
+            ["bash", os.path.join(REPO, "tests", "build", "sync-driver.sh"),
+             "--list"],
             capture_output=True, text=True, timeout=15)
+        paths = [line.partition(":")[0] for line in p.stdout.splitlines()
+                 if line.strip()] if p.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError):
+        paths = []
+    return tuple(paths)
+
+
+def commits_since(git_hash):
+    """How much driver source has changed since the revision that was tested.
+
+    Scoped to the files sync-driver.sh actually copies into a kernel tree,
+    not the whole repository. Whole-repository distance was tried first and
+    turned out to be self-defeating: this repository also holds RE notes,
+    documentation and the test framework, so a commit that only published
+    this very matrix -- or edited a checkpatch rule, or added a paragraph to
+    re/protocol_analysis.md -- moved HEAD and made every fresh result read
+    stale on the next run, without a single line of driver source having
+    changed. Scoping to the driver's own file list is coarser than per-file
+    attribution (which is deliberately not done -- see the coverage table's
+    docstring) while still answering the question that matters: did the
+    thing that got tested change.
+    """
+    if not git_hash:
+        return None
+    cmd = ["git", "-C", REPO, "rev-list", "--count", f"{git_hash}..HEAD"]
+    paths = driver_paths()
+    if paths:
+        cmd += ["--", *paths]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         if p.returncode == 0:
             return int(p.stdout.strip() or 0)
     except (OSError, subprocess.SubprocessError, ValueError):
@@ -124,10 +170,26 @@ def driver_rev(git):
     return rev
 
 
+def is_dirty(git):
+    """Whether the driver under test had uncommitted changes.
+
+    Prefers the driver-scoped flag over the repository-wide one, for the same
+    reason driver_rev() does -- a scratch edit to a classification rule
+    should not disqualify a run whose driver sources were exactly the
+    committed ones. A manifest written before either flag existed carries
+    neither key; that is treated as clean rather than excluded, since there
+    is no evidence of dirt and older data should not vanish from the record
+    on that account alone.
+    """
+    if "kernel_driver_dirty" in git:
+        return bool(git["kernel_driver_dirty"])
+    return bool(git.get("dirty"))
+
+
 BUILD_LEVELS = ("L1", "L2")
 
 
-def build_index(runs, cases=None):
+def build_index(runs, cases=None, clean_only=False):
     """Latest pass and latest attempt per (target, case).
 
     Build and component cases are indexed under the pseudo-target "*" as well
@@ -139,12 +201,20 @@ def build_index(runs, cases=None):
     that is not this machine's job -- and letting "skip" stand as the latest
     word made the coverage table report "skip 2026-08-10" for a gate that had
     actually passed on the build host an hour earlier.
+
+    clean_only drops dirty runs from consideration as if they never happened,
+    rather than just labelling them. Bench iterations and other dev-in-progress
+    runs are real and worth keeping in the local record, but a status matrix
+    published to the repository is a claim about committed code -- a pass
+    against a scratch edit that never got committed has no meaning there.
     """
     cases = cases or {}
     idx = {}
     for run in runs:
         target = run.get("target", "?")
         git = ((run.get("env") or {}).get("driver") or {}).get("build") or {}
+        if clean_only and is_dirty(git):
+            continue
         rev = driver_rev(git)
         for r in run.get("results", []):
             when = run.get("started")
@@ -255,6 +325,79 @@ def coverage(cases, targets, idx, markdown=False, single_target=False):
     return "\n".join(lines)
 
 
+MATRIX_LEGEND = """\
+| | |
+|---|---|
+| ✅ | passed, against the current driver |
+| 🟡 | passed, but the driver has moved on since -- may no longer hold |
+| ❌ | failed, against the current driver |
+| 🟠 | failed, but the driver has moved on since -- may already be fixed |
+| ⬜ | skipped here by design (not applicable to this target) |
+| 🚫 | blocked -- wanted to run, couldn't (missing capability or tool) |
+| ⏳ | manual case, awaiting an operator's answer |
+| – | not applicable (build/component cases run once, under "(source)") |
+| (blank) | never run |
+"""
+
+
+def matrix_cell(slot):
+    """One glyph for one (target, case): see MATRIX_LEGEND.
+
+    "Fresh" means passed or failed against the exact commit HEAD is at now.
+    Anything else -- a real commit gap, or an unknown one because this
+    machine has no checkout to measure from -- is treated the same way: not
+    proven current, so it does not get a plain green tick. commits_since()
+    is whole-repository, the same measure the coverage table already uses,
+    so a matrix and a coverage table run side by side never disagree about
+    what counts as stale.
+    """
+    if not slot:
+        return ""
+    if slot["pass"]:
+        n = commits_since(slot["pass"].get("hash"))
+        return "✅" if n == 0 else "🟡"
+    last = slot["last"]
+    if last is None:
+        return ""
+    status = last["status"]
+    if status == results.SKIP:
+        return "⬜"
+    if status == results.BLOCKED:
+        return "🚫"
+    if status == results.PENDING:
+        return "⏳"
+    n = commits_since(last.get("hash"))
+    return "❌" if n == 0 else "🟠"
+
+
+def matrix(cases, targets, idx):
+    """Pass/fail pivot: cases on the rows, targets as columns.
+
+    Built for one glance from a README, not for the detail the coverage
+    table carries -- driver revision, commit count, age. Those stay in
+    `coverage()`; this is the summary that sends a reader there.
+    """
+    columns = ["(source)"] + list(targets)
+    head = ["case", "title"] + columns
+    out = ["| " + " | ".join(head) + " |",
+           "|" + "|".join(["---"] * len(head)) + "|"]
+    for cid, case in cases.items():
+        is_build = case.get("level") in BUILD_LEVELS
+        title = oneline(case.get("title"))
+        row = [cid, title.replace("|", "\\|")]
+        for col in columns:
+            source_col = col == "(source)"
+            if is_build != source_col:
+                row.append("–")
+            else:
+                # Build/component results are indexed under the pseudo-target
+                # "*" (see build_index), not the "(source)" column label.
+                lookup = "*" if source_col else col
+                row.append(matrix_cell(idx.get((lookup, cid))))
+        out.append("| " + " | ".join(row) + " |")
+    return "\n".join(out)
+
+
 def metric_trends(runs, markdown=False):
     """Every numeric metric, per target, oldest to newest.
 
@@ -298,6 +441,8 @@ def main():
     ap.add_argument("--results-dir")
     ap.add_argument("--metrics", action="store_true", help="metric trends only")
     ap.add_argument("--markdown", action="store_true")
+    ap.add_argument("--matrix", action="store_true",
+                     help="pass/fail pivot, all targets, for publishing")
     ap.add_argument("--target", "-t", help="limit to one target")
     args = ap.parse_args()
 
@@ -313,6 +458,22 @@ def main():
     if not runs:
         print(f"no runs found under {root}")
         print("run ./runner.py --profile smoke to create one")
+        return 0
+
+    if args.matrix:
+        # Committed code only -- a status matrix published to the repository
+        # is a claim about what shipped, not about what happened to be on
+        # the bench a moment ago.
+        clean_idx = build_index(runs, cases, clean_only=True)
+        stamp = time.strftime("%Y-%m-%d", time.gmtime())
+        print(f"## Test status -- {stamp}\n")
+        print("Generated by `ledger.py --matrix`. Reflects committed code "
+              "only -- runs against a dirty tree are excluded, not just "
+              "labelled. Do not hand-edit; regenerate and paste over this "
+              "section instead.\n")
+        print(matrix(cases, targets, clean_idx))
+        print()
+        print(MATRIX_LEGEND)
         return 0
 
     idx = build_index(runs, cases)

@@ -155,6 +155,48 @@ def driver_info():
     return info
 
 
+def module_ko_path(kernel_src):
+    return os.path.join(kernel_src, "sound", "usb", "jockey3",
+                        "snd-reloop-jockey3.ko")
+
+
+def build_id_of_file(path):
+    """GNU build-id of an on-disk .ko, without loading it.
+
+    build_id() reads the bare note blob sysfs exposes for a loaded module;
+    here the same note lives inside an ELF section, so this goes through
+    readelf instead -- the same tool write-manifest.sh uses to key the
+    manifest this is meant to look back up.
+    """
+    out = _run(["readelf", "-n", path])
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("Build ID:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def built_driver_info(kernel_src):
+    """Identity of the module a source tree would produce, whether or not
+    anything ever loads it.
+
+    driver_info() answers "what is loaded", which is the right question for a
+    hardware run and no question at all for a build-only one -- nothing there
+    ever gets loaded. An L1/L2 gate exercises the .ko the tree just produced,
+    so this reads that file's own build-id and looks up the manifest
+    write-manifest.sh recorded for it when the build gate ran, instead of
+    leaving the run's driver identity permanently unknown.
+    """
+    ko = module_ko_path(kernel_src)
+    if not os.path.exists(ko):
+        return None
+    bid = build_id_of_file(ko)
+    if not bid:
+        return None
+    return {"loaded": False, "build_id": bid, "srcversion": None,
+            "vermagic": None, "build": lookup_manifest(bid)}
+
+
 # ------------------------------------------------------------------- firmware
 
 # The driver reads the firmware revision at probe and logs it, and nothing
