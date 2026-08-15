@@ -38,6 +38,13 @@ areas:
   HOTPLUG: Disconnect, replug, power loss
   SOAK:    Endurance and high repetition
 
+levels:
+  L1:      Build and static analysis
+  L2:      Unit tests (no hardware)
+  L3:      Driver functional tests
+  L4:      Integration tests
+  L5:      Endurance and stability tests
+
 cases:
 
   # ------------------------------------------------------------------ BUILD
@@ -833,7 +840,7 @@ cases:
   - id: JT-AUDIO-003
     title: Real content playback, listened to
     area: AUDIO
-    level: L4
+    level: L3
     mode: manual
     status: implemented
     requires: [device, speakers, human]
@@ -1259,6 +1266,59 @@ cases:
       Manual for now because forcing a reset on demand is awkward; the stall
       that provokes it is probabilistic. A dedicated case would need a way to
       induce the stall rather than wait for one.
+
+  # ------------------------------------------------------------- INTEGRATION
+
+  - id: JT-INTEROP-001
+    title: Mixxx session with MIDI control
+    area: INTEGRATION
+    level: L4
+    mode: manual
+    status: implemented
+    requires: [device, speakers, human, mixxx]
+    pass: >
+      A real DJ session runs without dropouts, drift, audible degradation or
+      loss of control-surface response.
+    steps:
+      - DRAFT -  TBC
+      - Start Mixxx with the device selected for output and the control surface.
+      - Play for at least an hour, using both decks and the control surface.
+      - Note the duration and anything audible or tactile that was off.
+    notes: >
+      Never automated, and never should be. This is the workload the driver
+      exists for, and the ear catches degradation that no metric here would.
+
+  - id: JT-INTEROP-002
+    title: jackd integration with Audio and MIDI control
+    area: INTEGRATION
+    level: L4
+    mode: manual
+    status: implemented
+    requires: [device, speakers, human, jackd]
+    pass: >
+      A real session with jackd runs without dropouts, drift, audible degradation 
+      or loss of control-surface response. Provides full duplex audio and MIDI control.
+    steps:
+      - DRAFT -  TBC
+      - Start jackd with the device selected for output and the control surface.
+      - Play for at least 10 minutes, using both audio and MIDI control.
+      - Note the duration and anything audible or tactile that was off.
+
+  - id: JT-INTEROP-003
+    title: Pipewire integration with Audio and MIDI control
+    area: INTEGRATION
+    level: L4
+    mode: manual
+    status: implemented
+    requires: [device, speakers, human, pipewire]
+    pass: >
+      A real session with pipewire runs without dropouts, drift, audible degradation or
+      loss of control-surface response after a power cycle.
+    steps:
+      - Start Pipewire with the device selected for output and the control surface.
+      - Play for at least 10 minutes, using both decks and the control surface.
+      - Note the duration and anything audible or tactile that was off.
+
 
   # ------------------------------------------------------------------- SOAK
 
