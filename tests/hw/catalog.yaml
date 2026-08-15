@@ -13,7 +13,7 @@
 #   area          BUILD CODEC PROBE PCM RATE AUDIO MIDI PM HOTPLUG SOAK
 #   level         L1..L5 -- scope of what is exercised, not who runs it.
 #   mode          automated | manual | semi-automated
-#   status        implemented | planned
+#   status        implemented | planned | idea | deprecated | removed
 #   requires      capability tokens the target must provide (see targets.yaml)
 #   exec          automated only: script under cases/, relative to tests/hw
 #   args          automated only: fixed arguments appended to exec
@@ -290,13 +290,16 @@ cases:
     area: PROBE
     level: L3
     mode: automated
-    status: planned
+    status: idea
     requires: [gadget-emulation]
     pass: probe() fails cleanly with no resource leak.
     notes: >
       jockey3_validate_endpoints() is an error path that real hardware can
       never exercise. Would need a USB gadget or dummy_hcd emulating a
-      malformed descriptor. Low priority, high novelty.
+      malformed descriptor. Low priority, high novelty. Status is "idea"
+      rather than "planned": there is no foreseeable way to mock a faulty
+      Jockey 3 firmware, so this stays in the catalog but out of --list and
+      the ledger until that changes.
 
   # -------------------------------------------------------------------- PCM
 

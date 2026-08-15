@@ -448,7 +448,7 @@ def main():
 
     catalog = load("catalog.yaml")
     targets_yaml = load("targets.yaml")
-    cases = {c["id"]: c for c in catalog["cases"]}
+    cases = {c["id"]: c for c in catalog["cases"] if c["status"] != "idea"}
     targets = list(targets_yaml["targets"])
     if args.target:
         targets = [args.target]

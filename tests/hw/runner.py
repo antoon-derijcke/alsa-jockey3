@@ -71,7 +71,7 @@ def load_all():
     targets = load_yaml("targets.yaml")
     profiles = load_yaml("profiles.yaml")
     rules = load_yaml(os.path.join("lib", "rules.yaml"))
-    cases = {c["id"]: c for c in catalog["cases"]}
+    cases = {c["id"]: c for c in catalog["cases"] if c["status"] != "idea"}
     return catalog, cases, targets, profiles, rules
 
 
