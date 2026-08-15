@@ -217,6 +217,26 @@ def needs_running_kernel(plan):
     return False
 
 
+def select_cases(plan, cases, wanted):
+    """Narrow a plan to --case's selection.
+
+    Returns (plan, unknown_ids). A requested id absent from the plan is
+    appended from the catalog directly, at one iteration and the catalog's
+    own default params, so --case can run something the profile never
+    scheduled -- an id that is not in the catalog at all comes back in
+    unknown_ids instead, for the caller to report.
+    """
+    filtered = [p for p in plan if p[0]["id"] in wanted]
+    missing = wanted - {p[0]["id"] for p in filtered}
+    unknown = []
+    for cid in sorted(missing):
+        if cid in cases:
+            filtered.append((cases[cid], 1, dict(cases[cid].get("params") or {})))
+        else:
+            unknown.append(cid)
+    return filtered, unknown
+
+
 def resolve_target(args, targets, plan):
     """Return (name, spec, kernel_facts, problems)."""
     problems = []
@@ -624,7 +644,21 @@ def main():
     # the plan (to know whether this run touches a running driver at all).
     # Break the cycle with a provisional plan: overrides can change how many
     # times a case runs, never whether the profile is build-only in nature.
+    #
+    # --case DOES change which cases are in it, though, and has to be applied
+    # here too, not only to the final plan below: needs_running_kernel() saw
+    # the whole default profile even for `--case JT-CODEC-001`, which drags
+    # in every L3+ case the profile happens to schedule and makes an L2-only
+    # run demand a running kernel it never touches. On a build host that
+    # forces --target by hand -- and even then, resolve_target() had already
+    # picked env.kernel_info() (the running kernel) over kernel_tree_info(),
+    # so the "tree" key that env.built_driver_info() needs to identify a
+    # build-only run's driver revision was never in `kernel` to begin with.
+    # A run like that keeps its driver identity unknown forever, which reads
+    # as permanently stale in ledger.py regardless of how often it is rerun.
     provisional = resolve_plan(args.profile, None, cases, profiles)
+    if args.case:
+        provisional, _unknown = select_cases(provisional, cases, set(args.case))
     target_name, target_spec, kernel, target_problems = resolve_target(
         args, targets["targets"], provisional)
     if not target_name:
@@ -634,17 +668,11 @@ def main():
 
     plan = resolve_plan(args.profile, target_name, cases, profiles)
     if args.case:
-        wanted = set(args.case)
-        plan = [p for p in plan if p[0]["id"] in wanted]
-        missing = wanted - {p[0]["id"] for p in plan}
-        if missing:
-            # Allow running a case that is not in the profile at all.
-            for cid in sorted(missing):
-                if cid in cases:
-                    plan.append((cases[cid], 1, dict(cases[cid].get("params") or {})))
-                else:
-                    print(f"error: unknown case {cid}", file=sys.stderr)
-                    return 3
+        plan, unknown = select_cases(plan, cases, set(args.case))
+        for cid in unknown:
+            print(f"error: unknown case {cid}", file=sys.stderr)
+        if unknown:
+            return 3
 
     # Applied last, over the catalog, the profile entry and the per-target
     # override alike -- the operator on the bench is the most specific source
