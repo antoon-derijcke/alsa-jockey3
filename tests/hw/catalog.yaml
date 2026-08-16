@@ -331,13 +331,23 @@ cases:
     area: PCM
     level: L3
     mode: automated
-    status: planned
+    status: implemented
     requires: [device]
+    exec: cases/pcm_open_close.py
     params:
       iterations_per_run: 100
     metrics: [open_ms]
     pass: Every open succeeds and every close releases the substream.
-    notes: Derived from scripts-alsa-dev/test_open_close.sh.
+    notes: >
+      Derived from scripts-alsa-dev/test_open_close.sh. Not redundant with
+      JT-PCM-002/004/005 and friends: those each open a substream once per run
+      and spend the run on whatever they actually measure. This is the only
+      case that repeats the open/close cycle itself, hundreds of times back to
+      back with no playback or capture content of interest, so it is the one
+      that would catch a leak or a state-release bug that only shows up on the
+      Nth open. Playback and capture are cycled independently with
+      aplay/arecord --samples (not --duration), so the cost per cycle does not
+      depend on rate.
 
   - id: JT-PCM-002
     title: Playback at each supported rate
