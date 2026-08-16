@@ -373,8 +373,9 @@ cases:
     area: PCM
     level: L3
     mode: automated
-    status: planned
-    requires: [device, sox]
+    status: implemented
+    requires: [device]
+    exec: cases/pcm_limits.py
     params:
       period_sizes: [minimum, 120, 144, 1024, maximum]
       period_counts: [2, 4, 1024]
