@@ -36,14 +36,14 @@ areas:
   MIDI:    Control surface in, LEDs out, running status
   PM:      Suspend, resume, reset
   HOTPLUG: Disconnect, replug, power loss
-  INTEGRATION: Interoperability and integration with other subsystems
+  INTEROP: Interoperability and integration with other subsystems
   SOAK:    Endurance and high repetition
 
 levels:
   L1:      Build and static analysis
   L2:      Unit tests (no hardware)
   L3:      Driver functional tests
-  L4:      Integration tests
+  L4:      Integration/interoperability tests
   L5:      Endurance and stability tests
 
 cases:
@@ -1464,7 +1464,7 @@ cases:
 
   - id: JT-INTEROP-001
     title: Mixxx session with MIDI control
-    area: INTEGRATION
+    area: INTEROP
     level: L4
     mode: manual
     status: implemented
@@ -1483,7 +1483,7 @@ cases:
 
   - id: JT-INTEROP-002
     title: jackd integration with Audio and MIDI control
-    area: INTEGRATION
+    area: INTEROP
     level: L4
     mode: manual
     status: implemented
@@ -1499,7 +1499,7 @@ cases:
 
   - id: JT-INTEROP-003
     title: Pipewire integration with Audio and MIDI control
-    area: INTEGRATION
+    area: INTEROP
     level: L4
     mode: manual
     status: implemented
@@ -1586,7 +1586,7 @@ cases:
       requirement JT-SOAK-004's duration_seconds overrides already carry.
 
   - id: JT-SOAK-002
-    title: Mixxx session
+    title: Long running Mixxx session
     area: SOAK
     level: L5
     mode: manual
