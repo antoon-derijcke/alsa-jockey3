@@ -459,35 +459,38 @@ cases:
     title: Unsupported hw_params are refused
     area: PCM
     level: L3
-    mode: manual
+    mode: automated
     status: implemented
-    requires: [device, human]
+    requires: [device]
+    exec: cases/pcm_hw_params_refused.py
+    metrics: [configs_tested, configs_accepted, configs_refused]
     pass: >
       Wrong channel counts, unsupported formats and unsupported rates are
       rejected at hw_params rather than accepted and then misbehaving.
-    steps:
-      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
-      - >
-        Each of these must FAIL with an error, not play:
-        aplay -D hw:$CARD,0 -f S24_3LE -c 2 -r 44100 /dev/zero
-        (wrong channel count -- playback is 4)
-      - >
-        aplay -D hw:$CARD,0 -f S16_LE -c 4 -r 44100 /dev/zero
-        (unsupported format -- only S24_3LE)
-      - >
-        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 22050 /dev/zero
-        (unsupported rate -- 44100/48000/88200/96000 only)
-      - >
-        As a control, this must SUCCEED:
-        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 44100 /dev/zero
-      - Confirm no message in dmesg suggests the driver accepted and then coped.
     notes: >
       Channels are fixed (4 playback, 6 capture) and the only format is
       S24_3LE, so this is a short, cheap and genuinely useful case.
 
-      The control step is the one that makes it a test rather than a
-      formality: four commands that all fail prove nothing if the fifth would
-      have failed too.
+      For each stream, three individually-wrong configs (channel count,
+      format, rate) must be refused, and one all-correct control must
+      succeed. The control is the one that makes it a test rather than a
+      formality: four commands that all fail prove nothing if the fifth
+      would have failed too.
+
+      The accept/refuse verdict comes from libasound's exact hw_params
+      setters (dir=0), not aplay/arecord's exit code: aplay's -r negotiates
+      rate with snd_pcm_hw_params_set_rate_near(), which silently rounds an
+      unsupported rate to the nearest one the device offers and exits 0,
+      the same "near" rounding trap pcm_limits.py (JT-PCM-003) documents
+      for period and buffer size. Channels and format have no such
+      rounding, but rate does, so all three are probed the exact way for
+      consistency. Confirmed on hardware: an earlier plain-exit-code
+      version of this case reported the unsupported-rate probe as refused
+      when aplay had actually been rounded to 44100 and never asked the
+      driver for 22050 at all.
+
+      No dmesg check for "accepted and then coped": classification from the
+      kernel log is the runner's job (see lib/case.py), not the case's.
 
       Use hw: and never plughw: -- plughw exists precisely to convert these
       away, and would turn every case here into a pass.
