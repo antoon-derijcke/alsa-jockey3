@@ -29,6 +29,10 @@
 #   KERNEL_SRC   main kernel tree to take the worktree from (default ~/sound)
 #   KUNIT_TREE   worktree location                (default ~/sound-kunit)
 #   KUNIT_REF    commit/branch to check out       (default feature/jockey3)
+#   KUNIT_FILTER kunit.py suite/test filter glob, e.g. 'ploytec-midi*'
+#                (default: unset, runs every suite .kunitconfig enables --
+#                both codec and MIDI are built into one module either way, so
+#                this only controls which suite's results get reported)
 #
 # (C) 2026 Frank van de Pol <fvdpol@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -39,6 +43,7 @@ SRC_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 KERNEL_SRC=${KERNEL_SRC:-$HOME/sound}
 KUNIT_TREE=${KUNIT_TREE:-$HOME/sound-kunit}
 KUNIT_REF=${KUNIT_REF:-feature/jockey3}
+KUNIT_FILTER=${KUNIT_FILTER:-}
 DST_REL=sound/usb/jockey3
 
 DEFAULT_ARCHES="um i386 arm64 arm riscv"
@@ -135,7 +140,8 @@ setup_tree() {
 		 ploytec_proto.c ploytec_proto.h \
 		 ploytec_codec.c ploytec_codec.h \
 		 ploytec_midi.c  ploytec_midi.h \
-		 ploytec_codec_kunit.c ploytec_codec_test_vectors.h; do
+		 ploytec_codec_kunit.c ploytec_codec_test_vectors.h \
+		 ploytec_midi_kunit.c; do
 		cp "$SRC_DIR/$f" "$dst/$f"
 	done
 }
@@ -152,7 +158,9 @@ run_arch() {
 		label="$arch (portable reference codec)"
 	fi
 
-	args=(run "--kunitconfig=$DST_REL" "--build_dir=$build_dir")
+	args=(run)
+	[ -n "$KUNIT_FILTER" ] && args+=("$KUNIT_FILTER")
+	args+=("--kunitconfig=$DST_REL" "--build_dir=$build_dir")
 
 	if [ "$arch" != um ]; then
 		args+=("--arch=$arch")

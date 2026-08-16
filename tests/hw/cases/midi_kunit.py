@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""L2: run the in-kernel codec KUnit suite.
+"""L2: run the in-kernel MIDI Running Status expander KUnit suite.
 
-Thin wrapper around tests/codec/run_kunit.sh, which already knows the cross
-compilers, the QEMU binaries and the two per-architecture config quirks. The
-value added here is recording the pass count as a metric, so a suite that
-silently starts running fewer tests is visible.
+Thin wrapper around tests/codec/run_kunit.sh -- the same script the codec
+suite uses, since both suites are built from the one .kunitconfig into the
+one module. KUNIT_FILTER scopes the run to just ploytec-midi*, so this
+case's counts are about the expander alone, not the codec suite that
+happens to share the build.
 
-The MIDI Running Status suite (ploytec_midi_kunit.c, see midi_kunit.py) is
-built into the very same .kunitconfig and module, so a plain kunit.py run
-would fold its results into these counts too. KUNIT_FILTER scopes the run to
-just the codec suite, keeping this case's counts about the codec alone.
+Carved out of JT-MIDI-003: "running status is expanded correctly" depended
+on human observation of LED response and could not be automated. This suite
+proves ploytec_midi_running_status_expand() correct in isolation instead --
+see the DOC: comment at the top of ploytec_midi_kunit.c.
 """
 
 import os
@@ -33,16 +34,16 @@ def main():
 
     kernel_src = os.environ.get("KERNEL_SRC") or os.path.expanduser("~/sound")
     if not os.path.isdir(os.path.join(kernel_src, "tools", "testing", "kunit")):
-        # Skip rather than blocked -- see build_gate.py. Note the codec is not
-        # untested on a machine that skips this: with
-        # CONFIG_SND_USB_JOCKEY3_CODEC_KUNIT_TEST the suite runs at every
+        # Skip rather than blocked -- see build_gate.py. Note the expander is
+        # not untested on a machine that skips this: with
+        # CONFIG_SND_USB_JOCKEY3_MIDI_KUNIT_TEST the suite runs at every
         # module load, and JT-PROBE-001 records the result as
         # kunit_cases_passed_on_target.
         c.skip(f"no kernel tree with kunit.py at {kernel_src}: this is not a "
                f"build host. Run the 'build' profile on one, or set KERNEL_SRC.")
 
     targets = sys.argv[1:] or ["um"]
-    env = dict(os.environ, KUNIT_FILTER="ploytec-codec*")
+    env = dict(os.environ, KUNIT_FILTER="ploytec-midi*")
     rc, out, err = c.run(["bash", script] + targets, timeout=3600, env=env)
 
     with open(os.path.join(c.workdir, "kunit.log"), "w", encoding="utf-8") as f:
@@ -57,7 +58,6 @@ def main():
 
     c.metric("tests_run", total)
     c.metric("tests_passed", passed)
-    c.metric("arches_run", len(targets))
     if failed:
         c.metric("tests_failed", failed)
 

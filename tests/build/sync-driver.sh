@@ -37,6 +37,7 @@ FILES=(
 	"ploytec_midi.h:ploytec_midi.h"
 	"ploytec_codec_kunit.c:ploytec_codec_kunit.c"
 	"ploytec_codec_test_vectors.h:ploytec_codec_test_vectors.h"
+	"ploytec_midi_kunit.c:ploytec_midi_kunit.c"
 )
 
 if [ "${1:-}" = "--list" ]; then

@@ -1186,7 +1186,7 @@ cases:
       as confirmation that MIDI OUT reached the device at all.
 
   - id: JT-MIDI-003
-    title: MIDI flood and running status expansion
+    title: MIDI flood throughput
     area: MIDI
     level: L3
     mode: automated
@@ -1194,13 +1194,21 @@ cases:
     requires: [device, python-mido]
     metrics: [tx_bytes_per_sec, tx_peak_bytes_per_sec, rx_bytes_per_sec, dropped]
     pass: >
-      Sustained transmission holds up under increasing load without dropping or
-      corrupting messages, and running status is expanded correctly.
+      Sustained transmission holds up under increasing load without dropping
+      messages.
     notes: >
       miditest.py already measures this but is interactive; it needs a scripted
       mode that runs a fixed ramp. Baselines from the Windows vendor driver
       (miditest/README.md): RX peak 1695 B/s, TX 330 B/s sustained and 862 B/s
       peak, 515 B/s sustained while flooding.
+
+      Previously also covered Running Status expansion correctness, which
+      depended on human observation of LED response and could not be
+      automated. That objective now belongs to JT-MIDI-006, an L2 KUnit suite
+      that proves the expansion logic correct in isolation; JT-MIDI-002
+      already confirms LEDs respond to the resulting MIDI OUT stream. This
+      case is left to measure only what genuinely needs hardware: sustained
+      throughput under load.
 
   - id: JT-MIDI-004
     title: MIDI OUT throughput at each sample rate
@@ -1216,7 +1224,10 @@ cases:
     notes: >
       Not redundant with JT-MIDI-003. The rate limiter is a leaky bucket whose
       divisor is derived from the sample rate, so throughput is rate-dependent
-      by construction and each rate is a separate arithmetic path.
+      by construction and each rate is a separate arithmetic path. Now that
+      JT-MIDI-003 has narrowed to flood throughput only, both cases measure
+      throughput and are candidates for consolidation with JT-SOAK-004 --
+      revisit together once JT-MIDI-006 has landed.
 
   - id: JT-MIDI-005
     title: Firmware padding bytes are stripped from MIDI IN
@@ -1230,6 +1241,29 @@ cases:
       Different firmware revisions emit different padding (0xF9, 0xFB, 0xFD,
       0xFF have all been observed). The one case where testing both units is
       genuinely worth the cable swap.
+
+  - id: JT-MIDI-006
+    title: KUnit suite for MIDI 1.0 Running Status expansion
+    area: MIDI
+    level: L2
+    mode: automated
+    status: implemented
+    requires: [kernel-tree]
+    exec: cases/midi_kunit.py
+    args: [um]
+    metrics: [tests_run, tests_passed]
+    pass: All tests pass.
+    notes: >
+      Proves ploytec_midi_running_status_expand() correct in isolation, no
+      device needed: a random Channel Voice / System Common / Real-Time
+      message stream is compressed to Running Status, expanded back out
+      through the function plus its documented queued-byte drain contract,
+      and an independent parser checks the message sequence round-trips and
+      that no Channel Voice message in the output is left without an
+      explicit status byte. Carved out of JT-MIDI-003, whose "correctly
+      expanded" objective depended on human observation of LED response and
+      could not be automated; the rate-limiter interaction and actual URB
+      delivery remain outside this suite's scope.
 
   # --------------------------------------------------------------------- PM
 

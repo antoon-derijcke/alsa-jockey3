@@ -20,9 +20,9 @@ profiles:
 
   build:
     description: >
-      Static gates and codec validation only. Needs no hardware, so it runs on
-      the build host -- and identifies its target from the kernel tree being
-      built, not from the machine it happens to run on.
+      Static/build gates and Unit/Component tests only. Needs no hardware, so
+      it runs on the build host -- and identifies its target from the kernel
+      tree being built, not from the machine it happens to run on.
     cases:
       - {id: JT-BUILD-001, iterations: 1}
       - {id: JT-BUILD-002, iterations: 1}
@@ -33,6 +33,7 @@ profiles:
       - {id: JT-CODEC-002, iterations: 1}
       - {id: JT-CODEC-003, iterations: 1}
       - {id: JT-CODEC-004, iterations: 1}
+      - {id: JT-MIDI-006,  iterations: 1}
 
   smoke:
     description: >
@@ -67,6 +68,7 @@ profiles:
       - {id: JT-BUILD-004, iterations: 1}
       - {id: JT-CODEC-001, iterations: 1}
       - {id: JT-CODEC-002, iterations: 1}
+      - {id: JT-MIDI-006,  iterations: 1}
       - {id: JT-PROBE-001, iterations: 5}
       - {id: JT-PROBE-002, iterations: 1}
       - {id: JT-PROBE-003, iterations: 1}
@@ -98,6 +100,7 @@ profiles:
         JT-BUILD-004: {iterations: 0}
         JT-CODEC-001: {iterations: 0}
         JT-CODEC-002: {iterations: 0}
+        JT-MIDI-006:  {iterations: 0}
         JT-PROBE-002: {iterations: 0}
         # Power-cycling is slow on a Pi 1B and re-enumeration is the slowest
         # part of it. Three cycles still catches a slot leak, which increments
@@ -149,6 +152,7 @@ profiles:
       - {id: JT-CODEC-002, iterations: 1}
       - {id: JT-CODEC-003, iterations: 1}
       - {id: JT-CODEC-004, iterations: 1}
+      - {id: JT-MIDI-006,  iterations: 1}
       - {id: JT-PROBE-001, iterations: 10, params: {iterations_per_run: 20}}
       - {id: JT-PROBE-002, iterations: 1, params: {iterations_per_run: 200}}
       - {id: JT-PROBE-003, iterations: 1}
