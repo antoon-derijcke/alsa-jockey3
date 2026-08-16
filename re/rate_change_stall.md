@@ -440,37 +440,328 @@ six recovered -- `escalated` and `unrecovered` were zero, and capture came back
 live on every change. The mitigations are working; what is unexplained is why
 the fault is one-directional.
 
+## 2026-08-16: the schematic explains what to rule out, not what to blame
+
+Before more hardware time was spent, the service manual was read for the
+clocking topology. The device has two independent clock domains fanned into
+the Ploytec USB part through a 74HC00 NAND pair (oscillator select) and a
+74HC74 flip-flop (divide-ratio select):
+
+```
+DSP oscillator   24.576  MHz  --> /512 = 48000 Hz   or  /256 = 96000 Hz
+XTAL oscillator  22.5792 MHz  --> /512 = 44100 Hz   or  /256 = 88200 Hz
+```
+
+So "crosses 44k1/48k family" and "switches the NAND oscillator mux" are the
+same event in hardware, and every downward step in the original interleaved
+sweep (`88200->48000`, `96000->44100`) happens to do both at once, alongside
+switching the flip-flop's divide ratio from /256 to /512. Three candidate
+mechanisms -- oscillator mux glitch, divider resync, and "downward" as a pure
+host-side artifact -- were confounded in one bit each. This motivated the
+`sweep_order=as-given`, `rates=[96000,48000,96000,44100]` run proposed in the
+previous session, which puts one down step within a clock family
+(`96000->48000`, oscillator unchanged) and one down step across it
+(`96000->44100`, oscillator changed), and the mirror image upward.
+
+## 2026-08-16: divider direction confirmed, oscillator crossing ruled out
+
+Four hardware runs, all `x86_64-prod`, build unchanged across the session:
+
+| run | config | down stalls | up stalls |
+|---|---|---|---|
+| `20260816T204542Z-functional` | interleave, `[44100,48000,88200,96000]`, 25 iter | 23/50 | 0/49 |
+| `20260816T210602Z-smoke` | as-given, `[96000,48000,96000,44100]`, 25 iter | 25/50 | 0/49 |
+| `20260816T223625Z-smoke` | as-given, `[96000,48000,96000,44100]`, **60 iter** | 62/120 | 0/119 |
+| `20260816T231358Z-smoke` | interleave, `[44100,48000,88200,96000]`, 25 iter (repeat) | 22/50 | 0/49 |
+
+Direction alone predicts every stall across all four runs -- 132/220 down,
+**0/366 pooled up** -- which was already the 08-15 finding. What the as-given
+runs add is the split by whether the oscillator mux also switched:
+
+| pair | oscillator | divider | n=25 (`210602`) | n=60 (`223625`) |
+|---|---|---|---|---|
+| `96000->48000` | unchanged (DSP) | /256->/512 | 15/25 (60%) | 33/60 (55%) |
+| `96000->44100` | DSP->XTAL | /256->/512 | 10/25 (40%) | 29/60 (48%) |
+| `48000->96000` | unchanged (DSP) | /512->/256 | 0/25 | 0/60 |
+| `44100->96000` | XTAL->DSP | /512->/256 | 0/24 | 0/59 |
+
+At n=25 the within-family cell looked worse than the cross-family one (60%
+against 40%), which read like the oscillator switch was *helping*. At n=60
+that gap collapsed to 55% against 48% -- well inside the ~6.5pp standard
+error for n=60 at p~0.5, i.e. noise. **The 96000->48000 cell never touches
+the NAND oscillator mux at all** (both rates run off the same 24.576 MHz
+DSP oscillator, only the flip-flop's divide ratio changes) and it stalls at
+least as often as the cell that does switch oscillators. That rules out an
+oscillator-mux glitch as the mechanism: the fault tracks the flip-flop's
+divide-ratio transition (`/256 -> /512`, i.e. toward the lower rate in
+either family), not the NAND gate's source select. "Family crossing" was a
+correlate of the real variable, not the variable itself.
+
+One thing this cannot separate, because the hardware doesn't offer the
+combination: every within-family step on this device is exactly 2:1
+(44100<->88200, 48000<->96000), so "the divide ratio changes" and "the ratio
+is not a power of two" stay tied together here. If a future finding turns on
+this, it cannot be resolved from this device alone.
+
+## 2026-08-16: the within-run drift did not reproduce
+
+The 08-15 run showed the downward-stall rate climbing from 0% to 44% across
+one 100-change run, bucketed by quartile. Two more full-length runs came back
+flat, bucketing every change (not just downward ones) by quartile of the run:
+
+| run | Q1 | Q2 | Q3 | Q4 |
+|---|---|---|---|---|
+| `20260816T204542Z-functional` (the original climbing run) | 2/25 | 5/25 | 5/25 | 11/25 |
+| `20260816T210602Z-smoke` | 6/25 | 7/25 | 6/25 | 6/25 |
+| `20260816T223625Z-smoke` | 15/60 | 19/60 | 14/60 | 14/60 |
+| `20260816T231358Z-smoke` (repeat of the original config) | 5/25 | 7/25 | 4/25 | 6/25 |
+
+Only the original run shows a trend; the other three, including a same-config
+repeat of it, do not. Treat the drift as an unreplicated one-off, not a
+mechanism to build an explanation around. It is not ruled out -- one run each
+way is a coin flip's worth of evidence -- but it no longer belongs on the
+priority list above the direction finding.
+
+## 2026-08-16: a device wedge under sustained resets, distinct from the everyday stall
+
+`20260816T213343Z-smoke` (as-given, 60 iterations, `gap_seconds=0`) did not
+just fail statistically -- it wedged the device. Reconstructed from
+`dmesg.txt`, change-by-change:
+
+- Changes 1-100 ran the ordinary pattern: some fraction of downward changes
+  stall at `hw_params()`, `usb_queue_reset_device()` fires, capture comes
+  back. Ordinary so far.
+- From roughly change 70 onward the reset frequency climbed -- by change 90
+  through 100, nearly every downward change was resetting (changes 70, 74,
+  76, 78, 80, 82, 84, 86, 88, 90, 92, 96, 98 all reset in that stretch).
+- Immediately after change 100, all three endpoints started returning `-71`
+  (`EPROTO`) simultaneously: `Playback URB error`, `Capture URB error`,
+  `MIDI IN URB error`, each counting consecutive failures, each hitting
+  `stopped after 8 consecutive URB errors` within about 100 ms of the first
+  one. This is not the capture-only stall the mitigations target -- it took
+  down playback and MIDI too, which is otherwise unaffected throughout every
+  other run in the corpus.
+- The device dropped off the bus (`USB disconnect, device number 125`) and
+  re-enumerated -- but the *same* `-71` cascade recurred immediately on the
+  freshly-enumerated device, twice more (device numbers 126, then 127),
+  three full disconnect/re-enumeration cycles in about 30 seconds before the
+  firmware finally responded normally again (device number 2).
+- After that recovery, rate-change reliability was markedly worse than
+  baseline for an extended stretch: a second internal attempt sequence
+  (visible in the log as `change1` recurring with a fresh device) shows a
+  reset on very nearly every change, well above the 44-55% baseline
+  established above.
+
+`usb_queue_reset_device()` -- a USB port reset -- did not clear this; only a
+full physical disconnect/re-enumeration did, and it took three tries. This
+looks like sustained back-to-back stalls pushing the device into a state the
+driver's existing recovery path cannot reach, which is a materially different
+(and more serious) failure than the one this document otherwise
+characterizes. `gap_seconds=0` means the reset `hw_params()` queues is never
+waited for before the next change can start (noted already in the 08-15
+"what should be instrumented" section) -- consecutive unwaited resets
+overlapping is the most concrete mechanism on hand for why a sustained run
+would degrade the device rather than just repeatedly recovering it.
+
+The 240-change target was not reached because of this; a rerun of the same
+config (`20260816T223625Z-smoke`) completed cleanly and did not wedge. One
+wedge in five full-length runs across the session -- not frequent, but not
+explained, and it is the more consequential open question of the two now
+that direction/family is resolved. It belongs with the existing open
+findings on device wedging (see project memory), not folded into the
+capture-stall mitigations that already handle the ordinary case.
+
 ## Open questions, in the order worth attacking
 
-1. **Measure per-change incidence on each branch, one variable at a time.**
-   Three runs, ~15 minutes, per the commands above. The old framing of this
-   question -- 19/20 against 9/20 -- is void; see the section above for why.
-2. **Direction or clock family?** Answered in part above: the stall is
-   one-directional, 6/10 downward against 0/9 upward. What remains is that the
-   default sweep confounds direction with family crossing. One run with
-   `sweep_order=as-given` and `rates=[96000,48000,96000,44100]` separates them,
-   and should come before anything else. Note also that the first change after
-   probe is recorded with no predecessor rather than borrowing the cyclic one,
-   so "it is only the first change" stays distinguishable.
-3. **What does the wire show during a failing rate change?** The corpus has no
-   trace of one. `usb/parse_openvizsla.py --errors=0` would show whether the
-   device NAKs or stalls the endpoint, or simply goes quiet. This is the
-   expensive instrument and should follow 1 and 2, not precede them.
-4. **Why does our sequence take 166-211 ms against macOS's 103-142 ms?** We are
-   slower and resume later (70-85 ms vs 1-21 ms). Not obviously causal, but it
-   is an unexplained divergence from a reference implementation that does not
-   have the fault.
+1. ~~Measure per-change incidence on each branch, one variable at a time.~~
+   Done 2026-08-15/16.
+2. ~~Direction or clock family?~~ **Resolved 2026-08-16: direction, specifically
+   the flip-flop's divide-ratio transition from /256 to /512. Not the NAND
+   oscillator mux** -- see above. Power-of-two ratio remains entangled with
+   divider-ratio change and cannot be separated on this hardware.
+3. **Does the device wedge under sustained resets, and does spacing changes
+   out prevent it?** New 2026-08-16, see above. `gap_seconds=3` is the
+   instrument already identified in the 08-15 section for a related question
+   (whether an unwaited reset overlapping the next change matters) and is the
+   most direct test: if the wedge does not recur with a gap, back-to-back
+   resets are implicated; if it does, the cause is elsewhere (cumulative
+   device-side state, e.g. a counter or buffer that does not reset per-cycle).
+4. **What does the wire show during a failing rate change?** Still open --
+   `capture_stalled_linux.txt` in `usb capture 2026/` was checked and is not
+   usable: its rate-write burst ends on EP 0x05 (playback), which predates
+   `474cca8` ("end the rate-write burst on the capture endpoint"). It reflects
+   retired driver behavior, not the current sequence.
+   `usb/parse_openvizsla.py --errors=0` against a fresh trace of a failing
+   *downward* change on the current driver would show whether the device
+   NAKs, stalls the endpoint, or goes quiet -- this is the expensive
+   instrument and should follow the vendor comparison below, not precede it.
+5. **Why does our sequence take 166-211 ms against macOS's 103-142 ms?**
+   Unchanged from 08-15. Folded into the vendor comparison below.
+
+## Next steps: characterize vendor up/down behavior before touching the driver
+
+The temptation after "it's the divide-ratio direction" is to start changing
+`ploytec_set_rate()` -- longer waits before a downward change, an extra poll,
+a different burst shape going down versus up. Resist that until there is a
+reference to change *toward*. `ploytec_set_rate()` already replicates the
+macOS/Windows burst shape, endpoint order and quiet-window timings faithfully
+(see its kernel-doc and `init_timing_comparison.md`), and neither vendor
+driver stalls, ever, in the existing corpus -- including on downward changes.
+So either the vendor sequence contains something direction-dependent that
+was missed the first time through (`init_timing_comparison.md` was written
+for the cold-boot fault and never specifically asked "does the vendor treat
+downward and upward rate changes differently"), or it doesn't, and the
+answer lies somewhere this document hasn't looked yet (host-side URB
+resubmission timing after `SET_STATUS`, for instance, rather than the EP0
+sequence itself).
+
+**The plan, in order:**
+
+1. **Re-run the existing macOS/Windows corpus through a direction lens.**
+   Done -- `usb/classify_rate_transitions.py` (new, 2026-08-16) parses every
+   `GET_RATE(ep=none)`/`SET_RATE` pair in `usb/openvizsla/*_events.txt` and
+   classifies it by direction and by divide-ratio class (`within` /
+   `cross` / `lateral`), reading the *old* rate from the query the vendor
+   always issues rather than assuming it from context -- which matters,
+   since `capture_macos_rate_change.txt` starts mid-session with no
+   enumeration in view. Run it with `--summary` for counts, no arguments
+   for the full per-event listing, `--csv` to export.
+
+   The corpus turned out thinner than the previous pass through it assumed.
+   `capture_macos_rate_change` has **7** transitions, not the 5 the pasted
+   LLM analysis in `capture_macos_rate_change_analysis.md` describes -- it
+   silently skips two events and mis-transcribes a third (claims event 7 is
+   `96000->48000`; the trace's own `GET_RATE` says its old rate was 44100).
+   That is the concrete instance of the caution already on record about that
+   file: it is a lead, not a source. Re-deriving from the parsed events
+   instead of the prose changed the answer, immediately, on the first check.
+
+   What actually exists, corpus-wide (macOS + Windows, `--summary` output):
+
+   | direction | divider_class | n | pairs |
+   |---|---|---|---|
+   | up | lateral | 7 | `44100->48000`, `88200->96000` |
+   | up | within | **1** | `48000->96000` (Windows only) |
+   | up | cross | 18 | `44100->96000` (x16), `48000->88200` (x2) |
+   | down | lateral | 1 | `48000->44100` (macOS only) |
+   | down | within | **0** | -- |
+   | down | cross | 3 | `96000->44100` (1 macOS + 2 Windows) |
+
+   **`down`/`within` -- the exact class that stalls 55-60% of the time on
+   this driver (`96000->48000` and its mirror `88200->44100`) -- has zero
+   examples on either platform in the entire corpus.** Every claim this
+   document could make about "what the vendor does differently going down"
+   currently rests on `down`/`cross`, and on one specific pair
+   (`96000->44100`) at that; `88200->48000`, the other `down`/`cross` pair,
+   also has zero examples. This is a real gap, not a case of the existing
+   traces being under-analyzed, and it means the corpus cannot currently
+   answer the direction question at all for the stall's own strongest
+   cell -- see "Captures needed" below before drawing a conclusion from
+   what exists today.
+2. **Compare, per direction, everything the previous macOS-only comparison in
+   `capture_macos_rate_change_analysis.md` asserted but never checked against
+   Windows or against direction:** burst length (5-7 writes, stated as varying
+   "within a single platform" -- does it vary *with direction*?), the
+   position and width of the ~10 ms and ~50 ms quiet windows, and the
+   `resume_out_ms` / `resume_in_ms` figures from
+   `rate_change_stream_timing.py`. That file is worth naming directly: it
+   reads as an LLM chat transcript pasted in wholesale, mixes real trace
+   excerpts with unverified speculation ("almost feels like a hack to cope
+   with obscure firmware flaws"), and its pseudo-code does not match the
+   actual event sequence in its own trace closely enough to trust without
+   re-deriving. Treat its data as a lead, not a source -- redo the
+   classification from the parsed events, the same standard the rest of this
+   document holds itself to.
+3. **Only if a direction-dependent asymmetry turns up in the vendor sequence
+   itself** does this motivate a specific, targeted change to
+   `ploytec_set_rate()` -- e.g. a different wait or an extra status poll on
+   the /256->/512 transition specifically. If no asymmetry turns up, that is
+   also a result: it would mean the vendor drivers get away with an
+   identical EP0 sequence in both directions and something else (host URB
+   timing, buffer state left over from the previous rate, or a firmware race
+   that is simply less likely to lose when driven from a different USB host
+   controller) accounts for the difference, which points the investigation
+   at `jockey3.c`'s URB resubmission path after a rate change rather than at
+   `ploytec_proto.c`'s EP0 sequence.
+4. **Any change that does get made is validated the same way this session's
+   findings were: `JT-RATE-001` with `sweep_order=as-given`, both cells of a
+   direction, before/after, at n>=60 per cell** -- n=25 was not enough to
+   trust the 60/40 split this session, and a real fix has to clear the same
+   bar the noise did.
+
+The wedge investigation (`gap_seconds=3`) and the vendor comparison are
+independent and can proceed in either order; the vendor comparison is pure
+analysis of already-captured traces and needs no hardware time, so it is the
+better use of time between hardware sessions.
+
+## Captures needed
+
+OpenVizsla capture is a manual, one-trace-at-a-time process and the raw
+files are large, so this is deliberately a short list, not "capture
+everything and see." Each entry exists because `classify_rate_transitions.py`
+found the corpus has zero examples of it, not as a hedge.
+
+**Priority 1 -- blocking, currently zero examples anywhere:**
+
+- **macOS: `96000<->48000`, cycled back and forth 4-6 times in one capture.**
+  This is `down`/`within` and its mirror `up`/`within` in the same session --
+  the class that stalls 55-60% of the time on this driver and has no vendor
+  trace at all today.
+- **Windows: the same pair, the same way.** Windows' only `up`/`within`
+  example (`48000->96000`, once) has no downward companion either.
+
+**Priority 2 -- thin, one pair covers the whole `down`/`cross` class today:**
+
+- **One platform, `88200<->96000<->44100<->48000` cycled a few times**, or
+  more simply `88200<->48000` back and forth 4-6 times if the capture can be
+  targeted that precisely. This is the *other* `down`/`cross` pair --
+  `96000->44100` has 3 samples, `88200->48000` has none -- and checks whether
+  the vendor sequence (if it turns out to differ from the up-going one at
+  all) does so consistently across both `down`/`cross` pairs or is specific
+  to one. Do this only after priority 1 is in and has been looked at; if
+  priority 1 already shows no direction asymmetry, this pair is unlikely to
+  either, and is not worth the trace size on its own.
+
+**Not requested -- existing coverage is enough:** `lateral` (7 up, 1 down)
+and the well-covered `up`/`cross` pair (`44100->96000`, n=16) do not need
+more. `48000<->44100` and `88200<->96000` are the two `lateral` pairs and
+the divide-ratio hypothesis predicts they never stall regardless of
+direction -- worth a hardware confirmation via `JT-RATE-001` eventually
+(untested combination: neither the interleaved nor the as-given sweep so far
+has isolated a lateral-only transition), but that is a hardware question,
+not a reason to spend more OpenVizsla time on the vendor side.
+
+**Sizing rationale:** JT-RATE-001 needs n>=60 per cell because the fault it
+measures is probabilistic. A vendor EP0 sequence is not -- the existing
+corpus already shows burst count and quiet-window width stable to under 4%
+across 58 sequences (`init_timing_comparison.md`). 4-6 repeats per pair is
+enough to see whether the sequence structure depends on direction at all; if
+it does, that structure will show up on the first or second repeat, not the
+fortieth.
+
+**Keeping the capture small:** dwell only as long as it takes to see the
+handshake complete and confirm streaming resumed -- a few seconds per rate,
+not sustained playback. `capture_macos_rate_change.txt`'s own origin note
+describes stripping "the many repetitive 512 byte audio in/out packets"
+after the fact; avoiding recording minutes of steady-state audio in the
+first place is cheaper than stripping it afterward. Run every new capture
+through the existing pipeline (`parse_openvizsla.py` -> `extract_events.py`)
+to produce the `*_events.txt` `classify_rate_transitions.py` reads, and give
+it a metadata sidecar via `make_trace_sidecar.py` -- host, OS and driver
+version, and the objective (which pair/direction this capture exists to
+fill), same as every other trace in the corpus.
 
 ## Reproducing
 
 ```sh
 cd tests/hw && ./runner.py --case JT-RATE-001 --unattended     # ~3.5 min
 python3 re/usb/rate_change_stream_timing.py                    # vendor timings
+python3 re/usb/classify_rate_transitions.py --summary          # vendor direction/divider coverage
 ```
 
 The defaults are the reset-branch arm: capture open, 4 s per rate, no gap. Use
 `--param` for the others (see above). `./selftest.py` covers the stall
 attribution and the parameter parsing without hardware.
 
-The vendor timing script reads the checked-in `openvizsla/*_events.txt` and
-`*_parsed.txt`, so it needs no hardware.
+Both vendor-side scripts read the checked-in `openvizsla/*_events.txt` and
+`*_parsed.txt`, so neither needs hardware or a fresh capture to run.
