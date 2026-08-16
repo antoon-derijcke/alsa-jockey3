@@ -85,7 +85,7 @@ profiles:
       - {id: JT-AUDIO-005, iterations: 1, params: {iterations_per_run: 3}}
       - {id: JT-MIDI-001,  iterations: 1}
       - {id: JT-MIDI-002,  iterations: 1}
-      - {id: JT-MIDI-003,  iterations: 1}
+      - {id: JT-MIDI-004,  iterations: 1}
       - {id: JT-PM-001,    iterations: 1}
       - {id: JT-PM-002,    iterations: 1}
       - {id: JT-HOTPLUG-001, iterations: 1}
@@ -115,7 +115,7 @@ profiles:
         JT-AUDIO-001: {params: {rates: [44100, 48000]}}
         JT-PM-001:    {iterations: 0}
         JT-PM-002:    {iterations: 0}
-        JT-MIDI-003:  {iterations: 0}
+        JT-MIDI-004:  {params: {rates: [44100, 48000]}}
       arm64-prod:
         JT-BUILD-001: {iterations: 0}
         JT-BUILD-002: {iterations: 0}
@@ -178,7 +178,6 @@ profiles:
       - {id: JT-AUDIO-005, iterations: 1, params: {iterations_per_run: 20}}
       - {id: JT-MIDI-001,  iterations: 1}
       - {id: JT-MIDI-002,  iterations: 1}
-      - {id: JT-MIDI-003,  iterations: 1}
       - {id: JT-MIDI-004,  iterations: 1}
       - {id: JT-MIDI-005,  iterations: 1}
       - {id: JT-PM-001,    iterations: 3}

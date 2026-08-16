@@ -372,6 +372,20 @@ def rawmidi_device(index):
     return None
 
 
+def rawmidi_node(index):
+    """Character device path for the same port rawmidi_device() names.
+
+    For a direct open()/write() -- no amidi subprocess per call -- when a
+    case needs to measure throughput rather than send a few fixed messages.
+    """
+    for p in sorted(glob.glob(f"/proc/asound/card{index}/midi*")):
+        name = os.path.basename(p)
+        m = re.match(r"midi(\d+)", name)
+        if m:
+            return f"/dev/snd/midiC{index}D{m.group(1)}"
+    return None
+
+
 def have(tool):
     from shutil import which
     return which(tool) is not None

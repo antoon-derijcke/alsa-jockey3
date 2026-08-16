@@ -1291,49 +1291,74 @@ cases:
       Attract mode stops only after the first MIDI OUT message, so it doubles
       as confirmation that MIDI OUT reached the device at all.
 
-  - id: JT-MIDI-003
-    title: MIDI flood throughput
-    area: MIDI
-    level: L3
-    mode: automated
-    status: planned
-    requires: [device, python-mido]
-    metrics: [tx_bytes_per_sec, tx_peak_bytes_per_sec, rx_bytes_per_sec, dropped]
-    pass: >
-      Sustained transmission holds up under increasing load without dropping
-      messages.
-    notes: >
-      miditest.py already measures this but is interactive; it needs a scripted
-      mode that runs a fixed ramp. Baselines from the Windows vendor driver
-      (miditest/README.md): RX peak 1695 B/s, TX 330 B/s sustained and 862 B/s
-      peak, 515 B/s sustained while flooding.
-
-      Previously also covered Running Status expansion correctness, which
-      depended on human observation of LED response and could not be
-      automated. That objective now belongs to JT-MIDI-006, an L2 KUnit suite
-      that proves the expansion logic correct in isolation; JT-MIDI-002
-      already confirms LEDs respond to the resulting MIDI OUT stream. This
-      case is left to measure only what genuinely needs hardware: sustained
-      throughput under load.
-
   - id: JT-MIDI-004
     title: MIDI OUT throughput at each sample rate
     area: MIDI
     level: L3
     mode: automated
-    status: planned
-    requires: [device, python-mido]
+    status: implemented
+    requires: [device]
+    exec: cases/midi.py
     params:
       rates: [44100, 48000, 88200, 96000]
-    metrics: [tx_bytes_per_sec]
-    pass: Sustained MIDI OUT rate stays within the 3125 B/s limit at every rate.
+      duration_seconds: 30
+      tolerance: 0.05
+    metrics: [achieved_bps, write_failures, urb_stalls_playback, rates_tested]
+    pass: >
+      At every rate, achieved MIDI OUT throughput holds within +/-5% of the
+      driver's 3125 B/s ceiling, no MIDI OUT write fails, and no playback URB
+      stall goes unended.
     notes: >
-      Not redundant with JT-MIDI-003. The rate limiter is a leaky bucket whose
-      divisor is derived from the sample rate, so throughput is rate-dependent
-      by construction and each rate is a separate arithmetic path. Now that
-      JT-MIDI-003 has narrowed to flood throughput only, both cases measure
-      throughput and are candidates for consolidation with JT-MIDI-007 --
-      revisit together once JT-MIDI-006 has landed.
+      jockey3_get_next_midi_out_byte() paces via
+      midi_out_acc += 3125; emit when midi_out_acc >= midi_rate_divisor, where
+      midi_rate_divisor = rate / PLOYTEC_PLAYBACK_FRAMES is recomputed on
+      every rate change. PLOYTEC_PLAYBACK_FRAMES is 10, which divides all
+      four supported rates exactly, so the divisor itself carries no
+      truncation bias; working through the algebra, the achieved byte rate
+      this produces is ~3125 B/s at every sample rate -- the divisor scaling
+      exists to cancel the rate-dependent URB completion frequency, not to
+      make the target itself rate-dependent.
+
+      A first hardware run (2026-08-16) using a paced amidi(1)-per-burst
+      design read ~59% of the intended target at every rate uniformly -- the
+      signature of the test script's own per-process-spawn overhead, not a
+      driver effect, since a real per-rate arithmetic bug would not land on
+      the same fraction at every rate. The case was rewritten to write the
+      rawmidi device node directly (no subprocess per chunk) and measure
+      whatever rate the kernel's own backpressure settles at.
+
+      That rewrite's first clean measurement (x86_64-prod, 2026-08-16): 3122
+      / 3120 / 3121 / 3120 B/s at 44.1 / 48 / 88.2 / 96 kHz -- flat across
+      rates to within 0.1% and within 0.2% of the 3125 constant, confirming
+      the exact-division algebra above. An earlier manual figure (2906 B/s at
+      44.1 kHz, 3188 B/s at 96 kHz, from the interactive miditest.py) is not
+      a counter-measurement to weigh against this one: that tool finds the
+      ceiling by ear/eye, nudging its send rate up and down in 10% steps
+      while watching /proc's rawmidi buffer occupancy for the first sign of
+      backup, a methodology built for "close enough to play with", not to
+      resolve the ceiling tighter than roughly that 10% step plus human
+      reaction time. The 5% tolerance here leaves ~25x margin over the 0.2%
+      deviation actually observed, room for run-to-run and machine-to-machine
+      jitter without losing the ability to catch a real regression.
+
+      Shares cases/midi.py's burst loop and stall accounting with JT-MIDI-007
+      rather than a separate script -- see that file's module docstring for
+      why one file covers both. This case sets the `rates` param, which
+      switches the script from JT-MIDI-007's single-rate, deliberately
+      throttled endurance mode to priming each rate in turn (a few seconds of
+      silent PCM playback, to drive jockey3_pcm_hw_params() through the
+      change and let the new midi_rate_divisor take effect) and measuring an
+      unthrottled window at each.
+
+      Formerly paired with JT-MIDI-003 ("MIDI flood throughput"), which was
+      retired: its below-the-ceiling territory was a strict subset of what
+      JT-MIDI-007 already records at load_fraction 0.9, and its
+      above-the-ceiling territory (deliberately overdriving the limiter)
+      cannot be done safely -- MIDI OUT rides in every playback packet, so
+      overdriving backs up the rawmidi buffer and risks the ALSA drain
+      timeout that lib/rules.yaml classifies as a driver_fail, on a
+      perfectly healthy device. JT-MIDI-007's own docstring paces under the
+      ceiling for exactly this reason.
 
   - id: JT-MIDI-005
     title: Firmware padding bytes are stripped from MIDI IN
@@ -1378,7 +1403,7 @@ cases:
     mode: automated
     status: implemented
     requires: [device]
-    exec: cases/midi_soak.py
+    exec: cases/midi.py
     params:
       duration_seconds: 1800
       load_fraction: 0.9
