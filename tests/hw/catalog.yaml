@@ -500,13 +500,30 @@ cases:
     area: PCM
     level: L3
     mode: automated
-    status: planned
+    status: implemented
     requires: [device, sox]
+    exec: cases/pcm_latency_sweep.py
     metrics: [min_clean_period_bytes, min_clean_latency_ms]
-    pass: Metric-only. Records the smallest period size that runs clean.
+    pass: >
+      Metric-only for the sweep itself. Fails only if a legal-range period
+      is refused by hw_params (disagreement with JT-PCM-003), or if nothing
+      up to a generous 32 KiB ceiling ever runs clean, which past that point
+      is a driver fault rather than a latency number worth reporting.
     notes: >
       A better latency number than any single measurement, and directly
       comparable across builds -- provided the machine profile matches.
+
+      Where JT-PCM-003 (pcm_limits.py) proves the legal period/buffer range
+      and treats an xrun at the legal minimum as expected (a scheduling
+      fact, not a defect), this case sweeps that same legal range -- doubling
+      from the driver's minimum, period count fixed at 2 -- and finds the
+      smallest size that survives repeated real transfers with zero xruns.
+      Playback uses sox piped into aplay (a real tone, not /dev/zero, so a
+      fast source doesn't understate how a small period gets stressed);
+      capture uses arecord to /dev/null. Reports per-stream metrics plus an
+      overall min_clean_period_bytes/min_clean_latency_ms taken from
+      whichever stream needed the larger buffer -- the binding constraint
+      for the device as a whole.
 
   # ------------------------------------------------------------------- RATE
 
