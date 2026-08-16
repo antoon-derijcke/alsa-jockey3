@@ -83,6 +83,9 @@ capabilities:
   signal-source:    A signal source is connected to the device's inputs
   two-devices:      Both Jockey 3 units are available to swap between
   quiet-machine:    The machine is otherwise idle, for trustworthy benchmarks
+  mixxx:            Mixxx is installed and configured for the device
+  jackd:            JACK is installed and configured for the device
+  pipewire:         PipeWire is installed and configured for the device
   # from the invocation
   human:            An operator is present to observe and answer
 

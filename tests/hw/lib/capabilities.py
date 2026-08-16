@@ -55,13 +55,15 @@ DEFAULT_PATH = "~/.config/jockey3/capabilities.yaml"
 
 # Settled by asking the machine. Never declared, never in a file.
 PROBED = ("device", "root", "kernel-tree", "cross-toolchains", "qemu", "sox",
-          "mixxx", "python-mido", "rtc-wake", "usb-power", "gadget-emulation",
+          "python-mido", "rtc-wake", "usb-power", "gadget-emulation",
           "device-power")
 
 # No probe exists, or none can exist. These come from the local file, and
-# default to false when it is absent.
+# default to false when it is absent. mixxx/jackd/pipewire mean "set up and
+# ready for an interop session on this bench", not merely "binary on PATH",
+# so they are declared like the rest rather than probed with `which`.
 DECLARED = ("loopback-cable", "signal-source", "speakers", "two-devices",
-            "quiet-machine")
+            "quiet-machine", "mixxx", "jackd", "pipewire")
 
 # Supplied by how the runner was invoked.
 INVOCATION = ("human",)
@@ -196,7 +198,6 @@ PROBES = {
                                        "arm-linux-gnueabihf-gcc"),
     "qemu": _probe_qemu,
     "sox": lambda: _which("sox"),
-    "mixxx": lambda: _which("mixxx"),
     "python-mido": _probe_python_mido,
     "rtc-wake": _probe_rtc_wake,
     "usb-power": _probe_usb_power,
