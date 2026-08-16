@@ -155,7 +155,7 @@ The consequence for the suite is narrow but firm:
   play, capture, switch rate, recover from a stall, survive a reload. These
   are what the debug target exists for, and KASAN and lockdep are the reason
   to run them there.
-- **Verdicts about how it sounds are void.** `JT-AUDIO-003` and `JT-SOAK-002`
+- **Verdicts about how it sounds are void.** `JT-AUDIO-003` and `JT-INTEROP-004`
   are disabled on the debug targets. Running them would record a failure
   against the driver for the kernel's overhead, which is worse than not
   running them at all.
@@ -278,7 +278,7 @@ load, play, capture, respond to MIDI, and survive a power cycle?"
 Every case has a stable ID: **`JT-<AREA>-<nnn>`**.
 
 `BUILD` · `CODEC` · `PROBE` · `PCM` · `RATE` · `AUDIO` · `MIDI` · `PM` ·
-`HOTPLUG` · `SOAK`
+`HOTPLUG` · `INTEROP`
 
 IDs never encode the level or the mode — both change over a case's life, and an
 ID that changes is worthless. `JT-MIDI-002` is the LED check whether a human
@@ -574,7 +574,9 @@ broke; a number tells you it is *breaking*, three weeks before it does.
 | L3 RATE | reset-completion delay histogram, stall rate per 1000 rate changes, how often recovery escalated to a full USB reset |
 | L3 PM | suspend → resume → audio-restored duration |
 | L3 MIDI | sustained and peak RX/TX byte rates |
-| L5 SOAK | xruns per hour, memory growth, and drift in all of the above across the run |
+| L5 PCM | xruns per hour, memory growth, and drift in all of the above across an extended run |
+| L5 PROBE | bind/unbind duration; leak or failure across thousands of cycles |
+| L5 MIDI | URB stall onset/recovery timing across a sustained run |
 
 Two reference points already exist and should be preserved as baselines: the
 rate-change delay distribution captured in

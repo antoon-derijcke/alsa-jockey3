@@ -203,17 +203,17 @@ profiles:
     description: >
       Endurance only. Run overnight, on one target at a time. The metric that
       matters is drift, not the final verdict. This profile's own cases run
-      for hours (JT-SOAK-001, JT-SOAK-004, JT-RATE-003), well past runner.py's
+      for hours (JT-PCM-008, JT-MIDI-007, JT-RATE-003), well past runner.py's
       default --timeout of 3600s -- pass --timeout comfortably above the
       longest configured duration or those cases are killed partway through
       with no result.
     cases:
       - {id: JT-PROBE-001, iterations: 1}
-      - {id: JT-SOAK-001,  iterations: 1}
-      - {id: JT-RATE-003,  iterations: 1}
-      - {id: JT-SOAK-003,  iterations: 1}
-      - {id: JT-SOAK-004,  iterations: 1, params: {duration_seconds: 14400}}
-      - {id: JT-SOAK-002,  iterations: 1}
+      - {id: JT-PCM-008, iterations: 1}
+      - {id: JT-RATE-003, iterations: 1}
+      - {id: JT-PROBE-005, iterations: 1}
+      - {id: JT-MIDI-007, iterations: 1, params: {duration_seconds: 14400}}
+      - {id: JT-INTEROP-004, iterations: 1}
       # Thirty cold boots rather than the usual ten. Ten cycles cannot tell a
       # true 0% failure rate from about 25%, which is fine while bisecting a
       # wide interval and useless for confirming the shipped settling delay.
@@ -222,22 +222,22 @@ profiles:
       - {id: JT-AUDIO-005, iterations: 1, params: {iterations_per_run: 30}}
     overrides:
       armhf-prod:
-        JT-SOAK-001: {params: {hours: 2, rate: 44100}}
+        JT-PCM-008: {params: {hours: 2, rate: 44100}}
         JT-RATE-003: {params: {iterations_per_run: 500}}
-        JT-SOAK-003: {iterations: 0}
-        JT-SOAK-004: {params: {duration_seconds: 3600}}
-        JT-SOAK-002: {iterations: 0}
+        JT-PROBE-005: {iterations: 0}
+        JT-MIDI-007: {params: {duration_seconds: 3600}}
+        JT-INTEROP-004: {iterations: 0}
       arm64-prod:
-        JT-SOAK-001: {params: {hours: 4}}
+        JT-PCM-008: {params: {hours: 4}}
         JT-RATE-003: {params: {iterations_per_run: 2000}}
       x86_64-debug:
         # KASAN makes the machine slow enough that an 8-hour soak covers much
         # less ground; the point here is the memory checking, not the mileage.
-        JT-SOAK-001: {params: {hours: 4}}
+        JT-PCM-008: {params: {hours: 4}}
         # The wedge this hunts is a device-side fault, so mileage on a fast
         # prod kernel is worth more than memory checking on a slow one. Same
         # reasoning as armhf-prod/arm64-prod above: fewer changes on a kernel
         # that is already slow for other reasons.
         JT-RATE-003: {params: {iterations_per_run: 1000}}
-        JT-SOAK-004: {params: {duration_seconds: 3600}}
-        JT-SOAK-002: {iterations: 0}
+        JT-MIDI-007: {params: {duration_seconds: 3600}}
+        JT-INTEROP-004: {iterations: 0}

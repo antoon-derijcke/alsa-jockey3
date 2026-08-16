@@ -22,7 +22,7 @@ WHAT THIS CASE CAN AND CANNOT REPRODUCE
 ---------------------------------------
 It cannot reproduce the original wedge. That needs a device that is still
 enumerated but has stopped answering, and nothing here can put the hardware into
-that state on demand -- which is exactly why the watchdog (JT-SOAK-004) exists.
+that state on demand -- which is exactly why the watchdog (JT-MIDI-007) exists.
 
 What it CAN do is exercise the same code path against a device that is going
 away, which is the only mechanical way to make an EP0 transfer fail on command.

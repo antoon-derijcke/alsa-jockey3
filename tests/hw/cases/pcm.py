@@ -418,7 +418,7 @@ def _sample_window(stdout, leftover, channels, frames_wanted, timeout_s=15.0):
 
 
 def run_soak(c, device):
-    """JT-SOAK-001: sustained duplex, watched rather than merely timed out.
+    """JT-PCM-008: sustained duplex, watched rather than merely timed out.
 
     One continuous playback stream (/dev/urandom, as the manual steps used --
     not bounded by a fixed synth length, and the codec sees varied data for

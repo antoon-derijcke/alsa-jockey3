@@ -324,6 +324,37 @@ cases:
       Jockey 3 firmware, so this stays in the catalog but out of --list and
       the ledger until that changes.
 
+  - id: JT-PROBE-005
+    title: Bind and unbind endurance
+    area: PROBE
+    level: L5
+    mode: automated
+    status: implemented
+    requires: [device, root]
+    exec: cases/probe_bind_unbind.py
+    params:
+      iterations_per_run: 5000
+      settle_seconds: 5
+    metrics: [bind_ms, unbind_ms, bind_call_ms, unbind_call_ms, slots_used]
+    pass: No leak and no failure across thousands of cycles.
+    notes: >
+      Only meaningful on a KASAN kernel. The long form of JT-PROBE-002 --
+      same case, cases/probe_bind_unbind.py, run for 5000 cycles instead of
+      50. The metrics list matches JT-PROBE-002's rather than the
+      memory_growth_kb/failures pair originally sketched here: the case
+      breaks on the first failed cycle rather than counting failures across
+      the run (consistent with probe_cycle.py and hotplug_cycle.py, and with
+      the fact that classifying dmesg for a leak is the runner's job, not
+      this case's -- see the JT-PROBE-002 notes above), so there is nothing
+      for a "failures" metric to report beyond pass/fail. A slab-memory
+      growth metric could be added later if a non-KASAN endurance signal
+      turns out to be worth having, but the case script does not attempt it.
+
+      Formerly JT-SOAK-003. The SOAK area predated the L1..L5 test-level
+      scheme, whose L5 (endurance/stability) already covers what SOAK was
+      standing in for; each former SOAK case moved into the area it actually
+      belongs to and kept its level: L5.
+
   # -------------------------------------------------------------------- PCM
 
   - id: JT-PCM-001
@@ -524,6 +555,81 @@ cases:
       overall min_clean_period_bytes/min_clean_latency_ms taken from
       whichever stream needed the larger buffer -- the binding constraint
       for the device as a whole.
+
+  - id: JT-PCM-008
+    title: Sustained duplex playback and capture
+    area: PCM
+    level: L5
+    mode: automated
+    status: implemented
+    requires: [device]
+    exec: cases/pcm.py
+    args: [soak]
+    params:
+      hours: 8
+      rate: 44100
+      report_interval_minutes: 10
+    metrics:
+      - xruns_playback
+      - xruns_capture
+      - xruns_per_hour
+      - stalls_playback
+      - stalls_capture
+      - avail_max_playback
+      - avail_max_capture
+      - memory_growth_kb
+      - rms_dbfs_timeline
+      - capture_gaps
+      - capture_gap_max_s
+    pass: >
+      No xrun accumulation, no capture gap longer than 30s while the
+      substream reports RUNNING, no memory growth, no degradation over the
+      run.
+    expect_dmesg:
+      - 'Playback URB has stalled\.'
+      - 'Capture URB has stalled\.'
+    notes: >
+      Supersedes the manual steps built from test_44100_long.sh and
+      test_96000_long.sh, which timed a single playback stream and checked
+      dmesg and /proc/meminfo by hand at the two ends. Automated now via
+      cases/pcm.py's soak mode, which runs playback AND capture concurrently
+      for the whole duration rather than playback alone -- the capture side
+      is what turns "still running" into something machine-checkable: a
+      stream that keeps delivering frames is audio-engine liveness, checked
+      continuously rather than sampled at the end.
+
+      The capture stream is never written to a file -- an 8-hour raw
+      S24_3LE capture at 96 kHz is upward of 5 GB, and nothing here needs it
+      kept. It is piped straight into the case, read and discarded in large
+      chunks, with only a short RMS snapshot retained per
+      report_interval_minutes. rms_dbfs_timeline is that snapshot series,
+      printed live on the terminal as the case runs and kept in run.json for
+      after-the-fact analysis if something looked strange partway through.
+      The level is informational only, exactly as in JT-PCM-005: with
+      nothing plugged into the inputs a noise floor around -90 to -110 dBFS
+      is correct, and playback here is /dev/urandom on all four channels, so
+      a loopback rig will read close to full scale rather than a floor.
+
+      capture_gaps / capture_gap_max_s come from the pipe itself going quiet
+      for more than 30s while /proc's substream state still reads RUNNING --
+      a dead transport that an xrun count alone would not show, since an
+      xrun is the ALSA core noticing, and a stalled URB stream does not
+      always produce one.
+
+      /dev/urandom rather than a file so the run is not bounded by file
+      length, and so the codec sees varied data rather than a repeating
+      pattern that might mask a packing error -- unchanged from the manual
+      steps this replaces.
+
+      hours defaults to 8; the runner's own --timeout (default 3600s) is
+      separate and must be raised to comfortably exceed hours * 3600 when
+      invoking a profile that includes this case, the same operational
+      requirement JT-MIDI-007's duration_seconds overrides already carry.
+
+      Formerly JT-SOAK-001. The SOAK area predated the L1..L5 test-level
+      scheme, whose L5 (endurance/stability) already covers what SOAK was
+      standing in for; each former SOAK case moved into the area it actually
+      belongs to and kept its level: L5.
 
   # ------------------------------------------------------------------- RATE
 
@@ -1226,7 +1332,7 @@ cases:
       divisor is derived from the sample rate, so throughput is rate-dependent
       by construction and each rate is a separate arithmetic path. Now that
       JT-MIDI-003 has narrowed to flood throughput only, both cases measure
-      throughput and are candidates for consolidation with JT-SOAK-004 --
+      throughput and are candidates for consolidation with JT-MIDI-007 --
       revisit together once JT-MIDI-006 has landed.
 
   - id: JT-MIDI-005
@@ -1264,6 +1370,62 @@ cases:
       expanded" objective depended on human observation of LED response and
       could not be automated; the rate-limiter interaction and actual URB
       delivery remain outside this suite's scope.
+
+  - id: JT-MIDI-007
+    title: Sustained MIDI OUT, watched for a URB stall
+    area: MIDI
+    level: L5
+    mode: automated
+    status: implemented
+    requires: [device]
+    exec: cases/midi_soak.py
+    params:
+      duration_seconds: 1800
+      load_fraction: 0.9
+      messages_per_burst: 8
+      check_interval_seconds: 30
+      progress_interval_seconds: 60
+    metrics:
+      [elapsed_seconds, bytes_sent, bursts, write_failures, achieved_bps,
+       urb_stalls_playback, urb_stalls_capture, urb_stall_onset_ms,
+       urb_stall_recovered_ms, urb_stall_restarted_ms, urb_stall_deferred_ms]
+    pass: >
+      Every MIDI OUT write is accepted, the card is still present with all three
+      substream types at the end, and every PLAYBACK URB stall that started
+      during the soak also ended -- by recovering, or by a URB restart, which is
+      how nearly all of them end. A stall that outlives the watchdog's
+      one-minute heartbeat is failed by the runner from lib/rules.yaml; the case
+      pairs onsets against endings itself as well, because the heartbeat needs
+      the watchdog to still be ticking a minute later and a wedge near the end
+      of the soak, or one the device does not survive, never gets there.
+
+      Capture is counted but not asserted on. A capture stall while nothing is
+      recording is deferred by design to the next capture open, which this case
+      never performs, so it stays legitimately unended for the whole soak.
+      Playback is never deferred -- it carries MIDI OUT -- so it is the
+      direction a wedge shows up in, and it is what died on 2026-08-11.
+    notes: >
+      Hunting the 2026-08-11 wedge, which appeared minutes after the two MIDI
+      cases and went unnoticed for about fourteen minutes. MIDI load is the
+      first suspect only because of when it appeared; the root cause is still
+      unknown.
+
+      Worth running even when it passes. With the URB liveness watchdog in place
+      a wedge is now reported within 1.5 s with a measured onset age, so this
+      case either produces that timestamp or, over a long enough clean run, says
+      the wedge is not reachable through MIDI load. The escalation work is gated
+      on one of those two answers.
+
+      Paced just UNDER the driver's ~3125 B/s ceiling on purpose. Overdriving it
+      backs up the rawmidi buffer and produces the "rawmidi drain error" that
+      lib/rules.yaml treats as a failure -- correctly, since on a healthy device
+      it means the URB ring has died. Provoking it deliberately would make the
+      case fail on its own doing and bury the one signature worth watching for.
+
+      Formerly JT-SOAK-004. The SOAK area predated the L1..L5 test-level
+      scheme, whose L5 (endurance/stability) already covers what SOAK was
+      standing in for; each former SOAK case moved into the area it actually
+      belongs to and kept its level: L5.
 
   # --------------------------------------------------------------------- PM
 
@@ -1512,82 +1674,9 @@ cases:
       - Play for at least 10 minutes, using both decks and the control surface.
       - Note the duration and anything audible or tactile that was off.
 
-
-  # ------------------------------------------------------------------- SOAK
-
-  - id: JT-SOAK-001
-    title: Sustained duplex playback and capture
-    area: SOAK
-    level: L5
-    mode: automated
-    status: implemented
-    requires: [device]
-    exec: cases/pcm.py
-    args: [soak]
-    params:
-      hours: 8
-      rate: 44100
-      report_interval_minutes: 10
-    metrics:
-      - xruns_playback
-      - xruns_capture
-      - xruns_per_hour
-      - stalls_playback
-      - stalls_capture
-      - avail_max_playback
-      - avail_max_capture
-      - memory_growth_kb
-      - rms_dbfs_timeline
-      - capture_gaps
-      - capture_gap_max_s
-    pass: >
-      No xrun accumulation, no capture gap longer than 30s while the
-      substream reports RUNNING, no memory growth, no degradation over the
-      run.
-    expect_dmesg:
-      - 'Playback URB has stalled\.'
-      - 'Capture URB has stalled\.'
-    notes: >
-      Supersedes the manual steps built from test_44100_long.sh and
-      test_96000_long.sh, which timed a single playback stream and checked
-      dmesg and /proc/meminfo by hand at the two ends. Automated now via
-      cases/pcm.py's soak mode, which runs playback AND capture concurrently
-      for the whole duration rather than playback alone -- the capture side
-      is what turns "still running" into something machine-checkable: a
-      stream that keeps delivering frames is audio-engine liveness, checked
-      continuously rather than sampled at the end.
-
-      The capture stream is never written to a file -- an 8-hour raw
-      S24_3LE capture at 96 kHz is upward of 5 GB, and nothing here needs it
-      kept. It is piped straight into the case, read and discarded in large
-      chunks, with only a short RMS snapshot retained per
-      report_interval_minutes. rms_dbfs_timeline is that snapshot series,
-      printed live on the terminal as the case runs and kept in run.json for
-      after-the-fact analysis if something looked strange partway through.
-      The level is informational only, exactly as in JT-PCM-005: with
-      nothing plugged into the inputs a noise floor around -90 to -110 dBFS
-      is correct, and playback here is /dev/urandom on all four channels, so
-      a loopback rig will read close to full scale rather than a floor.
-
-      capture_gaps / capture_gap_max_s come from the pipe itself going quiet
-      for more than 30s while /proc's substream state still reads RUNNING --
-      a dead transport that an xrun count alone would not show, since an
-      xrun is the ALSA core noticing, and a stalled URB stream does not
-      always produce one.
-
-      /dev/urandom rather than a file so the run is not bounded by file
-      length, and so the codec sees varied data rather than a repeating
-      pattern that might mask a packing error -- unchanged from the manual
-      steps this replaces.
-
-      hours defaults to 8; the runner's own --timeout (default 3600s) is
-      separate and must be raised to comfortably exceed hours * 3600 when
-      invoking a profile that includes this case, the same operational
-      requirement JT-SOAK-004's duration_seconds overrides already carry.
-
-  - id: JT-SOAK-002
+  - id: JT-INTEROP-004
     title: Long running Mixxx session
-    area: SOAK
+    area: INTEROP
     level: L5
     mode: manual
     status: implemented
@@ -1603,79 +1692,7 @@ cases:
       Never automated, and never should be. This is the workload the driver
       exists for, and the ear catches degradation that no metric here would.
 
-  - id: JT-SOAK-003
-    title: Bind and unbind endurance
-    area: SOAK
-    level: L5
-    mode: automated
-    status: implemented
-    requires: [device, root]
-    exec: cases/probe_bind_unbind.py
-    params:
-      iterations_per_run: 5000
-      settle_seconds: 5
-    metrics: [bind_ms, unbind_ms, bind_call_ms, unbind_call_ms, slots_used]
-    pass: No leak and no failure across thousands of cycles.
-    notes: >
-      Only meaningful on a KASAN kernel. The long form of JT-PROBE-002 --
-      same case, cases/probe_bind_unbind.py, run for 5000 cycles instead of
-      50. The metrics list matches JT-PROBE-002's rather than the
-      memory_growth_kb/failures pair originally sketched here: the case
-      breaks on the first failed cycle rather than counting failures across
-      the run (consistent with probe_cycle.py and hotplug_cycle.py, and with
-      the fact that classifying dmesg for a leak is the runner's job, not
-      this case's -- see the JT-PROBE-002 notes above), so there is nothing
-      for a "failures" metric to report beyond pass/fail. A slab-memory
-      growth metric could be added later if a non-KASAN endurance signal
-      turns out to be worth having, but the case script does not attempt it.
-
-  - id: JT-SOAK-004
-    title: Sustained MIDI OUT, watched for a URB stall
-    area: SOAK
-    level: L5
-    mode: automated
-    status: implemented
-    requires: [device]
-    exec: cases/midi_soak.py
-    params:
-      duration_seconds: 1800
-      load_fraction: 0.9
-      messages_per_burst: 8
-      check_interval_seconds: 30
-      progress_interval_seconds: 60
-    metrics:
-      [elapsed_seconds, bytes_sent, bursts, write_failures, achieved_bps,
-       urb_stalls_playback, urb_stalls_capture, urb_stall_onset_ms,
-       urb_stall_recovered_ms, urb_stall_restarted_ms, urb_stall_deferred_ms]
-    pass: >
-      Every MIDI OUT write is accepted, the card is still present with all three
-      substream types at the end, and every PLAYBACK URB stall that started
-      during the soak also ended -- by recovering, or by a URB restart, which is
-      how nearly all of them end. A stall that outlives the watchdog's
-      one-minute heartbeat is failed by the runner from lib/rules.yaml; the case
-      pairs onsets against endings itself as well, because the heartbeat needs
-      the watchdog to still be ticking a minute later and a wedge near the end
-      of the soak, or one the device does not survive, never gets there.
-
-      Capture is counted but not asserted on. A capture stall while nothing is
-      recording is deferred by design to the next capture open, which this case
-      never performs, so it stays legitimately unended for the whole soak.
-      Playback is never deferred -- it carries MIDI OUT -- so it is the
-      direction a wedge shows up in, and it is what died on 2026-08-11.
-    notes: >
-      Hunting the 2026-08-11 wedge, which appeared minutes after the two MIDI
-      cases and went unnoticed for about fourteen minutes. MIDI load is the
-      first suspect only because of when it appeared; the root cause is still
-      unknown.
-
-      Worth running even when it passes. With the URB liveness watchdog in place
-      a wedge is now reported within 1.5 s with a measured onset age, so this
-      case either produces that timestamp or, over a long enough clean run, says
-      the wedge is not reachable through MIDI load. The escalation work is gated
-      on one of those two answers.
-
-      Paced just UNDER the driver's ~3125 B/s ceiling on purpose. Overdriving it
-      backs up the rawmidi buffer and produces the "rawmidi drain error" that
-      lib/rules.yaml treats as a failure -- correctly, since on a healthy device
-      it means the URB ring has died. Provoking it deliberately would make the
-      case fail on its own doing and bury the one signature worth watching for.
+      Formerly JT-SOAK-002. The SOAK area predated the L1..L5 test-level
+      scheme, whose L5 (endurance/stability) already covers what SOAK was
+      standing in for; each former SOAK case moved into the area it actually
+      belongs to and kept its level: L5.
