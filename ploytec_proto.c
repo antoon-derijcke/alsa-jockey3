@@ -201,6 +201,22 @@ int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf, bool b
  * @intf: USB interface
  * @xfer_buf: Temporary transfer buffer
  *
+ * Reads the status byte and writes it back with the STREAMING bit set. The
+ * write is unconditional, which is the whole point: the device already
+ * reports STREAMING set after a rate change, so a conditional write is never
+ * issued there at all.
+ *
+ * Every macOS and Windows rate change ends with this write -- 115 of 115
+ * across the OpenVizsla corpus, always the same value, always from a device
+ * whose own status read in the same sequence had already returned it. This
+ * driver instead ended a rate change with a second status *read*, and its
+ * capture endpoint fails to restart after roughly one rate change in six
+ * (against one in 58 on macOS and none in 56 on Windows). The write
+ * evidently does more than set a bit, the same lesson the rate writes taught
+ * in jockey3_set_rate(). See re/rate_change_stall.md.
+ *
+ * The vendors do not read the status back afterwards, so neither do we.
+ *
  * Return: 0 on success, negative errno on failure.
  */
 int ploytec_start_streaming(struct usb_interface *intf, void *xfer_buf)
@@ -214,15 +230,9 @@ int ploytec_start_streaming(struct usb_interface *intf, void *xfer_buf)
 		return ret;
 	dev_dbg(&intf->dev, "Start Streaming: Status: 0x%02x\n", status);
 
-	/* Enable device if STREAMING bit is not set */
-	if (!(status & PLOYTEC_STATUS_STREAMING)) {
-		ret = usb_control_msg_send(dev, 0, PLOYTEC_SET_STATUS, PLOYTEC_SET_STATUS_TYPE,
-					   status | PLOYTEC_STATUS_STREAMING,
-					   0, NULL, 0, PLOYTEC_CTRL_TIMEOUT_MS, GFP_KERNEL);
-		if (ret < 0)
-			return ret;
-	}
-	return ploytec_get_status(intf, xfer_buf, &status);
+	return usb_control_msg_send(dev, 0, PLOYTEC_SET_STATUS, PLOYTEC_SET_STATUS_TYPE,
+				    status | PLOYTEC_STATUS_STREAMING,
+				    0, NULL, 0, PLOYTEC_CTRL_TIMEOUT_MS, GFP_KERNEL);
 }
 
 /**

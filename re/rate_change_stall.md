@@ -645,12 +645,29 @@ hypothesis, and the write's actual effect on firmware that already has the
 bit set cannot be read off a trace.
 
 `ploytec_start_streaming()` is **not** `ploytec_set_rate()`, so acting on this
-does not touch the function fenced off for this session. The change is one
-line -- drop the condition -- and it belongs to whoever decides to make it,
-validated at the bar step 4 sets: `JT-RATE-001`, `sweep_order=as-given`, both
-cells of a direction, before and after, n>=60 per cell.
+does not touch the EP0 rate sequence at all.
+
+**Implemented 2026-08-17.** The condition is gone; the status byte is written
+back with `PLOYTEC_STATUS_STREAMING` set on every call. The trailing
+`ploytec_get_status()` went with it -- the vendors do not read the status back
+after the write, and its result was discarded. Our terminator is now
+`GET_STATUS`, `SET_STATUS 0x32`, byte-identical to both vendors.
+
+**Not yet validated.** This is a hypothesis that compiles, nothing more. It is
+judged at the bar step 4 sets: `JT-RATE-001`, `sweep_order=as-given`, both
+cells of a direction, before and after, n>=60 per cell, on
+`resets_per_change_pct`. The pre-change baseline from the trace analysis is
+3 resets in 18 changes; anything short of a clear move toward zero at n>=60
+means the hypothesis is wrong and the write is not what restarts capture.
 
 ### Divergence 2: Windows clears endpoint halt *after* the change, not only before
+
+**Deliberately not implemented.** The two vendors disagree here -- macOS
+clears halt only in the preamble, as we do, and Windows only afterwards -- so
+there is no vendor consensus to move toward, and changing it would align us
+with one platform by diverging from the other. It stays on the list as the
+next thing to try if the `SET_STATUS` change does not move
+`resets_per_change_pct`.
 
 43 of Windows' 56 rate changes end with `CLEAR_FEATURE(ENDPOINT_HALT)` on
 `0x86` and then `0x05`, roughly 246 ms after `SET_STATUS` and immediately
