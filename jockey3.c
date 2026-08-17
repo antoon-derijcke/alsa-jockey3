@@ -1284,7 +1284,7 @@ static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate, bool c
 
 	dev_dbg(&chip->intf0->dev, "Setting rate to %u Hz\n", rate);
 
-	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, !cold_init);
+	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, !cold_init, NULL);
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Failed to initialize device to change rate: %d\n",
 			ret);
@@ -1889,7 +1889,7 @@ static snd_pcm_uframes_t jockey3_pcm_pointer(struct snd_pcm_substream *substream
 	return bytes_to_frames(substream->runtime, dma_off);
 }
 
-static int jockey3_initialize_ploytec(struct jockey3_chip *chip)
+static int jockey3_initialize_ploytec(struct jockey3_chip *chip, u32 *fw_version)
 {
 	enum ploytec_codec_variant codec_variant;
 	int ret;
@@ -1910,7 +1910,7 @@ static int jockey3_initialize_ploytec(struct jockey3_chip *chip)
 		break;
 	}
 
-	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, false);
+	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, false, fw_version);
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Ploytec failed to initialize: %d\n", ret);
 		return ret;
@@ -2123,6 +2123,7 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 {
 	int ret;
 	int rate;
+	u32 fw_version;
 
 	/*
 	 * Let the device finish booting before speaking to it.
@@ -2157,7 +2158,7 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 	msleep(250);
 
 	for (int retry = 10; retry > 0; retry--) {
-		ret = jockey3_initialize_ploytec(chip);
+		ret = jockey3_initialize_ploytec(chip, &fw_version);
 		if (ret == 0)
 			break;
 		usleep_range(50000, 100000); /* Wait 50-100 ms before retrying */
@@ -2166,6 +2167,11 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 		dev_err(&chip->intf0->dev, "Failed to initialize Ploytec: %d\n", ret);
 		return ret;
 	}
+
+	// see ploytec_get_firmware() for the packing of buf[0..2] into fw_version
+	dev_info(&chip->intf0->dev, "Firmware 0x%02x v%d.%d.%d\n",
+		 (fw_version >> 16) & 0xFF, (fw_version >> 8) & 0xFF,
+		 (fw_version >> 4) & 0x0F, fw_version & 0x0F);
 
 	rate = 44100;	// default sample rate at power-on
 	scoped_guard(mutex, &chip->rate_mutex)
@@ -2716,7 +2722,7 @@ static int jockey3_post_reset(struct usb_interface *intf)
 
 	if (chip && intf == chip->intf0) {
 		scoped_guard(mutex, &chip->rate_mutex) {
-			jockey3_initialize_ploytec(chip);
+			jockey3_initialize_ploytec(chip, NULL);
 
 			/*
 			 * Re-apply the rate unconditionally. Reading it first
@@ -2776,7 +2782,7 @@ static int jockey3_restore_device(struct jockey3_chip *chip, bool reset)
 	guard(mutex)(&chip->rate_mutex);
 
 	if (reset) {
-		ret = jockey3_initialize_ploytec(chip);
+		ret = jockey3_initialize_ploytec(chip, NULL);
 		if (ret < 0)
 			return ret;
 	}

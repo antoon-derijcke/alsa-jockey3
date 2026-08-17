@@ -63,11 +63,11 @@
  * embedded struct device is bound to.
  */
 int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf,
-			      bool bounce_alt0);
+			      bool bounce_alt0, u32 *fw_version);
 int ploytec_start_streaming(struct usb_interface *intf, void *xfer_buf);
 int ploytec_get_rate(struct usb_interface *intf, void *xfer_buf, u16 index, u32 *rate);
 int ploytec_set_rate(struct usb_interface *intf, void *xfer_buf, u32 rate, bool cold_init);
-int ploytec_get_firmware(struct usb_interface *intf, void *xfer_buf);
+int ploytec_get_firmware(struct usb_interface *intf, void *xfer_buf, u32 *fw_version);
 int ploytec_get_status(struct usb_interface *intf, void *xfer_buf, u8 *status);
 
 #endif /* __SOUND_USB_JOCKEY3_PLOYTEC_PROTO_H */

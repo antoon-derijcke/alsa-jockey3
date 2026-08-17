@@ -52,14 +52,15 @@ static bool ploytec_ctrl_ep_unresponsive(int err)
  * ploytec_get_firmware - Read firmware version from the device
  * @intf: USB interface
  * @xfer_buf: Temporary transfer buffer (at least 3 bytes)
+ * @fw_version: Optional, set to the packed firmware/hardware version on success
  *
  * Performs a request to the device to retrieve the firmware and/or hardware version.
- * We aren't doing anything useful with the firmware version yet, but it seems to be
- * required to request as per the USB traces.
+ * Required as part of the handshake sequence regardless of whether the caller
+ * wants the value; pass @fw_version as NULL to discard it.
  *
  * Return: 0 on success, negative errno on failure.
  */
-int ploytec_get_firmware(struct usb_interface *intf, void *xfer_buf)
+int ploytec_get_firmware(struct usb_interface *intf, void *xfer_buf, u32 *fw_version)
 {
 	struct usb_device *dev = interface_to_usbdev(intf);
 	u8 *buf = xfer_buf;
@@ -73,8 +74,8 @@ int ploytec_get_firmware(struct usb_interface *intf, void *xfer_buf)
 	// device with firmware v1.0.3  returns: 0x31, 0x01, 0x03
 	// device with firmware v1.0.6  returns: 0x31, 0x01, 0x06
 	// buf[0] = 0x31, educated guess this may be hardware model/revision
-	dev_dbg(&intf->dev, "Firmware 0x%02x v%d.%d.%d\n", buf[0],
-		buf[1], buf[2] >> 4, buf[2] & 0x0F);
+	if (fw_version)
+		*fw_version = (buf[0] << 16) | (buf[1] << 8) | buf[2];
 	return 0;
 }
 
@@ -108,6 +109,7 @@ int ploytec_get_status(struct usb_interface *intf, void *xfer_buf, u8 *status)
  * @xfer_buf: Temporary transfer buffer
  * @bounce_alt0: drive both interfaces to alt 0 before selecting alt 1, which
  *	the vendors do only when changing the rate of a running device
+ * @fw_version: Optional, set to the packed firmware/hardware version on success
  *
  * Aborts early if EP0 stops responding, rather than continuing into the
  * alt-setting sequence below; see the comment on the firmware read for why
@@ -115,7 +117,8 @@ int ploytec_get_status(struct usb_interface *intf, void *xfer_buf, u8 *status)
  *
  * Return: 0 on success, negative errno on failure.
  */
-int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf, bool bounce_alt0)
+int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf, bool bounce_alt0,
+			      u32 *fw_version)
 {
 	struct usb_device *dev = interface_to_usbdev(intf);
 	const unsigned int halt_pipes[] = {
@@ -140,7 +143,7 @@ int ploytec_initialize_device(struct usb_interface *intf, void *xfer_buf, bool b
 	 * reset. A device that merely refuses the request is fine; one that has
 	 * stopped answering is not.
 	 */
-	ret = ploytec_get_firmware(intf, xfer_buf);
+	ret = ploytec_get_firmware(intf, xfer_buf, fw_version);
 	if (ret < 0) {
 		dev_warn(&intf->dev, "Firmware version read failed: %d\n", ret);
 		if (ploytec_ctrl_ep_unresponsive(ret))
