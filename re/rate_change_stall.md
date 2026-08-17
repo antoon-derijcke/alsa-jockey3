@@ -1,21 +1,37 @@
 # Capture URB stall after a rate change
 
-The open reliability problem of milestone 13: changing the sample rate leaves
-the capture endpoint (`0x86`) not delivering, and the driver carries a stack of
-mitigations for it -- stream liveness polling, a watchdog, a direction-aware
-corrective reset, and deferred recovery at the next capture open.
+> **RESOLVED 2026-08-17.** The cause was a control transfer this driver was
+> not sending. `ploytec_start_streaming()` wrote the status byte back only
+> when the STREAMING bit was clear, and after a rate change the device already
+> reports it set -- so the write never happened, and the device's capture
+> engine was never told to restart. Both vendor drivers issue it
+> unconditionally, 115 times out of 115 in the corpus. Making it unconditional
+> (`5505b28`) took `resets_per_change_pct` from **17.5% to 0.0%**: 0 stalls in
+> 244 rate changes, against 101 in 577 before, with the two downward cells
+> that carried the entire fault (38.6% and 31.0%) now empty. See "The fix
+> works" below.
+>
+> Still open: the **device wedge** under sustained resets (open question 3),
+> which this run did not exercise because it performed no resets. The
+> mitigation stack described below is now dormant rather than load-bearing,
+> and whether any of it should be removed before submission is a separate
+> question this document does not answer.
+>
+> The rest of this document is the investigation as it ran, kept because the
+> reasoning is the record of how the cause was found -- and because several
+> of its intermediate conclusions were wrong in instructive ways.
 
-This document records what is actually measured, as of 2026-08-15. It exists
-because the mitigations were built before the fault was characterized, and the
+The problem as it stood: changing the sample rate leaves the capture endpoint
+(`0x86`) not delivering, and the driver carries a stack of mitigations for it
+-- stream liveness polling, a watchdog, a direction-aware corrective reset,
+and deferred recovery at the next capture open.
+
+This document records what is actually measured. It exists because the
+mitigations were built before the fault was characterized, and the
 measurements below do not all support the assumptions they were built on.
 
-The hardware numbers are still those of 2026-08-14. What changed on 2026-08-15
-is the instrument: the 2026-08-14 comparison turned out to be uninterpretable
-for reasons that are visible in the driver source, so `JT-RATE-001` was made
-able to answer the question before any more hardware time was spent on it.
-
-Start here next session. The companion document `usb/init_timing_comparison.md`
-covers the *cold-boot* fault, which is fixed and is a different mechanism.
+The companion document `usb/init_timing_comparison.md` covers the *cold-boot*
+fault, which is fixed and is a different mechanism.
 
 ## The fault, stated precisely
 
@@ -653,12 +669,8 @@ back with `PLOYTEC_STATUS_STREAMING` set on every call. The trailing
 after the write, and its result was discarded. Our terminator is now
 `GET_STATUS`, `SET_STATUS 0x32`, byte-identical to both vendors.
 
-**Not yet validated.** This is a hypothesis that compiles, nothing more. It is
-judged at the bar step 4 sets: `JT-RATE-001`, `sweep_order=as-given`, both
-cells of a direction, before and after, n>=60 per cell, on
-`resets_per_change_pct`. The pre-change baseline from the trace analysis is
-3 resets in 18 changes; anything short of a clear move toward zero at n>=60
-means the hypothesis is wrong and the write is not what restarts capture.
+**Validated on hardware 2026-08-17 -- the stall is gone.** See the section
+below.
 
 ### Divergence 2: Windows clears endpoint halt *after* the change, not only before
 
@@ -784,6 +796,75 @@ appears on the first EP0 transfer after a long run of streaming traffic, on
 every platform. Worth a note in `usb/README.md` so the next person does not
 re-derive a 40 ms discrepancy that is not there; `span` should not be quoted
 for an event whose first transfer carries a multi-millisecond duration.
+
+### The fix works: 0 stalls in 244 rate changes
+
+`20260817T161831Z-smoke`, `x86_64-prod`, module build-id `09c3e409` from
+`5505b28`, `JT-RATE-001` with `sweep_order=as-given`,
+`rates=[96000,48000,96000,44100]`, `seconds_per_rate=4`, `gap_seconds=0`,
+`iterations_per_run=61` -- 244 changes, 61 per cell, which clears the n>=60
+bar step 4 set.
+
+| pair | class | before (3 as-given runs) | after |
+|---|---|---|---|
+| `96000->48000` | down/within | 56/145 = **38.6%** | **0/61** |
+| `96000->44100` | down/cross | 45/145 = **31.0%** | **0/61** |
+| `48000->96000` | up/within | 0/145 | 0/61 |
+| `44100->96000` | up/cross | 0/142 | 0/60 |
+| **total** | | **101/577 = 17.5%** | **0/244** |
+
+`resets_per_change_pct` went 17.5 -> **0.0**. Across all ten trustworthy
+pre-change runs (any sweep order) it was 168 resets in 880 changes, 19.1%.
+Under the as-given baseline rate, P(0 stalls in 244) is 4e-21. The rule of
+three puts a 95% upper bound of 1.2% on whatever the residual rate now is --
+so this is not "less frequent", it is below what 244 changes can detect.
+
+The two cells that carried the entire fault are exactly the two the
+divide-ratio hypothesis named, and both are now empty. The upward cells were
+already clean and stayed clean, so nothing was traded away.
+
+**Verification, because a zero is exactly what a broken instrument reports.**
+This document has been burned once by markers failing silently while every
+per-change figure read zero, so:
+
+- `attribution_trustworthy` is `True` and `rate_check_blind_steps` is 0.
+- The run's own `JT-MARK` markers bound a 1091 s window matching
+  `duration_s`, containing 489 markers for 244 changes. Filtered to that
+  window, the kernel log contains **no** `Capture URB has stalled.`, no
+  `Resetting device to recover`, no `reset high-speed USB device`, no URB
+  errors and no submit failures. (`dmesg.txt` holds an ~18 hour ring buffer
+  and its 62 stall lines are all from earlier runs -- do not count them
+  without filtering to the marker window.)
+- Capture was genuinely exercised, not merely quiet: 244 measurements,
+  `capture_frames_ratio` min **1.0** (before: min 0.0, i.e. changes that
+  delivered nothing), `capture_rate_ratio_min` **0.902** (before: 0.0),
+  `steady_ratio_capture` 1.000 on every change.
+- The loaded module is build-id `09c3e409...`, `dirty: false`, git `5505b28`
+  -- the commit under test.
+
+A note on one metric that looks alarming and is not: `capture_effective_hz`
+reads 6-9% low here. That is the gross whole-invocation figure, which is low
+by construction (`rate / (1 + startup/duration)`); the steady-state hw_ptr
+measurement, `steady_ratio_capture`, is 1.000. Both are unchanged from before.
+Likewise `capture_nonzero` sits at 0.83-0.85 in both, which is a pre-existing
+property of the test signal, not a regression.
+
+### What this does and does not settle
+
+It settles that the unconditional `SET_STATUS` write eliminates the capture
+stall, and therefore that the write is what restarts the device's capture
+engine -- the hypothesis divergence 1 raised. The direction/divide-ratio
+finding is not overturned by this, it is explained by it: the downward
+divide-ratio transitions were the ones where the firmware needed the restart
+trigger it was never being sent.
+
+It does not settle the **device wedge** under sustained resets (open question
+3). That fault was only ever reachable through repeated resets, and this run
+performed none, so the wedge was not exercised rather than fixed. It stays
+open.
+
+It is also one run. A second run, and the longer `JT-RATE-003`, are cheap and
+worth doing before this is called closed.
 
 ### Still missing
 
@@ -947,7 +1028,14 @@ does not depend on direction at all.
 
 **Priority 1b -- new 2026-08-17, the remaining gap is on our own side:**
 
-- **Linux: `96000<->48000` cycled until it stalls,** on the current driver.
+- ~~**Linux: `96000<->48000` cycled until it stalls,** on the current driver.~~
+  **Overtaken by the fix** -- it no longer stalls, so there is no failing
+  change left to capture. What would still be worth one trace is the
+  *working* sequence on the current driver, to confirm on the wire that our
+  terminator is now byte-identical to the vendors' and that capture resumes
+  in the vendor's 1-21 ms window rather than our old 52-71 ms. Lower priority
+  than it was, since the metric already answered the question that mattered.
+  Original request, for the record:
   The wire evidence for a failing change (08-17 section) comes from
   `down`/`cross` episodes, because the sweep in
   `capture_2026-08-17_linux_ratechange` contains no `down`/`within` at all.
