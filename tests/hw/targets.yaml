@@ -138,19 +138,6 @@ targets:
       Realistic timing. Latency figures, throughput metrics and long soaks
       belong here, because KASAN distorts every number worth recording.
 
-  arm64-prod:
-    arch: arm64
-    flavor: prod
-    localversion: '-alsa-prod'
-    config: tests/configs/arm64-prod.config      # not created yet
-    typical_machine: Raspberry Pi 4B, 2 GB
-    verify:
-      kconfig_none: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
-    role: >
-      Second architecture, and more importantly a second USB host controller.
-      The Pi 4 uses dwc2 rather than xhci, which behaves differently under load
-      and on disconnect -- a behavioral difference, not a detail.
-
   arm64-debug:
     arch: arm64
     flavor: debug
@@ -166,6 +153,19 @@ targets:
       - >
         As with x86_64-debug, audio quality cannot be judged here, and a Pi 4
         has less headroom to lose than the EliteDesk did.
+
+  arm64-prod:
+    arch: arm64
+    flavor: prod
+    localversion: '-alsa-prod'
+    config: tests/configs/arm64-prod.config      # not created yet
+    typical_machine: Raspberry Pi 4B, 2 GB
+    verify:
+      kconfig_none: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
+    role: >
+      Second architecture, and more importantly a second USB host controller.
+      The Pi 4 uses dwc2 rather than xhci, which behaves differently under load
+      and on disconnect -- a behavioral difference, not a detail.
 
   armhf-prod:
     arch: armhf
