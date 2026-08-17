@@ -6,19 +6,15 @@
 > reports it set -- so the write never happened, and the device's capture
 > engine was never told to restart. Both vendor drivers issue it
 > unconditionally, 115 times out of 115 in the corpus. Making it unconditional
-> (`5505b28`) took `resets_per_change_pct` from **17.5% to 0.0%**: 0 stalls in
-> 244 rate changes, against 101 in 577 before, with the two downward cells
-> that carried the entire fault (38.6% and 31.0%) now empty. See "The fix
+> (`5505b28`) took `resets_per_change_pct` from **19.3% to 0.0%**: 0 stalls in
+> 486 rate changes, against 168 in 870 before. Every downward pair that
+> carried the fault -- 42.7%, 38.6%, 36.4% -- is now empty. See "The fix
 > works" below.
 >
-> **One coverage gap before this is called closed outright:** the validation
-> sweep was `[96000, 48000, 96000, 44100]`, so it contains no 88200 at all.
-> `88200->48000` was the worst pair ever recorded here (4/5 and 5/5 on
-> 08-15) and `88200->44100` is the other `down`/`within` pair; neither was
-> exercised. Both divider *classes* are covered at n=61 and an unconditional
-> control write has no plausible rate dependence, so the expectation is that
-> the 88200 arm reads zero too -- but it is an expectation, not a
-> measurement. Run it before removing any mitigation.
+> The 88200 arm was run too: **0 in 486 changes across both arms**, covering
+> all four rates and all eight non-lateral pairs at n>=60 each. The two
+> worst pairs on record, `88200->48000` (42.7%) and `96000->48000` (38.6%),
+> are both empty.
 >
 > Still open: the **device wedge** under sustained resets (open question 3),
 > which this run did not exercise because it performed no resets. The
@@ -806,7 +802,7 @@ every platform. Worth a note in `usb/README.md` so the next person does not
 re-derive a 40 ms discrepancy that is not there; `span` should not be quoted
 for an event whose first transfer carries a multi-millisecond duration.
 
-### The fix works: 0 stalls in 244 rate changes
+### The fix works: 0 stalls in 486 rate changes
 
 `20260817T161831Z-smoke`, `x86_64-prod`, module build-id `09c3e409` from
 `5505b28`, `JT-RATE-001` with `sweep_order=as-given`,
@@ -814,42 +810,62 @@ for an event whose first transfer carries a multi-millisecond duration.
 `iterations_per_run=61` -- 244 changes, 61 per cell, which clears the n>=60
 bar step 4 set.
 
-| pair | class | before (3 as-given runs) | after |
+Two arms, `20260817T161831Z-smoke` (`rates=[96000,48000,96000,44100]`) and
+`20260817T164625Z-smoke` (`rates=[88200,48000,88200,44100]`), both
+`sweep_order=as-given`, `seconds_per_rate=4`, `gap_seconds=0`,
+`iterations_per_run=61`, module build-id `09c3e409` from `5505b28`. Between
+them they cover all four rates and all eight non-lateral pairs at n>=60 each.
+Before figures are every trustworthy pre-change run, any sweep order:
+
+| pair | class | before | after |
 |---|---|---|---|
+| `88200->48000` | down/cross | 32/75 = **42.7%** | **0/61** |
 | `96000->48000` | down/within | 56/145 = **38.6%** | **0/61** |
-| `96000->44100` | down/cross | 45/145 = **31.0%** | **0/61** |
-| `48000->96000` | up/within | 0/145 | 0/61 |
+| `96000->44100` | down/cross | 80/220 = **36.4%** | **0/61** |
+| `88200->44100` | down/within | *no baseline* | **0/61** |
+| `48000->96000` | up/within | 0/213 | 0/61 |
+| `44100->88200` | up/within | 0/75 | 0/60 |
 | `44100->96000` | up/cross | 0/142 | 0/60 |
-| **total** | | **101/577 = 17.5%** | **0/244** |
+| `48000->88200` | up/cross | *no baseline* | 0/61 |
+| **total** | | **168/870 = 19.3%** | **0/486** |
 
-`resets_per_change_pct` went 17.5 -> **0.0**. Across all ten trustworthy
-pre-change runs (any sweep order) it was 168 resets in 880 changes, 19.1%.
-Under the as-given baseline rate, P(0 stalls in 244) is 4e-21. The rule of
-three puts a 95% upper bound of 1.2% on whatever the residual rate now is --
-so this is not "less frequent", it is below what 244 changes can detect.
+`resets_per_change_pct` went 19.3 -> **0.0**. P(0 stalls in 486) under the old
+rate is 5e-46. The rule of three puts a 95% upper bound of **0.62%** on
+whatever the residual rate now is -- so this is not "less frequent", it is
+below what 486 changes can detect.
 
-The two cells that carried the entire fault are exactly the two the
-divide-ratio hypothesis named, and both are now empty. The upward cells were
-already clean and stayed clean, so nothing was traded away.
+Every downward pair that ever carried the fault is now empty, including the
+two worst on record. The upward pairs were already clean and stayed clean, so
+nothing was traded away. `88200->44100` and `48000->88200` had no historical
+baseline -- no earlier sweep produced them -- so they are newly covered rather
+than newly fixed.
+
+Not covered by either arm: the two **lateral** pairs, `44100<->48000` and
+`88200<->96000`, where the divide ratio does not change. The hypothesis
+predicts they never stalled in the first place and no sweep has ever produced
+one, so this is a gap in the record rather than a risk.
 
 **Verification, because a zero is exactly what a broken instrument reports.**
 This document has been burned once by markers failing silently while every
-per-change figure read zero, so:
+per-change figure read zero. Both arms were checked the same way, and both
+pass identically:
 
 - `attribution_trustworthy` is `True` and `rate_check_blind_steps` is 0.
-- The run's own `JT-MARK` markers bound a 1091 s window matching
+- Each run's own `JT-MARK` markers bound a ~1090 s window matching its
   `duration_s`, containing 489 markers for 244 changes. Filtered to that
   window, the kernel log contains **no** `Capture URB has stalled.`, no
   `Resetting device to recover`, no `reset high-speed USB device`, no URB
-  errors and no submit failures. (`dmesg.txt` holds an ~18 hour ring buffer
-  and its 62 stall lines are all from earlier runs -- do not count them
-  without filtering to the marker window.)
-- Capture was genuinely exercised, not merely quiet: 244 measurements,
-  `capture_frames_ratio` min **1.0** (before: min 0.0, i.e. changes that
-  delivered nothing), `capture_rate_ratio_min` **0.902** (before: 0.0),
-  `steady_ratio_capture` 1.000 on every change.
+  errors and no submit failures.
+- **`dmesg.txt` is an ~18 hour ring buffer**, so it holds many earlier runs.
+  The first arm's file contains 62 stall lines and the second's 10, every one
+  of them outside its own run's window. Do not count them without filtering
+  to the marker window first -- read raw, either file looks like a failure.
+- Capture was genuinely exercised, not merely quiet: 244 measurements per
+  arm, `capture_frames_ratio` min **1.0** (before: min 0.0, i.e. changes that
+  delivered nothing), `capture_rate_ratio_min` **0.902** and **0.901**
+  (before: 0.0), `steady_ratio_capture` 1.000 throughout.
 - The loaded module is build-id `09c3e409...`, `dirty: false`, git `5505b28`
-  -- the commit under test.
+  -- the commit under test -- in both arms.
 
 A note on one metric that looks alarming and is not: `capture_effective_hz`
 reads 6-9% low here. That is the gross whole-invocation figure, which is low
@@ -872,22 +888,10 @@ It does not settle the **device wedge** under sustained resets (open question
 performed none, so the wedge was not exercised rather than fixed. It stays
 open.
 
-It also does not cover 88200. The sweep was
-`[96000, 48000, 96000, 44100]`, which leaves `88200->48000` -- the worst pair
-on record, 4/5 and 5/5 on 08-15 -- and `88200->44100`, the other
-`down`/`within` pair, untested. The confirming run should be that arm rather
-than a repeat of this one:
-
-```sh
-sudo ./runner.py --case JT-RATE-001 --unattended \
-    --param rates=[88200,48000,88200,44100] \
-    --param sweep_order=as-given \
-    --param seconds_per_rate=4 \
-    --param iterations_per_run=61
-```
-
-That puts both untested downward pairs and their upward mirrors at n=61. The
-longer `JT-RATE-003` is also worth having before the milestone is closed.
+The longer `JT-RATE-003` is still worth having before the milestone is closed,
+as is a lateral-only sweep (`rates=[44100,48000]` / `[88200,96000]`,
+`sweep_order=as-given`) to put a number on the one class no sweep has ever
+produced.
 
 One thing that *is* already covered: the other call site of
 `ploytec_start_streaming()` is the probe path (`jockey3.c:1919`), and
