@@ -1438,6 +1438,62 @@ def test_marker_labels():
           "and an over-long label is truncated to what the helper accepts")
 
 
+def test_run_log_trimming():
+    """dmesg.txt must cover this run, and say so when it cannot.
+
+    The kernel ring buffer on the test machines holds roughly eighteen hours,
+    so an untrimmed capture is mostly earlier runs. Two JT-RATE-001 runs on
+    2026-08-17 that stalled zero times in 244 changes each shipped a dmesg.txt
+    containing 62 and 10 "Capture URB has stalled." lines respectively, every
+    one of them from a previous run. Read raw, either file argues the opposite
+    of what the run actually measured.
+
+    The fallback matters as much as the trim: when the run-start marker never
+    lands, the whole log is kept rather than nothing, because too much context
+    can be filtered later and too little cannot be recovered. What must never
+    happen is an untrimmed file that reads as though it were trimmed.
+    """
+    print("\nrun-scoped dmesg capture")
+
+    mk = kmsg.Marker("run#20260817T161831Z")
+    mk.written = True
+    old = ["[100.0] snd-reloop-jockey3 1-2.2:1.0: Capture URB has stalled.",
+           "[101.0] usb 1-2.2: reset high-speed USB device number 9"]
+    lines = old + [f"[200.0] {mk.token}",
+                   "[201.0] JT-MARK JT-RATE-001#change1-96000 abc123def456",
+                   "[202.0] snd-reloop-jockey3 1-2.2:1.0: Rate set OK"]
+
+    text, trimmed = kmsg.run_log(lines, mk)
+    check(trimmed is True, "a written marker trims the log")
+    check("Capture URB has stalled" not in text,
+          "and an earlier run's stall line does not survive the trim")
+    check("Rate set OK" in text, "while this run's own lines do")
+    # Three, not two: slice_since() consumes the marker line as well as the
+    # two that preceded it.
+    check("3 earlier line(s) trimmed" in text,
+          "and the header counts what it dropped, marker line included")
+
+    unwritten = kmsg.Marker("run#never-landed")
+    unwritten.written = False
+    text, trimmed = kmsg.run_log(lines, unwritten)
+    check(trimmed is False, "an unwritten marker keeps the whole buffer")
+    check("Capture URB has stalled" in text,
+          "so no context is lost when the marker fails")
+    check("WHOLE kernel ring buffer" in text.split("\n")[0],
+          "but the very first line says so, loudly")
+
+    # The marker is written before any case runs, so a marker that is written
+    # but absent from the log (buffer wrapped, helper lied) must also fall back
+    # rather than silently keeping everything and claiming it trimmed.
+    missing = kmsg.Marker("run#not-in-log")
+    missing.written = True
+    text, trimmed = kmsg.run_log(lines, missing)
+    check(trimmed is False,
+          "a marker that never appears in the log is not reported as trimmed")
+    check("WHOLE kernel ring buffer" in text,
+          "and the header warns rather than implying a clean window")
+
+
 def test_pointer_rate():
     """The steady-state rate measurement, on synthetic traces.
 
@@ -1585,6 +1641,7 @@ def main():
     test_rate_change_case_runs()
     test_rate_change_log_attribution()
     test_marker_labels()
+    test_run_log_trimming()
     test_pointer_rate()
     test_param_overrides()
 

@@ -763,6 +763,17 @@ def main():
 
     stopped = alsa.stop_sound_server()
 
+    # Bounds this run's dmesg.txt. The kernel ring buffer holds many hours --
+    # around eighteen on the test machines -- so an untrimmed capture is mostly
+    # earlier runs, and reading it raw makes a clean run look like a failing
+    # one. Two 2026-08-17 runs of JT-RATE-001 that stalled zero times out of
+    # 244 shipped dmesg.txt files containing 62 and 10 "Capture URB has
+    # stalled." lines respectively, every one of them from a previous run.
+    # Written before the cases start so a driver reload performed by the suite
+    # still lands inside the window.
+    run_marker = kmsg.Marker(f"run#{stamp}")
+    run_marker.write()
+
     run = results.Run(
         run_id=f"{target_name}-{stamp}-{args.profile}",
         profile=args.profile, target=target_name,
@@ -904,16 +915,26 @@ def main():
         built = env.built_driver_info(kernel.get("tree") or "")
         if built and built.get("build"):
             run.env["driver"] = built
-    run.env["firmware"] = env.firmware_from_log(kmsg.read_log())
+    # Read once and reuse: the firmware probe wants the whole buffer, since a
+    # module loaded before the run announced itself before the marker, while
+    # dmesg.txt wants only this run's slice.
+    full_log = kmsg.read_log()
+    run.env["firmware"] = env.firmware_from_log(full_log)
     if run.env["firmware"] is None and run.env["driver"]["loaded"]:
         run.env["firmware_note"] = (
             "firmware revision not seen in the kernel log -- dynamic debug was "
             "not enabled before the module was loaded, so this run does not "
             "know which firmware it tested")
+
+    # Trimmed to this run's own window; see run_marker above. Falls back to the
+    # whole log if the marker never made it, and says so in the file's header.
+    dmesg_text, dmesg_trimmed = kmsg.run_log(full_log, run_marker)
+    run.env["dmesg_trimmed_to_run"] = dmesg_trimmed
+
     results.write(run, run_json)
 
     with open(os.path.join(run_path, "dmesg.txt"), "w", encoding="utf-8") as f:
-        f.write("\n".join(kmsg.read_log()) + "\n")
+        f.write(dmesg_text)
 
     alsa.start_sound_server(stopped)
 

@@ -595,7 +595,7 @@ observation, and a governor change invalidates a latency series.
 ```
 <results-root>/<target>/<UTC-timestamp>-<profile>/
     run.json        environment, driver identity, per-case results and metrics
-    dmesg.txt       full capture
+    dmesg.txt       kernel log, trimmed to this run
     cases/          per-case logs, recordings
 ```
 

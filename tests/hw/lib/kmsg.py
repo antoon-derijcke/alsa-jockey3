@@ -118,6 +118,36 @@ def slice_since(lines, marker):
     return lines[idx + 1:] if idx is not None else lines
 
 
+def run_log(lines, marker):
+    """This run's slice of the kernel log, plus a header describing it.
+
+    Returns (text, trimmed). The ring buffer on the test machines holds
+    something like eighteen hours, so an untrimmed capture is mostly earlier
+    runs. That is not merely untidy: two JT-RATE-001 runs on 2026-08-17 that
+    stalled zero times in 244 changes shipped dmesg.txt files containing 62
+    and 10 "Capture URB has stalled." lines, every one of them from a previous
+    run. Read raw, either file argues the opposite of what the run measured.
+
+    When the marker is missing the whole log is kept rather than nothing --
+    too much context can be filtered down later, too little cannot be
+    recovered -- so the header has to distinguish the two cases loudly. A
+    silently untrimmed file that looks trimmed is the failure this guards
+    against.
+    """
+    kept = slice_since(lines, marker)
+    trimmed = bool(marker and marker.written and len(kept) < len(lines))
+    if trimmed:
+        head = (f"# kernel log from the start of this run\n"
+                f"# marker: {marker.token}\n"
+                f"# {len(lines) - len(kept)} earlier line(s) trimmed\n")
+    else:
+        head = ("# WHOLE kernel ring buffer -- the run-start marker was not\n"
+                "# written, so this file also covers earlier runs. Lines below\n"
+                "# may predate this run entirely; check timestamps before\n"
+                "# attributing anything here to it.\n")
+    return head + "\n".join(kept) + "\n", trimmed
+
+
 def _compile(rules, key):
     out = []
     for entry in rules.get(key) or []:

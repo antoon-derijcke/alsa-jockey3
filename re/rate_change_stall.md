@@ -856,10 +856,15 @@ pass identically:
   window, the kernel log contains **no** `Capture URB has stalled.`, no
   `Resetting device to recover`, no `reset high-speed USB device`, no URB
   errors and no submit failures.
-- **`dmesg.txt` is an ~18 hour ring buffer**, so it holds many earlier runs.
-  The first arm's file contains 62 stall lines and the second's 10, every one
-  of them outside its own run's window. Do not count them without filtering
-  to the marker window first -- read raw, either file looks like a failure.
+- **`dmesg.txt` in these two runs is an ~18 hour ring buffer**, so it holds
+  many earlier runs. The first arm's file contains 62 stall lines and the
+  second's 10, every one of them outside its own run's window. Do not count
+  them without filtering to the marker window first -- read raw, either file
+  argues the opposite of what the run measured. *Fixed for future runs:* the
+  runner now writes a run-start marker and trims `dmesg.txt` to it
+  (`kmsg.run_log()`), falling back to the whole buffer with a loud header if
+  the marker never lands. These two files predate that and still need manual
+  filtering.
 - Capture was genuinely exercised, not merely quiet: 244 measurements per
   arm, `capture_frames_ratio` min **1.0** (before: min 0.0, i.e. changes that
   delivered nothing), `capture_rate_ratio_min` **0.902** and **0.901**

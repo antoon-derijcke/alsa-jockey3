@@ -5,7 +5,7 @@ One run produces one directory:
 
     <results-root>/<target>/<UTC-stamp>-<profile>/
         run.json        the record -- environment, results, metrics
-        dmesg.txt       full kernel log captured across the run
+        dmesg.txt       kernel log, trimmed to this run (see kmsg.run_log)
         checklist.md    the completed manual checklist, if one was imported
         cases/          per-case stdout, stderr and artifacts
 
