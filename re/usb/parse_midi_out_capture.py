@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
 # python script to analyse the OpenVizsla capture_midi_out.txt 
 #
 # objective is to validate the midi stream encapsulated in the playback stream
