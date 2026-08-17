@@ -160,21 +160,6 @@ def wait_for_card(present, timeout):
     return idx, None
 
 
-def _control_is_live(path):
-    """Is this control node backed by a card that is actually there?
-
-    A stale node left behind by a departed card still stats fine; opening it
-    is what tells the two apart, and it is also precisely what alsa-lib does
-    when resolving "hw:<idx>,0" -- so this asks the same question arecord will.
-    """
-    try:
-        fd = os.open(path, os.O_RDONLY)
-    except OSError:
-        return False
-    os.close(fd)
-    return True
-
-
 def wait_for_substreams(idx, timeout):
     """Poll until the card is not just present but openable.
 
@@ -208,14 +193,13 @@ def wait_for_substreams(idx, timeout):
     """
     t0 = time.time()
     deadline = t0 + timeout
-    control = f"/dev/snd/controlC{idx}"
     nodes = (f"/dev/snd/pcmC{idx}D0c", f"/dev/snd/pcmC{idx}D0p")
     while True:
         subs = alsa.substreams(idx)
         missing = [w for w in ("playback", "capture") if not subs[w]]
         missing += [n for n in nodes if not os.path.exists(n)]
-        if not _control_is_live(control):
-            missing.append(f"{control} (not openable)")
+        if not alsa.control_is_live(idx):
+            missing.append(f"/dev/snd/controlC{idx} (not openable)")
         if not missing or time.time() >= deadline:
             return round((time.time() - t0) * 1000, 1), missing
         time.sleep(0.02)

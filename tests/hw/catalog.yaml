@@ -1016,14 +1016,16 @@ cases:
       settle_seconds: 8
       race_ms_min: 20
       race_ms_max: 120
-    metrics: [cycles, races_observed, enumerate_ms, card_index_first, card_index_last]
+    metrics: [cycles, reopen_attempts, enumerate_ms, card_index_first, card_index_last]
     pass: >
       The device re-enumerates after every cycle with all three substream types,
       and a rate change still works afterwards. No submit failure and no
       "Endpoints are disabled" anywhere in the log -- both are driver_fail in
-      lib/rules.yaml, so the runner enforces that part, not the case.
+      lib/rules.yaml, so the runner enforces that part, not the case. How often
+      a rate change actually raced a removal is the "rate_change_raced_removal"
+      metric lib/rules.yaml attaches to "Failed to initialize device to change
+      rate: -19", not a metric this case computes itself.
     expect_dmesg:
-      - 'Failed to initialize device to change rate'
       - 'Firmware version read failed'
       - 'URB stream stalled: no completion for'
     steps:
@@ -1054,9 +1056,11 @@ cases:
       marking the device NOTATTACHED, in which a control transfer is submitted
       and never completes.
 
-      The window is narrow and not under our control, so races_observed is
-      recorded rather than asserted -- a run of zeroes means nothing was
-      provoked, which is different from a clean pass and must not read as one.
+      The window is narrow and not under our control, so how often it was hit
+      is recorded rather than asserted -- see the "rate_change_raced_removal"
+      metric lib/rules.yaml attaches to the driver's own -19 log lines. A run
+      of zeroes means nothing was provoked, which is different from a clean
+      pass and must not read as one.
 
   # ------------------------------------------------------------------ AUDIO
 

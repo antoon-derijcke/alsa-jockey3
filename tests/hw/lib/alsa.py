@@ -51,6 +51,27 @@ def device_name(index, dev=0):
     return f"hw:{index},{dev}"
 
 
+def control_is_live(index):
+    """Is this card's control node backed by a card that is actually there?
+
+    A stale /dev/snd/controlCN node left behind by a departed card still
+    stats fine; opening it is what tells the two apart, and it is also
+    precisely what alsa-lib does when resolving "hw:<index>,0" -- so this
+    asks the same question aplay/arecord will. /proc/asound/cardN and its
+    "id" file are created early in probe, before snd_card_register()
+    publishes the character devices, so presence there is not proof the
+    node is openable yet -- and the character devices from a card's
+    previous incarnation can survive a disconnect until udev reaps them,
+    which is asynchronous and slower than probe.
+    """
+    try:
+        fd = os.open(f"/dev/snd/controlC{index}", os.O_RDONLY)
+    except OSError:
+        return False
+    os.close(fd)
+    return True
+
+
 def substreams(index):
     """What the card actually exposes -- the shape probe should have created."""
     base = f"/proc/asound/card{index}"

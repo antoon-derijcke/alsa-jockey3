@@ -60,15 +60,49 @@ benign:
     why: >
       Routine on unplug -- all eight in-flight URBs error at once -- so this is
       the normal path into disconnect, not an exotic one.
-  - pattern: 'Failed to resubmit (?:playback|capture) URB: -(?:2|108)$'
+  - pattern: 'Failed to resubmit (?:playback|capture) URB: -(?:2|19|108)$'
     metric: urb_resubmit_teardown
     why: >
       -ENOENT and -ESHUTDOWN mean the URB was killed while a completion was
       already in flight, which is exactly what jockey3_stop_urbs() does. Every
       one of the 49 seen on the first hardware run landed in the microseconds
       after "deregistering interface driver".
+      -ENODEV is the same teardown seen from the other direction: a clean
+      VBUS drop (JT-RATE-004's usb-power cutting a hub port, rather than an
+      unbind) marks the device NOTATTACHED before the completion handler
+      gets to resubmit, and every in-flight URB reports -19 at once rather
+      than the -2/-108 an unbind produces. The case's own docstring notes a
+      real cable pull degrades through -71 first; that path is not covered
+      here and must stay a failure if it appears.
       Deliberately matched by errno rather than by message: a resubmit failure
       with any OTHER error code is not teardown, and must stay a failure.
+  - pattern: >-
+      Failed to (?:initialize device to change rate|read current hardware
+      rate|set rate|start streaming after rate change): -19$
+    metric: rate_change_raced_removal
+    why: >
+      This is not generic teardown noise, it is JT-RATE-004's actual target.
+      jockey3_set_rate() is a sequential EP0 handshake -- initialize, read
+      rate, set rate, start streaming -- that returns on the first stage to
+      fail, so exactly one of these four dev_err lines fires per failed
+      attempt, at whichever stage the device happened to vanish under it.
+      jockey3_set_rate() checks jockey3_is_disconnected() before starting,
+      so reaching any of these with -ENODEV means the device was still
+      believed live when the handshake began and went away mid-transfer --
+      the exact window the case exists to provoke. Counted rather than
+      failed, and counted separately from urb_resubmit_teardown above,
+      because how often the race actually lands is the number that matters
+      here, and this line is a far more precise signal of that than watching
+      aplay's own exit status ever was. The driver_fail entry below still
+      fails every other errno, in particular -110 (ETIMEDOUT), which means
+      the device is enumerated but has genuinely stopped answering -- a real
+      wedge, not a race.
+  - pattern: 'Rate change to \d+ failed: -19$'
+    why: >
+      The jockey3_pcm_hw_params() wrapper around jockey3_set_rate(), logged
+      one level up the call stack from and always alongside one of the four
+      messages above -- same event, same race, not counted a second time as
+      a separate metric here to avoid double-counting it.
   - pattern: 'Firmware 0x[0-9a-f]{2} v\d+\.\d+\.\d+'
     why: >
       The firmware revision, which the runner parses out of the log because
@@ -295,10 +329,20 @@ driver_fail:
       is ENOENT from usb_submit_urb() meaning usb_pipe_endpoint() returned
       NULL -- the USB core has no such endpoint any more, while the driver
       still believes it is bound.
-  - pattern: 'Failed to initialize device to change rate'
+  - pattern: >-
+      Failed to (?:initialize device to change rate|read current hardware
+      rate|set rate|start streaming after rate change): -(?!19$)\d+
     why: >
-      The EP0 control transfer did not complete. With -110 it timed out: the
-      device is enumerated but no longer answering.
+      One of the four sequential stages of jockey3_set_rate()'s EP0
+      handshake did not complete. With -110 it timed out: the device is
+      enumerated but no longer answering. -19 (ENODEV) is excluded from all
+      four here and classified benign above -- see that entry for why.
+  - pattern: 'Rate change to \d+ failed: -(?!19$)\d+'
+    why: >
+      jockey3_pcm_hw_params()'s wrapper around jockey3_set_rate() failing for
+      any reason other than the device having just gone away -- see the
+      benign -19 entry for that case. Any other errno here is the rate
+      change genuinely not having worked.
   - pattern: '(?:Playback|Capture) URB stream still stalled: no completion for'
     why: >
       The watchdog's heartbeat: a direction that has been silent for a full

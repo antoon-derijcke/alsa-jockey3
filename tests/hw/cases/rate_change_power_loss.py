@@ -31,8 +31,15 @@ window in which a control transfer is submitted and does not complete, and a
 rate change started inside that window walks the identical sequence.
 
 The window is short and its width is not under our control, so this case does
-NOT assert that it was hit. It provokes repeatedly with a jittered delay and
-records how often a rate change actually raced a removal. The verdict on what
+NOT assert that it was hit. It provokes repeatedly, reopening aplay at a
+jittered interval for as long as the card is still present -- see
+race_rate_change_against_cut() for why a single jittered delay before one
+cut was not enough. How often a rate change actually raced a removal is read
+from the driver's own log, not measured here: jockey3_set_rate() only reaches
+"Failed to initialize device to change rate: -19" when the device was still
+believed live at the start of the EP0 transfer and went away mid-transfer,
+which is exactly this window, and lib/rules.yaml counts it as the benign
+'rate_change_raced_removal' metric. The verdict on what
 the driver said is the runner's, from lib/rules.yaml -- 'Failed to submit
 (?:playback|capture|MIDI IN) URB' and 'Endpoints are disabled after ...' are
 both driver_fail, so a single -2 anywhere in this case's log turns it red
@@ -50,6 +57,7 @@ import os
 import random
 import subprocess
 import sys
+import threading
 import time
 
 sys.path.insert(0, os.path.normpath(
@@ -63,11 +71,23 @@ FORMAT = "S24_3LE"
 
 
 def wait_for_card(present, timeout):
-    """Wait for the card to appear or disappear. Returns (index, when|None)."""
+    """Wait for the card to appear or disappear. Returns (index, when|None).
+
+    Presence alone is not enough when waiting for the card to come back:
+    /proc/asound/cardN and its substreams appear early in probe, before
+    snd_card_register() publishes the /dev/snd character devices, and those
+    devices can also be stale leftovers from the previous incarnation that
+    udev has not reaped yet. alsa.control_is_live() asks the same question
+    aplay does when it opens "hw:<idx>,0" -- see its docstring, and
+    audio_engine_start.py's wait_for_substreams() where this was first hit.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         idx, _ = alsa.find_card()
-        if (idx is not None) == present:
+        if idx is not None and present:
+            if alsa.control_is_live(idx):
+                return idx, time.time()
+        elif idx is None and not present:
             return idx, time.time()
         time.sleep(0.05)
     idx, _ = alsa.find_card()
@@ -105,6 +125,67 @@ def reap(gen, p):
         except subprocess.TimeoutExpired:
             pass
     return running
+
+
+def cut_power_async():
+    """Fire usb-power off in the background. Returns (thread, result-box)."""
+    box = {}
+
+    def run():
+        box["rc"], box["out"], box["err"] = priv.usb_power("off")
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return t, box
+
+
+def race_rate_change_against_cut(idx, rates, seed, seconds, race_lo, race_hi):
+    """Reopen at a rotating rate until the device actually disappears.
+
+    priv.usb_power("off") is not fast: the privileged helper re-resolves the
+    hub port from the device's own USB ids and only then cuts it, two serial
+    round trips to uhubctl that measured 2-4 seconds on this rig -- far
+    longer than the sub-second window a rate change is actually vulnerable
+    in. A single short jittered sleep before ONE blocking off() call almost
+    never lands inside that window, which is why races_observed read 0 in
+    every run since this case was added: the jitter was aimed at the wrong
+    clock. Firing off() in the background and reopening aplay at short
+    jittered intervals for as long as the card is still present spreads many
+    attempts across the helper's whole round trip instead of gambling on a
+    single one, and each reopen re-enters the vulnerable window at its own
+    hw_params() rather than needing the first guess to land.
+
+    Whether any one attempt actually raced the cut is NOT decided here.
+    Watching aplay's own liveness at the moment the card disappears was the
+    first approach tried, and it undercounted badly: aplay exits as soon as
+    its write fails, which can well be before the poll below runs, so a race
+    that did land often reads as "not running" anyway. The driver's own log
+    is unambiguous about this instead -- see the benign
+    'rate_change_raced_removal' entry in lib/rules.yaml -- so the runner
+    counts it from there, not from anything guessed in this process.
+
+    Returns (attempts, last_rate, off_result_box).
+    """
+    device = alsa.device_name(idx)
+    off_thread, off_box = cut_power_async()
+    gen = p = None
+    attempt = 0
+    rate = None
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        now_idx, _ = alsa.find_card()
+        if now_idx is None:
+            break
+        if p is not None:
+            reap(gen, p)
+        attempt += 1
+        rate = rates[(seed + attempt) % len(rates)]
+        gen, p = start_playback(device, rate, seconds)
+        time.sleep(random.uniform(race_lo, race_hi))
+    if p is not None:
+        reap(gen, p)
+    off_thread.join(timeout=30)
+    return attempt, rate, off_box
 
 
 def power_on(c, settle):
@@ -151,15 +232,14 @@ def main():
     off_seconds = float(c.params.get("off_seconds", 2))
     settle = float(c.params.get("settle_seconds", 8))
     seconds = float(c.params.get("seconds", 2))
-    # The delay between launching aplay and cutting power. aplay has to get far
-    # enough to reach hw_params -- which is where the rate change happens -- but
-    # not so far that it has finished. Jittered because the window this is
-    # aiming at is narrow and its position is not something we can measure.
+    # The reopen interval used while racing the cut -- see
+    # race_rate_change_against_cut() for why this is no longer a single delay
+    # before one cut, but a repeated one spread across the whole round trip.
     race_lo = float(c.params.get("race_ms_min", 20)) / 1000.0
     race_hi = float(c.params.get("race_ms_max", 120)) / 1000.0
 
     start_idx, _ = alsa.find_card()
-    enumerate_ms, races = [], 0
+    enumerate_ms, attempts_total = [], 0
     powered_off = False
     cycles = 0
 
@@ -170,26 +250,14 @@ def main():
                 c.fail(f"iteration {i}: no card to start from")
                 break
 
-            # Rotate so consecutive iterations always request a different rate
-            # from the one before, otherwise the driver short-circuits on
-            # "Rate already set" and no rate change happens at all.
-            rate = rates[i % len(rates)]
-            gen, p = start_playback(alsa.device_name(idx), rate, seconds)
-
-            time.sleep(random.uniform(race_lo, race_hi))
-            rc, _out, err = priv.usb_power("off")
-            if rc != 0:
-                reap(gen, p)
+            attempts, rate, off_box = race_rate_change_against_cut(
+                idx, rates, i, seconds, race_lo, race_hi)
+            attempts_total += attempts
+            if off_box.get("rc") != 0:
                 c.fail(f"iteration {i}: usb-power off failed: "
-                       f"{(err or '').strip()[:120]}")
+                       f"{(off_box.get('err') or '').strip()[:120]}")
                 break
             powered_off = True
-
-            # aplay still running when the power went means the open -- and so
-            # the rate change -- had not finished, which is the race we want.
-            raced = reap(gen, p)
-            if raced:
-                races += 1
 
             _idx, gone = wait_for_card(False, settle)
             if gone is None:
@@ -222,9 +290,8 @@ def main():
                 c.fail(f"iteration {i}: rate change no longer works after the "
                        f"race: {why_not}")
 
-            c.progress(f"cycle {i}/{iterations}  requested {rate} Hz  "
-                       f"up {ms:>5.0f} ms  card hw:{idx}"
-                       + ("  RACED" if raced else "")
+            c.progress(f"cycle {i}/{iterations}  {attempts} reopen(s), "
+                       f"last {rate} Hz  up {ms:>5.0f} ms  card hw:{idx}"
                        + ("  MISSING " + ", ".join(missing) if missing else ""))
     finally:
         # Never leave the rig dark; see hotplug_cycle.py for what that costs.
@@ -237,19 +304,18 @@ def main():
     c.metric("cycles", cycles)
     c.metric("card_index_first", start_idx)
     c.metric("card_index_last", alsa.find_card()[0])
-    # Not a pass criterion: the window is not ours to control, and a run that
-    # raced nothing has simply not provoked anything. Recorded so a series of
-    # zeroes is visible rather than being mistaken for a series of clean passes.
-    c.metric("races_observed", races)
+    # How many times a rate change actually raced a removal is not something
+    # this process can see reliably -- aplay exits as soon as its write
+    # fails, often before this script gets to look. It is read from the
+    # driver's own log instead: run.json's "rate_change_raced_removal" metric,
+    # attached to the benign entry of the same name in lib/rules.yaml.
+    c.metric("reopen_attempts", attempts_total)
     if enumerate_ms:
         c.metric("enumerate_ms", {"n": len(enumerate_ms),
                                   "min": min(enumerate_ms),
                                   "max": max(enumerate_ms),
                                   "mean": round(sum(enumerate_ms)
                                                 / len(enumerate_ms), 1)})
-    if not races:
-        c.note("no rate change was still in flight when power was cut; "
-               "widen race_ms_min/race_ms_max if this persists")
     c.done()
 
 
