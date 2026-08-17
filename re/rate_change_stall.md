@@ -11,6 +11,15 @@
 > that carried the entire fault (38.6% and 31.0%) now empty. See "The fix
 > works" below.
 >
+> **One coverage gap before this is called closed outright:** the validation
+> sweep was `[96000, 48000, 96000, 44100]`, so it contains no 88200 at all.
+> `88200->48000` was the worst pair ever recorded here (4/5 and 5/5 on
+> 08-15) and `88200->44100` is the other `down`/`within` pair; neither was
+> exercised. Both divider *classes* are covered at n=61 and an unconditional
+> control write has no plausible rate dependence, so the expectation is that
+> the 88200 arm reads zero too -- but it is an expectation, not a
+> measurement. Run it before removing any mitigation.
+>
 > Still open: the **device wedge** under sustained resets (open question 3),
 > which this run did not exercise because it performed no resets. The
 > mitigation stack described below is now dormant rather than load-bearing,
@@ -863,8 +872,29 @@ It does not settle the **device wedge** under sustained resets (open question
 performed none, so the wedge was not exercised rather than fixed. It stays
 open.
 
-It is also one run. A second run, and the longer `JT-RATE-003`, are cheap and
-worth doing before this is called closed.
+It also does not cover 88200. The sweep was
+`[96000, 48000, 96000, 44100]`, which leaves `88200->48000` -- the worst pair
+on record, 4/5 and 5/5 on 08-15 -- and `88200->44100`, the other
+`down`/`within` pair, untested. The confirming run should be that arm rather
+than a repeat of this one:
+
+```sh
+sudo ./runner.py --case JT-RATE-001 --unattended \
+    --param rates=[88200,48000,88200,44100] \
+    --param sweep_order=as-given \
+    --param seconds_per_rate=4 \
+    --param iterations_per_run=61
+```
+
+That puts both untested downward pairs and their upward mirrors at n=61. The
+longer `JT-RATE-003` is also worth having before the milestone is closed.
+
+One thing that *is* already covered: the other call site of
+`ploytec_start_streaming()` is the probe path (`jockey3.c:1919`), and
+`20260817T161758Z-smoke` ran `JT-PROBE-001` three times on the same module
+(build-id `09c3e409`), all passing. At cold init the device reports status
+`0x12`, so the old conditional wrote too and behavior there is unchanged --
+that was an inference from the traces, and this run makes it a measurement.
 
 ### Still missing
 
