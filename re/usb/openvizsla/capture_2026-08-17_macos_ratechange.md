@@ -20,6 +20,8 @@ has_control_traffic: yes
 
 This trace was captured to gather more data investigating how the vendor drivers handles the rate-changing.
 
+Note: During one of the rate changes I noticed that it took much longer than usual before the audio was resumed, so possibly some recovery logic was invoked?
+
 
 ## Conclusion
 

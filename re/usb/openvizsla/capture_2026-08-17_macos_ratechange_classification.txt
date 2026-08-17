@@ -1,0 +1,66 @@
+capture_2026-08-17_macos_ratechange  event  3   44100->96000  up    cross
+capture_2026-08-17_macos_ratechange  event  4   96000->44100  down  cross
+capture_2026-08-17_macos_ratechange  event  5   44100->96000  up    cross
+capture_2026-08-17_macos_ratechange  event  6   96000->44100  down  cross
+capture_2026-08-17_macos_ratechange  event  7   44100->96000  up    cross
+capture_2026-08-17_macos_ratechange  event  8   96000->48000  down  within
+capture_2026-08-17_macos_ratechange  event  9   48000->96000  up    within
+capture_2026-08-17_macos_ratechange  event 10   96000->48000  down  within
+capture_2026-08-17_macos_ratechange  event 11   48000->96000  up    within
+capture_2026-08-17_macos_ratechange  event 12   96000->48000  down  within
+capture_2026-08-17_macos_ratechange  event 13   48000->96000  up    within
+capture_2026-08-17_macos_ratechange  event 14   96000->48000  down  within
+capture_2026-08-17_macos_ratechange  event 15   48000->96000  up    within
+capture_2026-08-17_macos_ratechange  event 16   96000->48000  down  within
+capture_2026-08-17_macos_ratechange  event 17   48000->96000  up    within
+capture_2026-08-17_macos_ratechange  event 18   96000->48000  down  within
+capture_2026-08-17_macos_ratechange  event 19   48000->96000  up    within
+capture_2026-08-17_macos_ratechange  event 20   96000->48000  down  within
+capture_2026-08-17_macos_ratechange  event 21   48000->88200  up    cross
+capture_2026-08-17_macos_ratechange  event 22   88200->48000  down  cross
+capture_2026-08-17_macos_ratechange  event 24   48000->44100  down  lateral
+capture_2026-08-17_macos_ratechange  event 25   44100->96000  up    cross
+capture_2026-08-17_macos_ratechange  event 26   96000->48000  down  within
+capture_2026-08-17_macos_ratechange  event 27   48000->88200  up    cross
+capture_2026-08-17_macos_ratechange  event 28   88200->48000  down  cross
+capture_2026-08-17_macos_ratechange  event 29   48000->88200  up    cross
+capture_2026-08-17_macos_ratechange  event 30   88200->48000  down  cross
+capture_2026-08-17_macos_ratechange  event 31   48000->88200  up    cross
+capture_2026-08-17_macos_ratechange  event 32   88200->48000  down  cross
+capture_2026-08-17_macos_ratechange  event 33   48000->88200  up    cross
+capture_2026-08-17_macos_ratechange  event 34   88200->48000  down  cross
+capture_2026-08-17_macos_ratechange  event 35   48000->88200  up    cross
+capture_2026-08-17_macos_ratechange  event 36   88200->48000  down  cross
+capture_2026-08-17_macos_ratechange  event 37   48000->96000  up    within
+capture_2026-08-17_macos_ratechange  event 38   96000->88200  down  lateral
+capture_2026-08-17_macos_ratechange  event 39   88200->96000  up    lateral
+capture_2026-08-17_macos_ratechange  event 40   96000->88200  down  lateral
+capture_2026-08-17_macos_ratechange  event 41   88200->96000  up    lateral
+capture_2026-08-17_macos_ratechange  event 42   96000->88200  down  lateral
+capture_2026-08-17_macos_ratechange  event 43   88200->96000  up    lateral
+capture_2026-08-17_macos_ratechange  event 44   96000->88200  down  lateral
+capture_2026-08-17_macos_ratechange  event 45   88200->48000  down  cross
+capture_2026-08-17_macos_ratechange  event 46   48000->44100  down  lateral
+capture_2026-08-17_macos_ratechange  event 47   44100->48000  up    lateral
+capture_2026-08-17_macos_ratechange  event 48   48000->44100  down  lateral
+capture_2026-08-17_macos_ratechange  event 49   44100->48000  up    lateral
+capture_2026-08-17_macos_ratechange  event 50   48000->44100  down  lateral
+capture_2026-08-17_macos_ratechange  event 51   44100->48000  up    lateral
+capture_2026-08-17_macos_ratechange  event 52   48000->44100  down  lateral
+capture_2026-08-17_macos_ratechange  event 53   44100->88200  up    within
+capture_2026-08-17_macos_ratechange  event 54   88200->44100  down  within
+capture_2026-08-17_macos_ratechange  event 55   44100->88200  up    within
+capture_2026-08-17_macos_ratechange  event 56   88200->44100  down  within
+capture_2026-08-17_macos_ratechange  event 57   44100->96000  up    cross
+capture_2026-08-17_macos_ratechange  event 58   96000->88200  down  lateral
+capture_2026-08-17_macos_ratechange  event 59   88200->96000  up    lateral
+capture_2026-08-17_macos_ratechange  event 60   96000->88200  down  lateral
+capture_2026-08-17_macos_ratechange  event 61   88200->44100  down  within
+
+direction  divider_class  n   pairs seen
+down       cross          9   88200->48000, 96000->44100
+down       lateral        11  48000->44100, 96000->88200
+down       within         11  88200->44100, 96000->48000
+up         cross          11  44100->96000, 48000->88200
+up         lateral        7   44100->48000, 88200->96000
+up         within         9   44100->88200, 48000->96000

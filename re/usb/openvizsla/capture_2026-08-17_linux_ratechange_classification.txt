@@ -1,0 +1,14 @@
+capture_2026-08-17_linux_ratechange  event  2   48000->96000  up    within
+capture_2026-08-17_linux_ratechange  event  3   96000->44100  down  cross
+capture_2026-08-17_linux_ratechange  event  4   44100->88200  up    within
+capture_2026-08-17_linux_ratechange  event  5   48000->96000  up    within
+capture_2026-08-17_linux_ratechange  event  6   44100->88200  up    within
+capture_2026-08-17_linux_ratechange  event  7   48000->96000  up    within
+capture_2026-08-17_linux_ratechange  event  8   96000->44100  down  cross
+capture_2026-08-17_linux_ratechange  event  9   44100->88200  up    within
+capture_2026-08-17_linux_ratechange  event 10   48000->96000  up    within
+capture_2026-08-17_linux_ratechange  event 11   96000->44100  down  cross
+
+direction  divider_class  n   pairs seen
+down       cross          3   96000->44100
+up         within         7   44100->88200, 48000->96000
