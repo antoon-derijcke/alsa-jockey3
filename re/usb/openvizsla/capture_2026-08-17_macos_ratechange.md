@@ -25,8 +25,33 @@ Note: During one of the rate changes I noticed that it took much longer than usu
 
 ## Conclusion
 
-TODO -- what the trace actually showed, once analyzed. Link the analysis
-document if there is one.
+This trace, with its Windows companion, closes the `down`/`within` gap that
+"Captures needed" listed as blocking: it contains 11 `96000->48000` and 9
+`48000->96000` transitions, plus every other direction/divider class.
+
+**The vendor sequence does not depend on direction.** All 58 rate-change
+bursts here are structurally identical -- 6 writes in the order
+`86,86,05,86,05,86`, a 50.3-51.4 ms quiet window before the burst, ~11 ms
+after the lone first write, 50.2-51.3 ms after it, terminated by
+`SET_STATUS wValue=0x0032`. Direction and divider class change nothing. The
+one outlier is the cold-init burst (5 writes, no lone leading write).
+
+macOS resumes capture on EP 0x86 within 1-21 ms of `SET_STATUS` on every one
+of the 59 changes, in both directions.
+
+The longer-than-usual rate change noted in the objective is **event 23**: a
+full USB re-enumeration (`SET_ADDRESS 0x0009`), following a `88200->48000`
+downward divider-crossing change. So the vendor driver does occasionally
+reset the device after exactly the kind of transition that stalls this
+driver -- once in 58 changes here, against three in 18 on ours. It
+re-enumerates the device, as this driver does, though whether the underlying
+mechanism is the same cannot be told from the wire: the address changed
+8 -> 9 here, where our reset keeps address 34.
+
+See `re/rate_change_stall.md`, section "2026-08-17: the vendor
+sequence is direction-blind, and three concrete divergences", for the full
+analysis. Profile any burst in this trace with
+`re/usb/rate_burst_profile.py`.
 
 ## Contents (derived)
 

@@ -22,8 +22,35 @@ This trace was captured to gather more data investigating how the vendor drivers
 
 ## Conclusion
 
-TODO -- what the trace actually showed, once analyzed. Link the analysis
-document if there is one.
+This trace, with its macOS companion, closes the `down`/`within` gap that
+"Captures needed" listed as blocking: it contains 11 `96000->48000` and 11
+`48000->96000` transitions, plus every other direction/divider class.
+
+**The vendor sequence does not depend on direction.** All 56 rate-change
+bursts are structurally identical -- 7 writes in the order
+`86,05,86,05,86,05,86`, a 50.4-52.6 ms quiet window entering the block,
+~5-9 ms after the leading `86,05` pair, no quiet window after the burst
+(0.0-0.4 ms), terminated by `SET_STATUS wValue=0x0032`. Direction and divider
+class change nothing.
+
+Windows differs from macOS in shape but not in direction-sensitivity: one
+more write, the split one position later, and the ~50 ms wait placed *before*
+the `GET_STATUS`/`GET_RATE(ep=none)` probe pair rather than after it. The
+5-write tail `86,05,86,05,86` is common to both platforms.
+
+Two Windows-specific findings. 43 of the 56 changes end with
+`CLEAR_FEATURE(ENDPOINT_HALT)` on `0x86` then `0x05`, about 246 ms after
+`SET_STATUS` and immediately before streaming resumes -- this driver and
+macOS clear halt only in the preamble. That accounts for Windows'
+248-509 ms resume figures, which are host policy rather than device latency.
+The split does not partition by direction or divider class (about 75/25 in
+all six cells). The 13 two-transfer `control` events interleaved with the
+rate changes are unrelated to rate programming.
+
+See `re/rate_change_stall.md`, section "2026-08-17: the vendor
+sequence is direction-blind, and three concrete divergences", for the full
+analysis. Profile any burst in this trace with
+`re/usb/rate_burst_profile.py`.
 
 ## Contents (derived)
 

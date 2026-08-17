@@ -15,6 +15,28 @@ All starts with low Level USB protocol traces captured with OpenVizsla (ovctl.py
 
 - extract_events.py -- folds the EP0 transactions into whole control transfers, groups them into *events* (an initialization or a rate change), and times them. Timestamps are normalized to the start of each event so that captures taken on different machines minutes apart can be diffed directly.
 
+- classify_rate_transitions.py -- counts which rate transitions a capture contains, classified by direction and by divide-ratio class. One transition per event, which is exact for the vendor traces and **wrong for driver traces** -- see the next entry.
+
+- rate_burst_profile.py -- profiles the *shape* of every rate-programming burst: write count, endpoint order, the quiet windows either side, the terminator, and when bulk traffic resumes. Its unit is the burst (a maximal run of `SET_RATE` transfers), not the event, so it stays correct on traces whose events hold more than one rate change -- which the driver's do and the vendors' do not. Use this, not `classify_rate_transitions.py`, on any Linux capture.
+
+- rate_change_stream_timing.py -- per-endpoint resume timing after a rate change, anchored on `SET_STATUS`. Note that this driver does not currently send `SET_STATUS`, so its traces produce no rows.
+
+### A caveat on event `span`
+
+The first EP0 transfer after a long run of streaming traffic is reported with
+a very large `dur(us)` -- tens to hundreds of milliseconds, against 22-180 us
+for an ordinary control transfer. Since an event's `span` runs from that
+transfer's `t=0.000`, the idle time before the sequence began is counted as
+part of the sequence. This happens on all three platforms (Linux
+`GET_FIRMWARE`, Windows `SET_CONFIGURATION`, macOS `SET_INTERFACE`), so it is
+a property of how the first transfer is anchored, not of any driver.
+
+**Do not quote `span` for an event whose first transfer carries a
+multi-millisecond duration** -- subtract the second transfer's `t(ms)` first.
+A 40 ms "our driver is slower than macOS" discrepancy was carried in
+`re/rate_change_stall.md` for two sessions on the strength of the raw figure;
+corrected, the two are within 3 ms of each other.
+
 ## The pipeline
 
 ```

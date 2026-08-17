@@ -24,8 +24,44 @@ Test run: 20260817T144709Z-smoke
 
 ## Conclusion
 
-TODO -- what the trace actually showed, once analyzed. Link the analysis
-document if there is one.
+Captured alongside the macOS and Windows traces of the same date, as the
+driver-side reference for the vendor comparison.
+
+**This trace contains the failing rate change on the wire** -- open question
+4 of `rate_change_stall.md`, which had been deferred as needing a dedicated
+capture. Events 2, 5 and 7 each hold a stall followed by a re-enumeration and
+a 5-write reprogram burst. Taking event 5 (`88200->48000`): the burst
+completes normally, the verify read returns the new rate, EP0 reports no
+fault, playback OUT on `0x05` resumes at full rate for ~60 ms until the
+driver tears it down for the reset -- and **capture IN on `0x86` produces
+nothing until the reset completes**, 410 ms after the burst.
+
+Measured with `rate_burst_profile.py --resume`, the split across all 21
+changes in this trace is total: playback always resumes at 50.7-51.7 ms, and
+capture either follows within 52.3-71.0 ms (18 changes) or not until
+410.0-433.8 ms (3 changes -- events 2, 5, 7, the reset episodes). Nothing
+lands in between. Caveat: `parse_openvizsla.py` discards NAKs, so this does
+not distinguish a silent endpoint from a NAKing one.
+
+**Our sequence terminates differently from both vendors.** All 21 bursts here
+end with a second `GET_STATUS` where the vendors send
+`SET_STATUS wValue=0x0032` -- `ploytec_start_streaming()` skips the write
+because the device already reports the `STREAMING` bit set. The quiet windows
+and burst shape otherwise match macOS to within 1 ms.
+
+**Do not use `classify_rate_transitions.py` on this trace.** It reports 10
+transitions; the trace contains 21. That script keeps one GET/SET pair per
+EVENT block, which is exact for vendor traces but wrong here -- event 5 alone
+holds three rate changes and a re-enumeration. Use `rate_burst_profile.py`.
+
+The sweep contains no `down`/`within` transition (9 `down`/`cross`, 8
+`up`/`within`, 1 `up`/`cross`), so the wire evidence above is from
+`down`/`cross`. See "Captures needed", priority 1b.
+
+See `re/rate_change_stall.md`, section "2026-08-17: the vendor
+sequence is direction-blind, and three concrete divergences", for the full
+analysis. Profile any burst in this trace with
+`re/usb/rate_burst_profile.py`.
 
 ## Contents (derived)
 

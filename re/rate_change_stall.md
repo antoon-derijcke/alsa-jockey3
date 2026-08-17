@@ -571,6 +571,213 @@ that direction/family is resolved. It belongs with the existing open
 findings on device wedging (see project memory), not folded into the
 capture-stall mitigations that already handle the ordinary case.
 
+## 2026-08-17: the vendor sequence is direction-blind, and three concrete divergences
+
+The priority-1 captures asked for below were taken (`capture_2026-08-17_*`,
+macOS / Windows / Linux, one trace each, sidecars written). They close the
+`down`/`within` gap outright: macOS contributes 11 `96000->48000` and 9
+`48000->96000`, Windows 11 and 11. Together with the pre-existing corpus this
+is 144 vendor rate changes -- 114 new, against the 30 the corpus held before
+-- with every one of the six (direction x divider_class) cells populated on
+both platforms.
+
+**The tool of record is `usb/rate_burst_profile.py`, new here.** It replaces
+the EVENT block with the *burst* -- a maximal run of `SET_RATE` transfers --
+as the unit of analysis. That is not a refinement, it is a correctness fix:
+`classify_rate_transitions.py` keeps only the last `GET_RATE(ep=none)` and the
+last `SET_RATE` per EVENT, which is exact for the vendor traces (one change
+per event, always) but silently wrong for ours. The Linux trace's event 5
+holds three rate changes and a full re-enumeration; the classifier reduced it
+to one mis-paired transition, and reported 10 transitions where the trace
+contains 21. Any conclusion drawn from `classify_rate_transitions.py` about a
+*driver* trace should be re-derived.
+
+### The answer to the direction question: no
+
+Across 136 bursts the sequence shape is a function of the platform and of
+nothing else. Per platform it is one shape, and the same shape for every
+direction and every divider class:
+
+| platform | n | writes | endpoint order | quiet before | split | quiet after | terminator |
+|---|---|---|---|---|---|---|---|
+| macOS | 58/59 | 6 | `86,86,05,86,05,86` | 50.3-51.4 ms | ~11 ms after write 1 | 50.2-51.3 ms | `SET_STATUS 0x32` |
+| Windows | 56/56 | 7 | `86,05,86,05,86,05,86` | 50.4-52.6 ms | ~5-9 ms after write 2 | none (0.0-0.4 ms) | `SET_STATUS 0x32` |
+| Linux | 18/21 | 6 | `86,86,05,86,05,86` | 50.4-51.2 ms | ~11 ms after write 1 | 50.2-51.1 ms | `GET_STATUS` (second read) |
+
+The single macOS outlier is the cold-init burst (5 writes, no leading lone
+write); the three Linux outliers are the post-reset reprogram bursts
+discussed below. Nothing partitions by direction -- not burst length, not
+endpoint order, not the width or placement of either quiet window. This is
+the outcome step 3 of the plan pre-registered as "also a result": **the
+vendor drivers use an identical EP0 sequence going down and going up**, so
+no direction-dependent wait or extra poll can be justified by reference to
+them, and the investigation moves off `ploytec_proto.c`'s EP0 sequence.
+
+Two notes on reading that table. The quiet windows are placed differently on
+the two platforms -- macOS waits ~50 ms *after* the `GET_RATE(ep=none)` probe,
+Windows *before* the `GET_STATUS`/`GET_RATE` probe pair -- so the metric that
+makes them comparable is the gap entering the whole probe-and-program block,
+which is what `pre_block_gap_ms` measures. And the two platforms differ in
+where the burst splits: macOS writes one lone `0x86`, waits, then the 5-write
+`86,05,86,05,86` run; Windows writes the `86,05` pair, waits, then the same
+5-write run. The 5-write tail is identical on both.
+
+### Divergence 1: our driver never sends SET_STATUS (the substantive one)
+
+Every one of the 115 vendor bursts terminates with `SET_STATUS wValue=0x0032`.
+None of ours do -- all 21 terminate with a second `GET_STATUS` instead.
+
+The cause is in `ploytec_start_streaming()` (`ploytec_proto.c:206`), which
+writes the status byte back only when the `PLOYTEC_STATUS_STREAMING` bit
+(0x20) is clear. After a rate change the device reports 0x32, so the bit is
+already set, the condition is false, and the write is skipped. The vendors
+issue it unconditionally -- their own preceding `GET_STATUS` also returns
+0x32, and they write 0x32 back anyway. The conditional is an inference this
+driver made about what the write is *for*; the traces show the vendors do not
+share it.
+
+This is worth stating carefully. Skipping `SET_STATUS` is demonstrably **not
+sufficient** to cause a stall: our driver omits it on every change and most
+changes still resume. The hypothesis is that the write is what restarts the
+device's *capture* engine specifically -- consistent with the fault being
+capture-only, and with the wire evidence in the next section -- but it is a
+hypothesis, and the write's actual effect on firmware that already has the
+bit set cannot be read off a trace.
+
+`ploytec_start_streaming()` is **not** `ploytec_set_rate()`, so acting on this
+does not touch the function fenced off for this session. The change is one
+line -- drop the condition -- and it belongs to whoever decides to make it,
+validated at the bar step 4 sets: `JT-RATE-001`, `sweep_order=as-given`, both
+cells of a direction, before and after, n>=60 per cell.
+
+### Divergence 2: Windows clears endpoint halt *after* the change, not only before
+
+43 of Windows' 56 rate changes end with `CLEAR_FEATURE(ENDPOINT_HALT)` on
+`0x86` and then `0x05`, roughly 246 ms after `SET_STATUS` and immediately
+before streaming resumes -- which is what the 248-509 ms `resume_in_ms` /
+`resume_out_ms` figures for Windows in `rate_change_stream_timing.py` are
+measuring. Our driver, and macOS, clear halt only in the preamble, before the
+rate is programmed. The split does not partition by direction or divider class
+(it runs about 75/25 in all six cells), so it does not bear on the direction
+question, but it is a second concrete ordering difference and a far cheaper
+recovery to try than `usb_reset_device()`.
+
+### Divergence 3: macOS resumes capture in 1-21 ms; we take ~55 ms, or never
+
+`rate_change_stream_timing.py` measures, from `SET_STATUS`, when the device
+resumes producing on `0x86`: macOS 1-21 ms on all 59 changes, every direction.
+Windows 248-509 ms, but that is host policy -- it is the post-change
+`CLEAR_FEATURE` above gating it, not the device. Our driver's figures are
+absent from that table entirely, because the script anchors on `SET_STATUS`
+and we never send one; `rate_burst_profile.py --resume` measures the same two
+quantities anchored on the end of the burst instead, and covers driver traces.
+
+The Linux figures split cleanly in two, with nothing in between:
+
+| | n | EP 0x05 (playback) | EP 0x86 (capture) |
+|---|---|---|---|
+| changes that succeeded | 18 | 50.7-51.7 ms | 52.3-71.0 ms |
+| changes that stalled | 3 | 51.5-51.6 ms | **410.0-433.8 ms** |
+
+Playback is indistinguishable between the two rows -- it always resumes at
+~51 ms, which is the driver's own 50 ms wait. Capture either follows it within
+about 20 ms or does not come back until the reset completes; the 410-434 ms
+figures are measuring the reset, not a slow device. The gap between 71 ms and
+410 ms is empty across all 21 changes.
+
+The two tools cross-check. Anchored the same way (end of burst), macOS reads
+52.0-73.0 ms on EP 0x86 across all six cells -- subtract its ~51 ms settle
+window and that is the 1-21 ms `rate_change_stream_timing.py` reports from
+`SET_STATUS`, which is an independent derivation agreeing to the millisecond.
+
+It also sharpens what is actually wrong. **On the changes that work, we are
+already as fast as macOS** -- 52.3-71.0 ms against 52.0-73.0 ms, the same
+number. There is no general slowness to fix and no settling window to widen.
+The entire defect is the 3 changes in 18 where capture does not start at all,
+which is consistent with a discrete missed trigger rather than a race being
+lost by a margin.
+
+### What the wire shows during a failing rate change -- open question 4, answered
+
+This did not need the dedicated capture the question reserved for it. The
+Linux trace contains three stall-and-recover episodes already (events 2, 5 and
+7, each a post-reset 5-write reprogram burst following a downward
+divider-crossing change). Taking event 5 -- `88200->48000`, `down`/`cross` --
+and reading the bulk traffic directly out of the parsed trace:
+
+- The burst completes normally and the `GET_RATE(ep=0x86)` verify read returns
+  the new rate. Nothing on EP0 reports a fault.
+- Playback OUT on `0x05` resumes ~50 ms later at full rate (~48 packets per
+  10 ms), runs for about 60 ms, then stops -- that is our own teardown for the
+  queued reset, not the device quitting.
+- **Capture IN on `0x86` produces nothing at all** between the rate write and
+  the re-enumeration -- not one packet. It returns at full rate (~60 packets
+  per 10 ms) in the first bin after the reset completes, 410 ms after the
+  burst, and only then.
+
+For contrast, on the successful change in event 3 (`96000->44100`, also
+`down`/`cross`) capture IN resumes in the same 10 ms bin as playback OUT. All
+three stall episodes (events 2, 5 and 7) behave alike, and the per-endpoint
+resume table above separates them from the 18 successful changes with no
+overlap. So the failure mode is not slow recovery or a partial stream:
+capture starts within ~20 ms of playback, or it does not start until something
+resets the device.
+
+One caveat on the negative result -- `parse_openvizsla.py` discards NAKs, so
+"no packets" means no data moved; it does not distinguish a silent endpoint
+from one NAKing every poll. That would need a re-parse retaining NAKs, and it
+is the one question the existing traces cannot answer.
+
+### How often each side resets the device
+
+`SET_ADDRESS` counts, read off the traces: macOS 2, of which one is the
+initial enumeration -- so **1 mid-session reset in 58 rate changes**. Windows
+1, the initial enumeration -- **0 in 56**. Linux 3, none of them initial (the
+device was already enumerated when the capture started; event 1 holds no
+`SET_ADDRESS`), and each falls in one of the three stall episodes -- so **3 in
+18**, or one change in six.
+
+All three were checked against the enclosing event rather than assumed: the
+Windows one sits at t=0.235 ms in event 1, macOS's first at t=0.000 in event
+1, and none of the Linux three is in event 1 at all.
+
+That ratio is the quantitative form of the whole problem. Both this driver and
+macOS re-enumerate the device occasionally after a downward divider-crossing
+change; at 3/18 against 1/58 we do it roughly **ten times more often**.
+
+### Open question 5 was measuring the parser, not the driver
+
+The 166-211 ms figure our sequence has been charged with since 08-15 is an
+artifact of where `extract_events.py` anchors an event. The first transfer of
+each of our rate-change events is a `GET_FIRMWARE` whose reported `dur(us)`
+is enormous -- 86,809 us on event 3, 117,235 us on event 4 -- against 22-180
+us for every other transfer in the same block. `span` is measured from that
+transfer's `t=0.000`, so the idle time before the sequence started is counted
+as part of the sequence.
+
+Subtract it, and the five clean single-change events (3, 4, 8, 9 and 11 --
+one rate change, no reset) read **121.6, 122.6, 122.1, 123.6 and 121.9 ms**.
+macOS's ordinary rate changes are 124-126 ms. We are not slower than the
+vendor; if anything we are marginally faster.
+
+This is not our artifact to fix, and it is not platform-specific: Windows
+shows the same inflated leading transfer routinely (`SET_CONFIGURATION`
+42-75 ms) and macOS shows it on event 23 (`SET_INTERFACE`, 116,005 us). It
+appears on the first EP0 transfer after a long run of streaming traffic, on
+every platform. Worth a note in `usb/README.md` so the next person does not
+re-derive a 40 ms discrepancy that is not there; `span` should not be quoted
+for an event whose first transfer carries a multi-millisecond duration.
+
+### Still missing
+
+The Linux trace has **no `down`/`within` transition** -- its sweep gives 9
+`down`/`cross`, 8 `up`/`within`, 1 `up`/`cross`. The stall was characterized
+on hardware at `96000->48000`, but the wire evidence above is from
+`down`/`cross`. Both cross the /256->/512 divider transition, so the episodes
+are very likely the same fault, and that is an assumption, not a measurement.
+A Linux capture of `96000<->48000` cycled until it stalls would settle it; it
+is added to "Captures needed" below.
+
 ## Open questions, in the order worth attacking
 
 1. ~~Measure per-change incidence on each branch, one variable at a time.~~
@@ -586,17 +793,19 @@ capture-stall mitigations that already handle the ordinary case.
    most direct test: if the wedge does not recur with a gap, back-to-back
    resets are implicated; if it does, the cause is elsewhere (cumulative
    device-side state, e.g. a counter or buffer that does not reset per-cycle).
-4. **What does the wire show during a failing rate change?** Still open --
-   `capture_stalled_linux.txt` in `usb capture 2026/` was checked and is not
-   usable: its rate-write burst ends on EP 0x05 (playback), which predates
-   `474cca8` ("end the rate-write burst on the capture endpoint"). It reflects
-   retired driver behavior, not the current sequence.
-   `usb/parse_openvizsla.py --errors=0` against a fresh trace of a failing
-   *downward* change on the current driver would show whether the device
-   NAKs, stalls the endpoint, or goes quiet -- this is the expensive
-   instrument and should follow the vendor comparison below, not precede it.
-5. **Why does our sequence take 166-211 ms against macOS's 103-142 ms?**
-   Unchanged from 08-15. Folded into the vendor comparison below.
+4. ~~**What does the wire show during a failing rate change?**~~ **Answered
+   2026-08-17** -- capture IN never produces a single packet, while playback
+   OUT resumes normally and EP0 reports no fault. See the 08-17 section. The
+   dedicated capture this question reserved was not needed; the episodes were
+   already in `capture_2026-08-17_linux_ratechange`. One residual: the parser
+   discards NAKs, so silent-versus-NAKing is still undetermined.
+5. ~~**Why does our sequence take 166-211 ms against macOS's 103-142 ms?**~~
+   **Withdrawn 2026-08-17 -- the premise was a measurement artifact.** See
+   the 08-17 section: our sequence is 121.6-123.6 ms, marginally faster than
+   macOS. There was never a gap to explain.
+6. **Does sending `SET_STATUS` unconditionally fix the capture stall?** New
+   2026-08-17. The single most actionable item to come out of the vendor
+   comparison -- see divergence 1 in that section.
 
 ## Next steps: characterize vendor up/down behavior before touching the driver
 
@@ -672,7 +881,15 @@ sequence itself).
    re-deriving. Treat its data as a lead, not a source -- redo the
    classification from the parsed events, the same standard the rest of this
    document holds itself to.
-3. **Only if a direction-dependent asymmetry turns up in the vendor sequence
+3. ~~**Only if a direction-dependent asymmetry turns up in the vendor sequence
+   itself**~~ **Resolved 2026-08-17: no asymmetry turned up.** The second
+   branch of this step is the one that applies -- see the 08-17 section. The
+   investigation moves off `ploytec_proto.c`'s EP0 sequence, with the one
+   exception of the unconditional `SET_STATUS` in `ploytec_start_streaming()`,
+   which is a divergence from the vendors in *both* directions rather than a
+   direction-dependent one. Original wording kept below for the record:
+
+   **Only if a direction-dependent asymmetry turns up in the vendor sequence
    itself** does this motivate a specific, targeted change to
    `ploytec_set_rate()` -- e.g. a different wait or an extra status poll on
    the /256->/512 transition specifically. If no asymmetry turns up, that is
@@ -701,14 +918,27 @@ files are large, so this is deliberately a short list, not "capture
 everything and see." Each entry exists because `classify_rate_transitions.py`
 found the corpus has zero examples of it, not as a hedge.
 
-**Priority 1 -- blocking, currently zero examples anywhere:**
+**Priority 1 -- ~~blocking, currently zero examples anywhere~~ SATISFIED
+2026-08-17** by `capture_2026-08-17_macos_ratechange` (11 `down`/`within`, 9
+`up`/`within`) and `capture_2026-08-17_win_ratechange` (11 and 11). Both
+requests below are closed; the analysis is in the 08-17 section above, and the
+answer to the question they were taken to settle is that the vendor sequence
+does not depend on direction at all.
 
-- **macOS: `96000<->48000`, cycled back and forth 4-6 times in one capture.**
-  This is `down`/`within` and its mirror `up`/`within` in the same session --
-  the class that stalls 55-60% of the time on this driver and has no vendor
-  trace at all today.
-- **Windows: the same pair, the same way.** Windows' only `up`/`within`
-  example (`48000->96000`, once) has no downward companion either.
+- ~~**macOS: `96000<->48000`, cycled back and forth 4-6 times in one capture.**~~
+- ~~**Windows: the same pair, the same way.**~~
+
+**Priority 1b -- new 2026-08-17, the remaining gap is on our own side:**
+
+- **Linux: `96000<->48000` cycled until it stalls,** on the current driver.
+  The wire evidence for a failing change (08-17 section) comes from
+  `down`/`cross` episodes, because the sweep in
+  `capture_2026-08-17_linux_ratechange` contains no `down`/`within` at all.
+  Both classes cross the /256->/512 divider transition and are very likely the
+  same fault, but that is currently an assumption. A capture with
+  `JT-RATE-001` restricted to `96000<->48000` would confirm it directly.
+  Worth taking together with a re-parse that **retains NAKs**, which is the
+  only way to tell a silent capture endpoint from one NAKing every poll.
 
 **Priority 2 -- thin, one pair covers the whole `down`/`cross` class today:**
 
@@ -757,7 +987,13 @@ fill), same as every other trace in the corpus.
 cd tests/hw && ./runner.py --case JT-RATE-001 --unattended     # ~3.5 min
 python3 re/usb/rate_change_stream_timing.py                    # vendor timings
 python3 re/usb/classify_rate_transitions.py --summary          # vendor direction/divider coverage
+python3 re/usb/rate_burst_profile.py --summary                 # per-burst sequence shape
 ```
+
+`rate_burst_profile.py` is the right tool for any question about sequence
+*shape*, and the only correct one for driver traces, whose events can hold
+more than one rate change; `classify_rate_transitions.py` remains fine for
+coverage counts over the vendor traces.
 
 The defaults are the reset-branch arm: capture open, 4 s per rate, no gap. Use
 `--param` for the others (see above). `./selftest.py` covers the stall
