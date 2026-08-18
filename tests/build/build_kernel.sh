@@ -30,6 +30,13 @@
 #   BUILD_TREE     clean worktree to build from    (default ~/sound-build)
 #   BUILD_OUTPUT   root of per-target object dirs  (default ~/kbuild)
 #   BUILD_REF      ref to check the worktree out at (default feature/jockey3)
+#   DPKG_FLAGS     passed verbatim to dpkg-buildpackage by
+#                   scripts/Makefile.package (default -d, skip
+#                   dpkg-checkbuilddeps -- these are test kernels, built the
+#                   same way every target has been built by hand before this
+#                   script existed, and dpkg-checkbuilddeps wants build deps,
+#                   e.g. libssl-dev, for host architectures this box may
+#                   never have registered as a foreign dpkg arch)
 
 set -eu
 
@@ -40,6 +47,7 @@ KERNEL_SRC=${KERNEL_SRC:-$HOME/sound}
 BUILD_TREE=${BUILD_TREE:-$HOME/sound-build}
 BUILD_OUTPUT=${BUILD_OUTPUT:-$HOME/kbuild}
 BUILD_REF=${BUILD_REF:-feature/jockey3}
+DPKG_FLAGS=${DPKG_FLAGS:--d}
 
 TARGET=""
 JOBS=$(nproc)
@@ -184,7 +192,7 @@ start=$(date +%s)
 if [ "$PACKAGE" -eq 1 ]; then
 	make -C "$BUILD_TREE" O="$O" ARCH="$KARCH" \
 		${CROSS:+CROSS_COMPILE="$CROSS"} KBUILD_DEBARCH="$DEBARCH" \
-		-j"$JOBS" bindeb-pkg
+		DPKG_FLAGS="$DPKG_FLAGS" -j"$JOBS" bindeb-pkg
 else
 	make -C "$BUILD_TREE" O="$O" ARCH="$KARCH" \
 		${CROSS:+CROSS_COMPILE="$CROSS"} -j"$JOBS"
