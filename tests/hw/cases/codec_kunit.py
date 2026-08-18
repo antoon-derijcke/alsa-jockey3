@@ -12,6 +12,12 @@ built into the very same .kunitconfig and module, so a plain kunit.py run
 would fold its results into these counts too. KUNIT_FILTER scopes the run to
 just the codec suite, keeping this case's counts about the codec alone.
 
+This same script backs JT-CODEC-003 (full architecture matrix, optimized
+codec) and JT-CODEC-004 (portable reference codec, um only) -- a leading
+"--ref" argument selects the latter by forwarding run_kunit.sh's own --ref
+flag, which builds with CONFIG_SND_USB_JOCKEY3_REFERENCE_CODEC=y instead of
+whichever optimized variant the architecture would otherwise pick.
+
 Architectures run one at a time, each its own run_kunit.sh invocation, so
 that kunit.py's own "Configuring / Building / Starting KUnit Kernel" lines
 can be turned into a per-architecture status line -- see tests/README.md
@@ -40,7 +46,7 @@ PHASES = (
 )
 
 
-def run_one_arch(c, script, arch, i, n, env, deadline):
+def run_one_arch(c, script, arch, i, n, env, deadline, use_ref):
     """Stream one run_kunit.sh <arch> invocation, reporting phase changes.
 
     Returns (rc, log_text, result_match_or_None, skipped_bool).
@@ -48,9 +54,14 @@ def run_one_arch(c, script, arch, i, n, env, deadline):
     label = f"    arch {i}/{n}  ....  {arch:<6}"
     c.status(f"{label} starting")
 
+    argv = ["bash", script]
+    if use_ref:
+        argv.append("--ref")
+    argv.append(arch)
+
     try:
         proc = subprocess.Popen(
-            ["bash", script, arch], env=env,
+            argv, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     except OSError as e:
         c.progress(f"{label} ERROR  {e}")
@@ -115,7 +126,9 @@ def main():
         c.skip(f"no kernel tree with kunit.py at {kernel_src}: this is not a "
                f"build host. Run the 'build' profile on one, or set KERNEL_SRC.")
 
-    targets = sys.argv[1:] or ["um"]
+    argv = sys.argv[1:]
+    use_ref = "--ref" in argv
+    targets = [a for a in argv if a != "--ref"] or ["um"]
     env = dict(os.environ, KUNIT_FILTER="ploytec-codec*")
     deadline = time.monotonic() + 3600
 
@@ -125,7 +138,7 @@ def main():
     with open(log_path, "w", encoding="utf-8") as log:
         for i, arch in enumerate(targets, start=1):
             rc, log_text, result, skipped = run_one_arch(
-                c, script, arch, i, len(targets), env, deadline)
+                c, script, arch, i, len(targets), env, deadline, use_ref)
             log.write(log_text)
             if rc != 0 and not skipped:
                 any_rc_nonzero = True

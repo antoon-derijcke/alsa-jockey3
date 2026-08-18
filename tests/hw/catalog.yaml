@@ -37,7 +37,7 @@ areas:
   PM:      Suspend, resume, reset
   HOTPLUG: Disconnect, replug, power loss
   INTEROP: Interoperability and integration with other subsystems
-  SOAK:    Endurance and high repetition
+#  SOAK:    Endurance and high repetition  -- deprecated in favor of L5
 
 levels:
   L1:      Build and static analysis
@@ -174,13 +174,18 @@ cases:
     area: CODEC
     level: L2
     mode: automated
-    status: planned
+    status: implemented
     requires: [kernel-tree]
-    metrics: [tests_run, tests_passed]
+    exec: cases/codec_kunit.py
+    args: [--ref, um]
+    metrics: [tests_run, tests_passed, arches_run]
     pass: 75/75 with CONFIG_SND_USB_JOCKEY3_REFERENCE_CODEC=y.
     notes: >
       The reference codec is what the optimized variants are validated against,
-      so it must itself be validated against the golden vectors.
+      so it must itself be validated against the golden vectors. um only --
+      the reference codec is architecture-independent by construction (no
+      SWAR word-size tricks), so the cross/QEMU matrix that JT-CODEC-003
+      exists for buys nothing here.
 
   - id: JT-CODEC-005
     title: Codec throughput benchmark
