@@ -29,42 +29,31 @@ DST=$HERE/$ARCH-prod.config
 [ -x "$KERNEL_SRC/scripts/config" ] || {
 	echo "no kernel tree at $KERNEL_SRC (set KERNEL_SRC)" >&2; exit 2; }
 
-# Everything that makes the debug kernel a debug kernel.
-#
-# The lock-debugging entries are not redundant with PROVE_LOCKING: LOCKDEP is
-# `select`ed by several symbols, so disabling PROVE_LOCKING alone leaves it on
-# via DEBUG_LOCK_ALLOC, DEBUG_RT_MUTEXES and DEBUG_WW_MUTEX_SLOWPATH -- which
-# would leave lock tracking active in the very configuration that exists to
-# produce undistorted timing numbers.
-DISABLE=(
-	KASAN KASAN_GENERIC KASAN_INLINE KASAN_OUTLINE
-	PROVE_LOCKING PROVE_RCU LOCKDEP DEBUG_LOCKDEP LOCK_STAT
-	DEBUG_LOCK_ALLOC DEBUG_RT_MUTEXES DEBUG_WW_MUTEX_SLOWPATH
-	DEBUG_ATOMIC_SLEEP DEBUG_SPINLOCK DEBUG_MUTEXES DEBUG_PREEMPT
-	DEBUG_LIST DEBUG_OBJECTS DEBUG_KMEMLEAK
-	# The codec KUnit suite runs at every module load. Useful on a debug
-	# kernel, explicitly not for production -- see its Kconfig help.
-	KUNIT SND_USB_JOCKEY3_CODEC_KUNIT_TEST
-)
+# Kernel ARCH= name and cross-compiler prefix for our target tokens -- must
+# be passed to olddefconfig below. Without it, `make` defaults ARCH to the
+# host architecture, and olddefconfig will silently rewrite a non-x86_64
+# config into a host-arch one instead of just toggling the debug symbols.
+case "$ARCH" in
+x86_64) KARCH=x86   ; CROSS=                        ;;
+i386)   KARCH=x86   ; CROSS=                        ;;
+arm64)  KARCH=arm64 ; CROSS=aarch64-linux-gnu-       ;;
+armhf)  KARCH=arm   ; CROSS=arm-linux-gnueabihf-     ;;
+*) echo "unsupported architecture '$ARCH'" >&2; exit 2 ;;
+esac
 
-# Deliberately KEPT in production, despite living under DEBUG_KERNEL:
-#   DYNAMIC_DEBUG      the firmware revision is only ever a dev_dbg
-#   DEBUG_FS           dynamic debug is controlled through debugfs
-#   IKCONFIG_PROC      /proc/config.gz, so a run can check its own target
-#   MAGIC_SYSRQ        getting a task dump out of a wedged machine
-#   DETECT_HUNG_TASK   the classifier treats a blocked task as a defect
-#   WQ_WATCHDOG        the reset path runs on a workqueue; near-zero cost
-#   SND_PCM_XRUN_DEBUG xrun reporting is a metric, not a debug aid
+# shellcheck source=tests/configs/config-flags.sh
+. "$HERE/config-flags.sh"
 
 cp "$SRC" "$DST"
 "$KERNEL_SRC/scripts/config" --file "$DST" --set-str LOCALVERSION "-alsa-prod"
-for sym in "${DISABLE[@]}"; do
+for sym in "${DEBUG_ONLY[@]}"; do
 	"$KERNEL_SRC/scripts/config" --file "$DST" --disable "$sym"
 done
 
 # olddefconfig resolves the cascade: symbols that only existed because
 # something disabled above selected them.
-make -s -C "$KERNEL_SRC" olddefconfig KCONFIG_CONFIG="$DST"
+make -s -C "$KERNEL_SRC" ARCH="$KARCH" CROSS_COMPILE="$CROSS" \
+	olddefconfig KCONFIG_CONFIG="$DST"
 
 echo "wrote $DST"
 echo
