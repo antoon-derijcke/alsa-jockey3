@@ -84,6 +84,37 @@ OBJ=$BUILD_OUTPUT/$TARGET
 }
 RELEASE=$(cat "$OBJ/include/config/kernel.release")
 
+# ARCH=/CROSS_COMPILE= for the target, from targets.yaml -- mirrors
+# build_kernel.sh. Without this, `make` defaults to the host architecture, so
+# a cross target built no differently from x86_64 fails deep in kbuild
+# (missing arch-specific headers) rather than at a checkable point, and
+# nothing here would have caught it before invoking make.
+if ! spec_arch=$(python3 - "$REPO/tests/hw/targets.yaml" "$TARGET" <<-'PY'
+	import sys, yaml
+	targets = yaml.safe_load(open(sys.argv[1]))["targets"]
+	spec = targets.get(sys.argv[2])
+	if not spec or not spec.get("arch"):
+	    sys.exit("unknown target '%s' or missing arch in targets.yaml" % sys.argv[2])
+	print(spec["arch"])
+	PY
+); then
+	echo "$spec_arch" >&2
+	exit 2
+fi
+
+case "$spec_arch" in
+x86_64) KARCH=x86   ; CROSS= ;;
+i386)   KARCH=x86   ; CROSS= ;;
+arm64)  KARCH=arm64 ; CROSS=aarch64-linux-gnu- ;;
+armhf)  KARCH=arm   ; CROSS=arm-linux-gnueabihf- ;;
+*) echo "unsupported architecture '$spec_arch'" >&2; exit 2 ;;
+esac
+
+if [ -n "$CROSS" ] && ! command -v "${CROSS}gcc" >/dev/null 2>&1; then
+	echo "missing cross compiler ${CROSS}gcc" >&2
+	exit 3
+fi
+
 if [ "$UNCOMMITTED" = 1 ]; then
 	echo "*** --uncommitted: building unstaged sources; this module is not"
 	echo "*** reproducible from any commit. Do not record a test result from it."
@@ -108,7 +139,8 @@ else
 	echo "building $ref_desc"
 fi
 
-make -C "$BUILD_TREE" -j"$(nproc)" O="$OBJ" M=$DST modules
+make -C "$BUILD_TREE" -j"$(nproc)" O="$OBJ" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE="$CROSS"} \
+	M=$DST modules
 
 # With M=, kbuild writes objects next to the sources rather than into O=.
 KO=$BUILD_TREE/$DST/snd-reloop-jockey3.ko
