@@ -416,26 +416,24 @@ def missing_tools(tools):
     return [t for t in tools if not have(t)]
 
 
-def stop_sound_server():
-    """Release the device from PipeWire/PulseAudio.
+def active_sound_servers():
+    """Names of sound-server processes currently running, if any.
 
-    Without this the card is opened by the session's sound server and every
-    exclusive-access test fails for a reason that has nothing to do with the
-    driver. Returns what was stopped so it can be restarted afterwards.
+    A report, not an action. PipeWire, JACK (jackd/jackdbus) and anything
+    built on either -- WirePlumber, or Mixxx routed through JACK instead of
+    ALSA -- can hold the card open and turn an exclusive-access test failure
+    into something that looks like a driver bug. Stopping pipewire.service
+    used to be automatic here, but pipewire.socket respawns it the moment
+    anything -- including PipeWire's own ALSA monitor reacting to a card
+    appearing mid cold-boot test -- touches the socket, so a stop is not
+    reliable without also masking, and masking JACK correctly is not this
+    script's call to make: it may be serving something else on this machine
+    entirely. See tests/hw/actions/sound_server.sh for the operator-driven
+    disable/enable.
     """
-    stopped = []
-    for unit in ("wireplumber.service", "pipewire.service",
-                 "pipewire-pulse.service"):
-        r = subprocess.run(["systemctl", "--user", "is-active", "--quiet", unit],
-                           capture_output=True)
+    found = []
+    for name in ("pipewire", "wireplumber", "jackd", "jackdbus"):
+        r = subprocess.run(["pgrep", "-x", name], capture_output=True)
         if r.returncode == 0:
-            subprocess.run(["systemctl", "--user", "stop", unit],
-                           capture_output=True)
-            stopped.append(unit)
-    return stopped
-
-
-def start_sound_server(units):
-    for unit in units:
-        subprocess.run(["systemctl", "--user", "start", unit],
-                       capture_output=True)
+            found.append(name)
+    return found

@@ -567,6 +567,13 @@ def preflight(target_name, target_spec, plan, args):
                     f"-- re-run `sudo tests/hw/priv/install.sh`")
         if card is None:
             problems.append("no Jockey 3 card found in /proc/asound")
+        servers = alsa.active_sound_servers()
+        if servers:
+            problems.append(
+                "sound server(s) running: " + ", ".join(servers) +
+                " -- may hold the card open; stop them yourself if a case "
+                "fails to get exclusive access "
+                "(tests/hw/actions/sound_server.sh disable)")
     needed = set()
     for case, iterations, _ in plan:
         if iterations > 0 and case.get("mode") in RUNNABLE_MODES:
@@ -770,8 +777,6 @@ def main():
     # which is the only way to have it in place before probe runs.
     fw_ok, fw_err = env.enable_firmware_debug()
 
-    stopped = alsa.stop_sound_server()
-
     # Bounds this run's dmesg.txt. The kernel ring buffer holds many hours --
     # around eighteen on the test machines -- so an untrimmed capture is mostly
     # earlier runs, and reading it raw makes a clean run look like a failing
@@ -792,7 +797,6 @@ def main():
     run.env["target_identified_from"] = kernel.get("source")
     run.env["target_explicit"] = bool(args.target)
     run.env["preflight"] = problems
-    run.env["sound_server_stopped"] = stopped
     # Which preconditions held, and how each was decided. Without this a pass
     # from a day the loopback cable was connected reads identically to one
     # taken with it coiled on the bench, and ledger.py cannot tell the
@@ -944,8 +948,6 @@ def main():
 
     with open(os.path.join(run_path, "dmesg.txt"), "w", encoding="utf-8") as f:
         f.write(dmesg_text)
-
-    alsa.start_sound_server(stopped)
 
     counts = run.counts()
     print("\n" + "  ".join(f"{k}={v}" for k, v in sorted(counts.items())))
