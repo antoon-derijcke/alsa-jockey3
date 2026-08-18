@@ -901,6 +901,11 @@ cases:
     status: implemented
     requires: [device, sox]
     exec: cases/rate_change.py
+    # ~8h measured for the default 5000 iterations on a fast x86_64 box;
+    # 12h leaves headroom for a slower target without needing --timeout
+    # passed by hand every time (see the `soak` profile notes in
+    # profiles.yaml). An explicit --timeout on the command line still wins.
+    timeout: 43200
     params:
       # Same case as JT-RATE-001, run long instead of accurate: no
       # seconds_per_rate override, so it keeps the script's 1 s default

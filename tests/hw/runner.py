@@ -466,7 +466,14 @@ def run_case(case, iteration, params, ctx):
     # silent terminal while the case waits for an answer to a question they
     # were never shown -- a deadlock, not a cosmetic loss.
     show = not ctx.get("quiet") or case.get("mode") == "semi-automated"
-    rc, out, err = stream_case(cmd, cenv, ctx["timeout"],
+    # An explicit --timeout always wins. Otherwise a case that documents its
+    # own expected duration in catalog.yaml (an endurance run like
+    # JT-RATE-003) is trusted over the CLI's generic default, which exists
+    # for the common case of a case with no idea how long it takes.
+    timeout = ctx["timeout"]
+    if timeout is None:
+        timeout = case.get("timeout", 3600)
+    rc, out, err = stream_case(cmd, cenv, timeout,
                                ctx["printer"] if show else None)
 
     with open(os.path.join(workdir, "stdout.txt"), "w", encoding="utf-8") as f:
@@ -613,8 +620,10 @@ def main():
     ap.add_argument("--kernel-src",
                     help="kernel tree for build-only runs (default $KERNEL_SRC "
                          "or ~/sound)")
-    ap.add_argument("--timeout", type=int, default=3600,
-                    help="per-case timeout in seconds")
+    ap.add_argument("--timeout", type=int, default=None,
+                    help="per-case timeout in seconds, overriding a case's "
+                         "own 'timeout' in catalog.yaml if it has one "
+                         "(default: 3600, or the case's own)")
     args = ap.parse_args()
 
     _catalog, cases, targets, profiles, rules = load_all()
