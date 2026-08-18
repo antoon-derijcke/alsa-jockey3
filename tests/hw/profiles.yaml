@@ -169,7 +169,7 @@ profiles:
       # enforcement threshold -- recorded, not enforced -- which is the right
       # trade here and is stated in the case's notes on every run.
       - {id: JT-RATE-001,  iterations: 1, params: {iterations_per_run: 250, seconds_per_rate: 1}}
-      - {id: JT-RATE-002,  iterations: 1, params: {iterations_per_run: 100}}
+      - {id: JT-RATE-002,  iterations: 1}
       - {id: JT-RATE-004,  iterations: 1}
       - {id: JT-AUDIO-001, iterations: 1}
       - {id: JT-AUDIO-002, iterations: 1}

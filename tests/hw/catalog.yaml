@@ -852,41 +852,34 @@ cases:
     title: Sample-rate change under full duplex
     area: RATE
     level: L3
-    mode: manual
+    mode: automated
     status: implemented
-    requires: [device, sox, human]
-    metrics: [stalls, stalls_recovered, resets_full, failures]
+    requires: [device, sox]
+    exec: cases/rate_change_duplex.py
+    params:
+      rate_a: 44100
+      rate_b: 96000
+      settle_seconds: 1
+      same_rate_seconds: 2
+      diff_rate_seconds: 2
+      after_capture_seconds: 4
+      min_nonzero_fraction: 0.01
+    metrics: [failures, same_rate_open_s, diff_rate_refusal_s,
+              stalls_playback, stalls_capture, resets_capture_stall,
+              resets_full]
     pass: >
       A second stream at the same rate is accepted; at a different rate it is
       refused by the ALSA core, without the driver's own -EBUSY check firing.
       After both close, a rate change works and any capture stall recovers.
-    steps:
-      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
-      - >
-        Start a long capture and leave it running:
-        arecord -D hw:$CARD,0 -f S24_3LE -c 6 -r 44100 -d 60 /tmp/fdx.wav
-      - >
-        While it runs, confirm playback at the SAME rate is accepted:
-        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 44100 /dev/urandom
-      - >
-        And that a DIFFERENT rate is refused, by the ALSA core rather than by
-        the hardware failing:
-        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 96000 /dev/urandom
-        should exit immediately with an invalid-argument error.
-      - >
-        Confirm dmesg does NOT contain "Cannot change rate while other stream
-        is active". That message is the driver's own sanity check; reaching it
-        means the open-time constraint failed to do its job first.
-      - Stop both streams.
-      - >
-        Now change the rate with nothing running, then immediately open
-        capture at the new rate:
-        aplay -D hw:$CARD,0 -f S24_3LE -c 4 -r 96000 -d 2 /dev/urandom ;
-        arecord -D hw:$CARD,0 -f S24_3LE -c 6 -r 96000 -d 5 /tmp/after.wav
-      - >
-        In dmesg, confirm any capture stall was followed by a recovery, and
-        that none reached "hardware may need power-cycling".
     notes: >
+      AUTOMATED 2026-08-18 as cases/rate_change_duplex.py, replacing the
+      manual steps below with the same sequence. The different-rate refusal
+      is checked by exit code AND elapsed time, not exit code alone: aplay
+      exits non-zero for reasons that have nothing to do with the rate
+      constraint (missing device, busy node, bad format), so only a FAST
+      refusal is accepted as evidence the ALSA-core constraint fired rather
+      than a real device fault.
+
       REWRITTEN 2026-08-10 after an operator marked the previous version
       invalid, which it was. It said to hold capture open at 44100 and sweep
       the playback rate. That cannot happen: jockey3_pcm_open() applies
