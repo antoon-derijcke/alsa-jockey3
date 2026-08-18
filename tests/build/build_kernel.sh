@@ -103,13 +103,24 @@ CONFIG_PATH=$REPO/$CONFIG
 	exit 2
 }
 
-# Kernel ARCH= names and the Debian architecture for the package, from our
-# canonical target tokens.
+# Kernel ARCH= names, the Debian architecture for the package, and (for the
+# Raspberry Pi targets) the raspi-firmware kernel flavour, from our canonical
+# target tokens.
+#
+# /etc/kernel/postinst.d/z50-raspi-firmware, which copies the kernel image and
+# dtbs into /boot/firmware on `dpkg -i`, extracts everything after the first
+# literal '-rpi-' in the kernel release and requires it to be EXACTLY 'v8'
+# (Pi 4/400/CM4), 'v6' (Pi 1/Zero) etc. -- anything else, including our own
+# LOCALVERSION suffix appended after it, and it silently skips the copy with
+# "Unsupported kernel version", leaving the new kernel uninstalled with no
+# hard error. RPI_LV supplies that exact trailing token; see below for how it
+# is applied without colliding with $LOCALVERSION, which already names this
+# script's own -alsa-debug/-alsa-prod target tag.
 case "$ARCH" in
-x86_64) KARCH=x86    ; CROSS=          ; DEBARCH=amd64 ;;
-i386)   KARCH=x86    ; CROSS=          ; DEBARCH=i386  ;;
-arm64)  KARCH=arm64  ; CROSS=aarch64-linux-gnu-     ; DEBARCH=arm64 ;;
-armhf)  KARCH=arm    ; CROSS=arm-linux-gnueabihf-   ; DEBARCH=armhf ;;
+x86_64) KARCH=x86    ; CROSS=          ; DEBARCH=amd64 ; RPI_LV=        ;;
+i386)   KARCH=x86    ; CROSS=          ; DEBARCH=i386  ; RPI_LV=        ;;
+arm64)  KARCH=arm64  ; CROSS=aarch64-linux-gnu-     ; DEBARCH=arm64 ; RPI_LV=-rpi-v8 ;;
+armhf)  KARCH=arm    ; CROSS=arm-linux-gnueabihf-   ; DEBARCH=armhf ; RPI_LV=-rpi-v6 ;;
 *) echo "unsupported architecture '$ARCH'" >&2; exit 2 ;;
 esac
 
@@ -166,8 +177,17 @@ make -s -C "$BUILD_TREE" O="$O" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE="$CROSS"} \
 
 # The config in the repo is the contract. If olddefconfig changed anything
 # that matters, say so now rather than discovering it in a test result.
+#
+# RPI_LV is passed here too, not just at the build step below, so this is
+# the actual release the package will carry -- setting it only makes
+# scripts/setlocalversion drop the untagged-tree '+' it would otherwise
+# append after $LOCALVERSION (CONFIG_LOCALVERSION_AUTO is off in our configs,
+# so that '+' is the default), which would break raspi-firmware's exact
+# match on the trailing flavour token just as surely as omitting RPI_LV
+# altogether.
 release=$(make -s -C "$BUILD_TREE" O="$O" ARCH="$KARCH" \
-	${CROSS:+CROSS_COMPILE="$CROSS"} kernelrelease)
+	${CROSS:+CROSS_COMPILE="$CROSS"} ${RPI_LV:+LOCALVERSION="$RPI_LV"} \
+	kernelrelease)
 echo "   kernel release: $release"
 case "$release" in
 *"$LOCALVERSION"*) ;;
@@ -191,11 +211,12 @@ echo "== building =="
 start=$(date +%s)
 if [ "$PACKAGE" -eq 1 ]; then
 	make -C "$BUILD_TREE" O="$O" ARCH="$KARCH" \
-		${CROSS:+CROSS_COMPILE="$CROSS"} KBUILD_DEBARCH="$DEBARCH" \
-		DPKG_FLAGS="$DPKG_FLAGS" -j"$JOBS" bindeb-pkg
+		${CROSS:+CROSS_COMPILE="$CROSS"} ${RPI_LV:+LOCALVERSION="$RPI_LV"} \
+		KBUILD_DEBARCH="$DEBARCH" DPKG_FLAGS="$DPKG_FLAGS" -j"$JOBS" bindeb-pkg
 else
 	make -C "$BUILD_TREE" O="$O" ARCH="$KARCH" \
-		${CROSS:+CROSS_COMPILE="$CROSS"} -j"$JOBS"
+		${CROSS:+CROSS_COMPILE="$CROSS"} ${RPI_LV:+LOCALVERSION="$RPI_LV"} \
+		-j"$JOBS"
 fi
 elapsed=$(( $(date +%s) - start ))
 
