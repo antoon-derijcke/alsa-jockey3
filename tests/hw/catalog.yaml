@@ -1168,18 +1168,46 @@ cases:
       sox pipe before concluding anything, so userspace is out of the path.
 
   - id: JT-AUDIO-004
-    title: Capture signal presence
+    title: Real content recording, listened to
     area: AUDIO
     level: L3
-    mode: semi-automated
-    status: planned
-    requires: [device, signal-source]
-    metrics: [rms_per_channel]
-    pass: All six capture channels carry signal when driven.
+    mode: manual
+    status: implemented
+    requires: [device, signal-source, human]
+    pass: >
+      Each input records cleanly: no clicks, dropouts, distortion, or channel
+      swapping, at each rate tried, and the channel carrying the fed source
+      is the one that actually has content.
+    steps:
+      - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
+      - >
+        Feed a known source into Line 1 (e.g. a phone or player at line
+        level) and record 60 s:
+        arecord -vv -D hw:$CARD -d 60 -f S24_3LE -c 6 -r 96000 -t wav > line1_96k.wav
+      - Repeat into Line 2, into its own file.
+      - Repeat with the microphone -- speak or play something near it.
+      - Listen to each recording. Note anything audible, however minor.
+      - >
+        For each, confirm the channel(s) carrying the fed source are the
+        ones that actually have content -- catches a channel swap that RMS
+        presence alone cannot tell apart from a healthy recording on the
+        wrong channel.
     notes: >
+      REPLACES the earlier "Capture signal presence" plan (never
+      implemented, semi-automated, RMS-per-channel only): a channel is not
+      dead is not the same claim as what it carries is clean, and capture is
+      exactly where JT-AUDIO-003's own reasoning about codec packing errors
+      applies symmetrically. Paired with JT-AUDIO-003, this puts a human ear
+      in the loop for both playback and capture, not playback alone.
+
       In1 L/R, In2 L/R and the microphone, which is mono duplicated across
       channels 5 and 6. Mic level is known to be lower than under Windows --
-      Windows applies software gain -- so this is not a defect.
+      Windows applies software gain -- so a quiet mic channel is not by
+      itself a defect.
+
+      Worth doing at 44.1 and 96 kHz at minimum, same as JT-AUDIO-003. Same
+      caution applies on a KASAN kernel too -- see JT-AUDIO-003's notes on
+      why a debug-kernel crackle is not a driver defect.
 
   - id: JT-AUDIO-005
     title: Device audio engine starts after a power cycle

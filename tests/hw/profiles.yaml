@@ -195,8 +195,10 @@ profiles:
       x86_64-debug:
         # See the note under `functional`: quality verdicts are void here.
         JT-AUDIO-003: {iterations: 0}
+        JT-AUDIO-004: {iterations: 0}
       arm64-debug:
         JT-AUDIO-003: {iterations: 0}
+        JT-AUDIO-004: {iterations: 0}
 
   soak:
     description: >
