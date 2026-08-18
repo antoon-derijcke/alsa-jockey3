@@ -1941,6 +1941,18 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 		return -ENODEV;
 
 	/*
+	 * A previous call may have left a stall-recovery reset in flight (see
+	 * the reset queued below). Without this, a rate change arriving before
+	 * that reset completes runs jockey3_set_rate() and the URB restart
+	 * against a device that is mid-reset, which fails outright instead of
+	 * recovering. jockey3_pcm_prepare() and jockey3_recover_capture_stream()
+	 * already wait for the same reason.
+	 */
+	ret = jockey3_wait_for_reset_completion(chip);
+	if (ret < 0)
+		return ret;
+
+	/*
 	 * rate_mutex is held across the whole stop/set-rate/start sequence, which
 	 * is what excludes a concurrent rate change from another substream: any
 	 * other sleepable path that needs a settled rate takes the same mutex.
