@@ -128,6 +128,42 @@ cases:
       the KUnit cross matrix, which builds the driver for six architectures as
       a side effect.
 
+  - id: JT-BUILD-006
+    title: Running kernel's config matches its own target label
+    area: BUILD
+    level: L3
+    mode: automated
+    status: implemented
+    requires: []
+    per_target: true
+    exec: cases/config_check.py
+    pass: >
+      Every symbol tests/configs/config-flags.sh requires is on, every symbol
+      it forbids is off, and -- for a debug-flavored target -- every symbol a
+      -debug config must carry is on. A production target additionally
+      requires the whole debug-only symbol set to be off, not just the three
+      LOCALVERSION-adjacent ones targets.yaml's own preflight checks.
+    notes: >
+      Every other case's result is only as trustworthy as the kernel it ran
+      under, and a mislabeled kernel looks identical from the outside --
+      it enumerates, plays, captures. Reads /proc/config.gz on the running
+      kernel and checks it against config-flags.sh directly (by parsing the
+      file, not by copying its symbol lists) so this and derive-prod.sh
+      cannot silently disagree about what "debug" or "prod" means. This is
+      the arm64-debug/-prod drift found and fixed on 2026-08-18 turned into a
+      standing check, so it shows up as a coverage gap in ledger.py --matrix
+      rather than needing to be rediscovered by hand next time.
+
+      Deliberately level L3, not L1, despite the BUILD area and numbering:
+      it checks the RUNNING kernel via /proc/config.gz, so it needs
+      needs_running_kernel() to resolve the target from the booted kernel
+      (env.kernel_info()) rather than from a cross-compile tree in
+      ~/sound/.config the way JT-BUILD-001..005 do. It belongs in the
+      hardware profiles (smoke/functional/regression/soak), not in `build`,
+      which identifies its target from the tree being built and would
+      misattribute this case's verdict to whatever the build host's own
+      unrelated kernel happens to be running.
+
   # ------------------------------------------------------------------ CODEC
 
   - id: JT-CODEC-001

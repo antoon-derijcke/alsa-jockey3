@@ -142,7 +142,7 @@ targets:
     arch: arm64
     flavor: debug
     localversion: '-alsa-debug'
-    config: tests/configs/arm64-debug.config     # not created yet
+    config: tests/configs/arm64-debug.config
     typical_machine: Raspberry Pi 4B, 2 GB
     verify:
       kconfig_any: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
@@ -158,7 +158,7 @@ targets:
     arch: arm64
     flavor: prod
     localversion: '-alsa-prod'
-    config: tests/configs/arm64-prod.config      # not created yet
+    config: tests/configs/arm64-prod.config
     typical_machine: Raspberry Pi 4B, 2 GB
     verify:
       kconfig_none: [KASAN, KASAN_GENERIC, PROVE_LOCKING]
@@ -171,7 +171,7 @@ targets:
     arch: armhf
     flavor: prod
     localversion: '-alsa-prod'
-    config: tests/configs/armhf-prod.config      # not created yet
+    config: tests/configs/armhf-prod.config
     typical_machine: Raspberry Pi 1B, 512 MB
     verify:
       kconfig_none: [KASAN, KASAN_GENERIC, PROVE_LOCKING]

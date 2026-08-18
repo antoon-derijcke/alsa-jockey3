@@ -39,6 +39,7 @@ profiles:
     description: >
       Does this build work at all? Run after every deploy. Minutes, not hours.
     cases:
+      - {id: JT-BUILD-006, iterations: 1}
       - {id: JT-PROBE-001, iterations: 3}
       - {id: JT-PCM-002,   iterations: 1, params: {rates: [44100, 96000], seconds: 2}}
       - {id: JT-PCM-004,   iterations: 1, params: {rates: [44100], seconds: 2}}
@@ -66,6 +67,7 @@ profiles:
       - {id: JT-BUILD-002, iterations: 1}
       - {id: JT-BUILD-003, iterations: 1}
       - {id: JT-BUILD-004, iterations: 1}
+      - {id: JT-BUILD-006, iterations: 1}
       - {id: JT-CODEC-001, iterations: 1}
       - {id: JT-CODEC-002, iterations: 1}
       - {id: JT-MIDI-006,  iterations: 1}
@@ -148,6 +150,7 @@ profiles:
       - {id: JT-BUILD-003, iterations: 1}
       - {id: JT-BUILD-004, iterations: 1}
       - {id: JT-BUILD-005, iterations: 1}
+      - {id: JT-BUILD-006, iterations: 1}
       - {id: JT-CODEC-001, iterations: 1}
       - {id: JT-CODEC-002, iterations: 1}
       - {id: JT-CODEC-003, iterations: 1}
@@ -210,6 +213,7 @@ profiles:
       comfortably above their configured duration or they are killed
       partway through with no result.
     cases:
+      - {id: JT-BUILD-006, iterations: 1}
       - {id: JT-PROBE-001, iterations: 1}
       - {id: JT-PCM-008, iterations: 1}
       - {id: JT-RATE-003, iterations: 1}
