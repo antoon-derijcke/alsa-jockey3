@@ -123,7 +123,6 @@ profiles:
         JT-BUILD-002: {iterations: 0}
         JT-BUILD-003: {iterations: 0}
         JT-BUILD-004: {iterations: 0}
-        JT-PROBE-002: {iterations: 0}
         JT-RATE-001:  {params: {iterations_per_run: 15}}
       x86_64-debug:
         # Audio quality cannot be judged on a KASAN kernel -- see the
