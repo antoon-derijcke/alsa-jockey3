@@ -158,15 +158,16 @@ cases:
     area: CODEC
     level: L2
     mode: automated
-    status: planned
+    status: implemented
     requires: [kernel-tree, cross-toolchains, qemu]
-    params:
-      targets: [um, i386, arm64, arm, riscv]
+    exec: cases/codec_kunit.py
+    args: [um, i386, arm64, arm, riscv]
     metrics: [tests_run, tests_passed, arches_run]
     pass: 75/75 on every architecture.
     notes: >
       Slow (minutes per architecture). Belongs in regression, not smoke.
-      s390 is opt-in via --extra and exists purely as a big-endian proof.
+      s390 is opt-in via --extra and exists purely as a big-endian proof, so
+      it is deliberately not in this case's target list.
 
   - id: JT-CODEC-004
     title: KUnit codec suite against the portable reference codec
