@@ -1397,14 +1397,51 @@ cases:
     title: Firmware padding bytes are stripped from MIDI IN
     area: MIDI
     level: L3
-    mode: automated
-    status: planned
-    requires: [device, python-mido, two-devices]
-    pass: No spurious 0xF8-0xFF bytes reach the rawmidi stream on either unit.
+    mode: semi-automated
+    status: implemented
+    requires: [device]
+    exec: cases/midi_padding.py
+    params:
+      watch_seconds: 60
+    metrics: [bytes_seen, padding_bytes_seen]
+    pass: No byte >= 0xF0 reaches the rawmidi stream while the operator drives it.
+    steps:
+      - 'Resolve the port: amidi -l | grep RJ3'
+      - 'Dump raw bytes for a minute: amidi -p <port> -d & sleep 60; kill %1'
+      - >
+        While it runs, press several buttons, move a fader or knob, and
+        rotate a jog wheel -- keep generating traffic for the full minute.
+      - >
+        In the dump, confirm every byte is either a data byte (< 0x80) or a
+        status byte below 0xF0. Any byte 0xF0-0xFF is unstripped firmware
+        padding.
     notes: >
+      CHANGED FROM planned/automated 2026-08-18: an automated form (feed
+      synthetic padded frames some other way and check the output) cannot
+      exercise the actual code path this exists to catch a regression in --
+      jockey3_midi_in_callback()'s in-place compaction runs on whatever the
+      firmware's own URBs contain, and there is no way to make the firmware
+      emit specific padding on demand. So a human drives real control
+      surface traffic instead, same division of labor as JT-MIDI-001
+      (machine is the judge, human is the actuator) -- but with a
+      purely time-based exit condition and no minimum event count, since
+      this case's question ("did anything unexpected also arrive") has
+      nothing to do with how much good traffic arrived. See the case
+      script's own docstring for why this could not simply run as an
+      add-on check inside JT-MIDI-001 itself.
+
+      The strip loop in jockey3_midi_in_callback() drops any byte >= 0xF0,
+      not just the System Real-Time range (0xF8-0xFF) this case's title
+      names -- the device sends no MIDI System or Real-Time messages at
+      all, so the driver treats the whole 0xF0-0xFF range as padding. The
+      pass criterion above reflects that; the title is legacy naming.
+
       Different firmware revisions emit different padding (0xF9, 0xFB, 0xFD,
-      0xFF have all been observed). The one case where testing both units is
-      genuinely worth the cable swap.
+      0xFF have all been observed). One unit only proves the strip loop
+      works for whichever value it emits; running this case again on a
+      second unit, cable swapped, is worth more than repeating it on the
+      same one -- but is not required for a useful run, so `two-devices`
+      is not in `requires`.
 
   - id: JT-MIDI-006
     title: KUnit suite for MIDI 1.0 Running Status expansion
