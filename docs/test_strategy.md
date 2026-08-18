@@ -648,7 +648,10 @@ unaffected — it is the working view, and a developer looking at it wants to
 see the run they just took, dirty tree or not.
 
 L1 and L2 are source-level checks, not per-target ones, so they only ever
-populate the `(source)` column — and only when collected. `checkpatch`,
+populate the `(source)` column — and only when collected — unless the catalog
+marks a case `per_target: true`, an escape hatch for the rare L2 case whose
+*result* is a property of the host rather than the source (JT-CODEC-005's
+throughput numbers, not a pass/fail verdict). `checkpatch`,
 `build_jockey3.sh` and the KUnit/bench runners produce no `run.json` on their
 own; running them directly, as the day-to-day build commands earlier in this
 document do, leaves that column blank forever. The `build` profile in

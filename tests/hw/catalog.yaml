@@ -15,6 +15,10 @@
 #   mode          automated | manual | semi-automated
 #   status        implemented | planned | idea | deprecated | removed
 #   requires      capability tokens the target must provide (see targets.yaml)
+#   per_target    true forces ledger.py to key an L1/L2 case's result by target
+#                 rather than folding it into "(source)". Use only when the
+#                 case's result is genuinely a property of the host, not the
+#                 source -- e.g. a throughput number, not a pass/fail verdict.
 #   exec          automated only: script under cases/, relative to tests/hw
 #   args          automated only: fixed arguments appended to exec
 #   params        default parameters; profiles may override per target
@@ -194,6 +198,7 @@ cases:
     mode: automated
     status: implemented
     requires: [quiet-machine]
+    per_target: true
     exec: cases/codec_throughput.py
     metrics: [encode_mbps, decode_mbps, encode_speedup, decode_speedup,
               encode_rsd_percent, decode_rsd_percent]

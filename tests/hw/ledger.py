@@ -189,6 +189,20 @@ def is_dirty(git):
 BUILD_LEVELS = ("L1", "L2")
 
 
+def is_source_scoped(case):
+    """Whether this case's result belongs under "(source)", not a target.
+
+    L1/L2 usually means source-level: checkpatch and codec correctness don't
+    have a different opinion depending on which machine is plugged into the
+    DJ controller. A case can opt out with `per_target: true` in the catalog
+    when that assumption doesn't hold -- JT-CODEC-005 is L2 (one component,
+    no kernel running) but its numbers are a throughput benchmark, which is a
+    property of the host, not the source, so it needs a real per-target
+    column like an L3+ case would get.
+    """
+    return case.get("level") in BUILD_LEVELS and not case.get("per_target")
+
+
 def build_index(runs, cases=None, clean_only=False):
     """Latest pass and latest attempt per (target, case).
 
@@ -221,9 +235,9 @@ def build_index(runs, cases=None, clean_only=False):
             entry = {"when": when, "rev": rev, "target": target,
                      "hash": git.get("git_hash"), "status": r["status"],
                      "run": run["_path"]}
-            level = (cases.get(r["id"]) or {}).get("level")
+            case = cases.get(r["id"]) or {}
             keys = [(target, r["id"])]
-            if level in BUILD_LEVELS:
+            if is_source_scoped(case):
                 if r["status"] == results.SKIP:
                     continue
                 keys.append(("*", r["id"]))
@@ -293,11 +307,11 @@ def coverage(cases, targets, idx, markdown=False, single_target=False):
     # says nothing six times. Hardware cases are per target, where the target
     # is the whole point.
     for cid, case in cases.items():
-        if case.get("level") in BUILD_LEVELS:
+        if is_source_scoped(case):
             rows.append(row_for(cid, case, "*", "(source)"))
     for tname in targets:
         for cid, case in cases.items():
-            if case.get("level") not in BUILD_LEVELS:
+            if not is_source_scoped(case):
                 rows.append(row_for(cid, case, tname, tname))
 
     head = ["case", "title", "lvl", "mode", "last pass", "driver",
@@ -382,7 +396,7 @@ def matrix(cases, targets, idx):
     out = ["| " + " | ".join(head) + " |",
            "|" + "|".join(["---"] * len(head)) + "|"]
     for cid, case in cases.items():
-        is_build = case.get("level") in BUILD_LEVELS
+        is_build = is_source_scoped(case)
         title = oneline(case.get("title"))
         row = [cid, title.replace("|", "\\|")]
         for col in columns:
