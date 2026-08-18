@@ -231,6 +231,64 @@ if [ -f "$KO" ]; then
 	"$HERE/write-manifest.sh" "$KO" "$BUILD_TREE" "$release" || true
 fi
 
+# z50-raspi-firmware's postinst unconditionally rsyncs a device-tree overlays
+# directory out of the linux-image package for the v8/v6/v7 flavours,
+# including `.../overlays/*.dtb*` -- an unquoted glob that /bin/sh, with no
+# matches, passes through to rsync as the literal 8-character string
+# "*.dtb*" rather than expanding to nothing, so even an EMPTY overlays
+# directory still fails with "No such file or directory". Debian's own
+# downstream raspi kernel source has an overlay tree to satisfy this;
+# mainline does not -- arch/arm64/boot/dts/ here has no overlays/
+# subdirectory to install at all -- so the .deb never contains one and
+# `dpkg -i` fails on rsync exit 23 instead of installing the kernel.
+#
+# Fixed by packaging one real, valid, inert overlay: an empty fragment
+# targeting "/" that changes nothing even if somehow loaded, compiled with
+# the dtc this same build just produced. This driver needs no device-tree
+# overlay of its own; this exists purely to give the glob something to
+# match.
+if [ "$PACKAGE" -eq 1 ] && [ -n "$RPI_LV" ]; then
+	image_deb=$(find "$BUILD_OUTPUT" -maxdepth 1 \
+		-name "linux-image-${release}_*.deb" -newermt "@$start" | head -1)
+	dtc=$O/scripts/dtc/dtc
+	if [ -n "$image_deb" ] && [ -x "$dtc" ]; then
+		ov_dir="usr/lib/linux-image-${release}/overlays"
+		tmp=$(mktemp -d)
+		dpkg-deb -R "$image_deb" "$tmp"
+		if [ ! -d "$tmp/$ov_dir" ]; then
+			mkdir -p "$tmp/$ov_dir"
+			cat > "$tmp/$ov_dir/README" <<-EOF
+				No Raspberry Pi downstream device-tree overlays here: this is
+				a mainline kernel build, which has no overlay tree to
+				package. placeholder.dtbo is an empty fragment targeting "/"
+				that changes nothing -- it exists only because
+				z50-raspi-firmware's postinst unconditionally globs for
+				*.dtb* in this directory and fails if nothing matches.
+			EOF
+			placeholder=$(mktemp -d)
+			cat > "$placeholder/placeholder.dts" <<-'EOF'
+				/dts-v1/;
+				/plugin/;
+				/ {
+					compatible = "brcm,bcm2711";
+					fragment@0 {
+						target-path = "/";
+						__overlay__ { };
+					};
+				};
+			EOF
+			"$dtc" -@ -I dts -O dtb \
+				-o "$tmp/$ov_dir/placeholder.dtbo" \
+				"$placeholder/placeholder.dts"
+			rm -rf "$placeholder"
+			dpkg-deb --root-owner-group -b "$tmp" "$image_deb" >/dev/null
+			echo "   added a placeholder $ov_dir/ to $(basename "$image_deb")" \
+				"(raspi-firmware requires *.dtb* to match there)"
+		fi
+		rm -rf "$tmp"
+	fi
+fi
+
 if [ "$PACKAGE" -eq 1 ]; then
 	echo
 	echo "packages:"
