@@ -192,13 +192,19 @@ cases:
     area: CODEC
     level: L2
     mode: automated
-    status: planned
+    status: implemented
     requires: [quiet-machine]
-    metrics: [encode_mbps, decode_mbps, encode_speedup, decode_speedup]
-    pass: Metric-only.
+    exec: cases/codec_throughput.py
+    metrics: [encode_mbps, decode_mbps, encode_speedup, decode_speedup,
+              encode_rsd_percent, decode_rsd_percent]
+    pass: Metric-only. encode_mbps/decode_mbps are megabytes/second.
     notes: >
       Must run natively -- QEMU timings are meaningless. Needs a machine that
-      is otherwise idle, so it is not part of any routine profile.
+      is otherwise idle, so it is not part of any routine profile. Reports
+      the optimized variant this host would actually ship (opt64 or opt32,
+      by word size) against the portable reference, measured in the same
+      run so both sides share thermal/noise conditions. Not in any profile;
+      invoke directly with --case JT-CODEC-005.
 
   # ------------------------------------------------------------------ PROBE
 
