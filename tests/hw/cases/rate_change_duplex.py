@@ -14,15 +14,19 @@ entry's own notes for the 2026-08-10 rewrite that established this.
 Four things are checked, corresponding to the old manual steps:
 
   1. With capture open, a second stream at the SAME rate is accepted.
-  2. With capture open, a second stream at a DIFFERENT rate is refused --
-     and refused fast, which is what separates "the open-time ALSA-core
-     constraint fired" from "aplay failed for some unrelated reason". A
-     constraint rejection never touches the device; a real device fault
-     (stall, reset, disconnect) takes much longer. Exit code alone cannot
-     tell those apart -- aplay exits non-zero for a missing device, a busy
-     node, a bad format, or an ENODEV mid-open, all of which would make a
-     bare `rc != 0` assertion a test that can never fail. Requiring both a
-     non-zero exit AND a bounded elapsed time is why this case can fail.
+  2. With capture open, a second stream at a DIFFERENT rate is constrained
+     to the rate already running, not refused outright: aplay/arecord call
+     snd_pcm_hw_params_set_rate_near(), which is satisfied by the nearest
+     legal rate -- and the driver's constraint set has exactly one, the
+     rate already in use -- so the request is silently coerced rather than
+     rejected, and aplay exits 0 having actually run at the existing rate.
+     This was confirmed against real hardware, and corrects an earlier
+     version of this case that asserted a fast non-zero exit instead; see
+     diff_rate_playback()'s docstring below. What is checked is the
+     negotiated rate the kernel actually applied, read back from /proc
+     while the stream runs, not aplay's exit code or its stderr text (the
+     "rate is not accurate" warning is not printed for every mismatch, so
+     matching on it can hide a real failure).
   3. The kernel log, restricted to this run, never contains "Cannot change
      rate while other stream is active" -- that message is the driver's own
      sanity check, and reaching it means the open-time constraint above
@@ -131,6 +135,76 @@ def run_playback(device, rate, seconds):
     return p.returncode, err, elapsed
 
 
+# How long to poll /proc for a negotiated rate before giving up and treating
+# the attempt as a bare refusal. hw_params is applied at open, long before
+# any audio is written, so this only needs to outlast process start-up.
+HW_PARAMS_POLL_DEADLINE_S = 3.0
+HW_PARAMS_POLL_INTERVAL_S = 0.025
+
+
+def diff_rate_playback(device, rate, seconds, card, pcm):
+    """Play at 'rate' while another stream holds the device at a different
+    one, and read back what ALSA actually negotiated.
+
+    aplay always calls snd_pcm_hw_params_set_rate_near(), which is
+    satisfied by the NEAREST rate the driver's constraint set allows --
+    and jockey3_pcm_open() constrains RATE to exactly one value,
+    chip->current_rate, while a second stream is open. So a divergent
+    request is not refused, it is silently coerced: aplay exits 0, having
+    actually run at the existing rate. Confirmed against real hardware
+    2026-08-18 (run x86_64-prod/20260818T141039Z-smoke): a request for
+    96000 Hz while capture held the device at 44100 Hz was accepted and
+    ran the full requested duration -- at 44100 Hz.
+
+    Exit code and stderr text are therefore not reliable evidence either
+    way: aplay's "rate is not accurate" warning is not gated on the exit
+    code and is not even printed when requested and obtained rates happen
+    to fall within alsa-lib's own tolerance band, so parsing it can hide a
+    real failure behind a well-chosen (rate_a, rate_b) pair. What the
+    kernel actually did is not in doubt, though --
+    /proc/asound/cardN/<pcm>/sub0/hw_params reports the negotiated rate
+    while the stream is open, so that is what is asked instead.
+
+    Returns (rc, stderr, elapsed_s, obtained_rate_or_None). obtained_rate
+    is None only if the process never reached a state hw_params could be
+    read from before it exited -- which means it really was refused before
+    ever touching the device, the outcome step 2 originally assumed.
+    """
+    gen = subprocess.Popen(
+        ["sox", "-n", "-r", str(rate), "-c", str(CHANNELS), "-b", "24",
+         "-e", "signed-integer", "-t", "raw", "-",
+         "synth", str(seconds), "sine", "E3", "gain", "-6"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    t0 = time.monotonic()
+    p = subprocess.Popen(
+        ["aplay", "-D", device, "-r", str(rate), "-c", str(CHANNELS),
+         "--format", FORMAT, "-t", "raw"],
+        stdin=gen.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        text=True)
+    gen.stdout.close()
+
+    obtained = None
+    deadline = time.monotonic() + HW_PARAMS_POLL_DEADLINE_S
+    while time.monotonic() < deadline:
+        rate_seen = alsa.hw_params(card, pcm, "sub0").get("rate")
+        if rate_seen:
+            obtained = rate_seen
+            break
+        if p.poll() is not None:
+            break
+        time.sleep(HW_PARAMS_POLL_INTERVAL_S)
+
+    try:
+        _out, err = p.communicate(timeout=seconds + 30)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        gen.kill()
+        return 124, "timed out", time.monotonic() - t0, obtained
+    elapsed = time.monotonic() - t0
+    gen.wait(timeout=5)
+    return p.returncode, err, elapsed, obtained
+
+
 def main():
     c = Case()
     c.require_card()
@@ -148,10 +222,17 @@ def main():
     diff_rate_s = float(c.params.get("diff_rate_seconds", 2))
     after_capture_s = float(c.params.get("after_capture_seconds", 4))
     min_nonzero_fraction = float(c.params.get("min_nonzero_fraction", 0.01))
-    # Long enough to still be running through settle + both playback attempts,
-    # with margin -- the capture itself is what "under full duplex" means here.
+    # Long enough to still be running through settle + both playback
+    # attempts, with margin. The diff-rate attempt is coerced to rate_a (see
+    # diff_rate_playback()), so its *wall-clock* length is diff_rate_s worth
+    # of rate_b samples played out at rate_a -- longer than diff_rate_s
+    # whenever rate_b > rate_a -- not just the nominal duration.
+    diff_rate_wall_s = diff_rate_s * max(1.0, rate_b / rate_a)
     capture_s = float(c.params.get("capture_seconds",
-                       settle_s + same_rate_s + diff_rate_s + 6))
+                       settle_s + same_rate_s + diff_rate_wall_s + 6))
+
+    subs = alsa.substreams(c.card)
+    pcm_p = (subs["playback"] or ["pcm0p"])[0]
 
     failures = 0
 
@@ -179,25 +260,40 @@ def main():
         c.progress(f"same-rate playback accepted in {elapsed:.2f}s")
     c.metric("same_rate_open_s", round(elapsed, 3))
 
-    c.progress(f"opening playback at a DIFFERENT rate ({rate_b} Hz) -- must be refused")
-    rc2, err2, elapsed2 = run_playback(device, rate_b, diff_rate_s)
-    c.metric("diff_rate_refusal_s", round(elapsed2, 3))
-    if rc2 == 0:
-        note_fail(f"different-rate playback ({rate_b} Hz) was ACCEPTED while "
-                  f"capture was open at {rate_a} Hz -- the open-time rate "
-                  f"constraint did not fire")
+    c.progress(f"opening playback at a DIFFERENT rate ({rate_b} Hz) -- must "
+               f"stay constrained to {rate_a} Hz")
+    rc2, err2, elapsed2, obtained2 = diff_rate_playback(
+        device, rate_b, diff_rate_s, c.card, pcm_p)
+    c.metric("diff_rate_attempt_s", round(elapsed2, 3))
+    if obtained2 is not None:
+        c.metric("diff_rate_obtained_hz", obtained2)
+        if obtained2 == rate_a:
+            c.progress(f"different-rate playback was coerced to the "
+                       f"existing rate ({rate_a} Hz) rather than refused, "
+                       f"exit {rc2} in {elapsed2:.2f}s -- alsa-lib's "
+                       f"near-rate matching satisfying the single-value "
+                       f"constraint by rounding to it")
+        elif obtained2 == rate_b:
+            note_fail(f"different-rate playback actually ran at the "
+                      f"requested {rate_b} Hz while capture was open at "
+                      f"{rate_a} Hz -- the open-time rate constraint did "
+                      f"not fire")
+        else:
+            note_fail(f"different-rate playback negotiated {obtained2} Hz, "
+                      f"neither {rate_a} nor {rate_b} Hz -- unexpected")
+    elif rc2 == 0:
+        note_fail(f"different-rate playback ({rate_b} Hz) exited 0 but no "
+                  f"negotiated rate could be read from /proc -- cannot "
+                  f"confirm the constraint held")
     elif elapsed2 > REFUSAL_FAST_S:
         note_fail(f"different-rate playback was refused but took {elapsed2:.2f}s "
                   f"(> {REFUSAL_FAST_S}s) -- too slow to be the open-time "
                   f"ALSA-core constraint; looks like a device-level failure "
                   f"instead of a parameter rejection")
     else:
-        c.progress(f"different-rate playback refused in {elapsed2:.2f}s "
-                   f"(exit {rc2})")
-        last2 = (err2 or "").strip().splitlines()
-        if not last2 or "rate" not in last2[-1].lower():
-            c.note(f"refusal message did not mention 'rate': "
-                   f"{last2[-1][:120] if last2 else '(no stderr)'!r}")
+        c.progress(f"different-rate playback refused outright in "
+                   f"{elapsed2:.2f}s (exit {rc2}), before any rate could "
+                   f"be read back")
 
     cap_rc = cap.wait(timeout=capture_s + 30)
     cap_err = cap.stderr.read() if cap.stderr else ""

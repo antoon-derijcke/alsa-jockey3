@@ -864,14 +864,28 @@ cases:
       diff_rate_seconds: 2
       after_capture_seconds: 4
       min_nonzero_fraction: 0.01
-    metrics: [failures, same_rate_open_s, diff_rate_refusal_s,
-              stalls_playback, stalls_capture, resets_capture_stall,
-              resets_full]
+    metrics: [failures, same_rate_open_s, diff_rate_attempt_s,
+              diff_rate_obtained_hz, stalls_playback, stalls_capture,
+              resets_capture_stall, resets_full]
     pass: >
-      A second stream at the same rate is accepted; at a different rate it is
-      refused by the ALSA core, without the driver's own -EBUSY check firing.
-      After both close, a rate change works and any capture stall recovers.
+      A second stream at the same rate is accepted. A second stream at a
+      different rate is constrained to the rate already running -- checked
+      by the negotiated rate actually read back from /proc, not by an
+      expectation that it gets refused outright -- without the driver's own
+      -EBUSY check firing. After both close, a rate change works and any
+      capture stall recovers.
     notes: >
+      CORRECTED 2026-08-18 after a hardware run (x86_64-prod
+      20260818T141039Z-smoke) failed on a wrong assumption: the automated
+      case originally expected the different-rate playback to be refused
+      outright and fast. It is not -- aplay calls
+      snd_pcm_hw_params_set_rate_near(), which is satisfied by the nearest
+      legal rate, and the driver's constraint set has exactly one, so the
+      request is silently coerced to the existing rate rather than
+      rejected. See diff_rate_playback() in the case script for the fix:
+      it reads the negotiated rate back from /proc instead of trusting
+      aplay's exit code or stderr text.
+
       AUTOMATED 2026-08-18 as cases/rate_change_duplex.py, replacing the
       manual steps below with the same sequence. The different-rate refusal
       is checked by exit code AND elapsed time, not exit code alone: aplay
