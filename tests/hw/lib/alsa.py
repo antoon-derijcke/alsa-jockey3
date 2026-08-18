@@ -13,7 +13,7 @@ import subprocess
 import threading
 import time
 
-DRIVER_ID = "Jockey3"          # the card id the driver registers
+DRIVER_ID = "RJ3"               # jockey3.c: snd_card_set_id(card, "RJ3")
 
 
 def _read(path, default=""):
