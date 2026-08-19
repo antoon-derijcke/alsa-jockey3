@@ -63,6 +63,16 @@ than only at the end.
 
 PACING
 ------
+CEILING_BPS was lowered from 3125 to 2500 on 2026-08-19, after a rate sweep
+across both Remix units (see re/playback_stall_wedge.md) found sustained
+MIDI OUT above ~2500-2810 B/s made the device's control surface periodically
+stop responding to LED updates, well under the raw 31250 bps MIDI line rate
+that 3125 B/s approximated. The driver's own limiter moved with it (see
+jockey3_get_next_midi_out_byte() in jockey3.c) -- this constant exists to
+mirror that value, not to set it independently, so update both together.
+The historical notes below still describe measurements taken against the old
+3125 constant; they were correct for their time and are not rewritten here.
+
 The driver limits MIDI OUT to roughly 3125 bytes/sec, because the device
 overruns its own buffers and truncates messages if fed faster. The endurance
 mode aims just under that (load_fraction), by design: it wants a realistic,
@@ -173,8 +183,9 @@ def stall_counts():
     return counts
 
 # The driver's MIDI OUT ceiling, from the leaky-bucket limiter in
-# jockey3_get_next_midi_out_byte(). Bytes per second.
-CEILING_BPS = 3125
+# jockey3_get_next_midi_out_byte(). Bytes per second. See PACING above for
+# why this is 2500, not the device's raw MIDI line rate.
+CEILING_BPS = 2500
 
 PLAYBACK_CHANNELS = 4               # fixed by the driver: Master + Headphone
 PCM_FORMAT = "S24_3LE"              # the only format the device accepts
