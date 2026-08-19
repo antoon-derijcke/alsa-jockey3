@@ -71,6 +71,20 @@ def driver_label(run):
     return driver_rev(build) or "unknown"
 
 
+def firmware_label(run):
+    # The wedge is suspected to be a device-firmware bug (the "Ploytec"
+    # USB-facing MCU, specifically -- see the "Working hypothesis" section),
+    # so which firmware revision a run actually exercised matters as much as
+    # which driver commit it used. Populated from the kernel log by
+    # env.firmware_from_log() -- see firmware_note for why it can be absent
+    # (dynamic debug not enabled before the module loaded).
+    env = run.get("env") or {}
+    fw = env.get("firmware")
+    if fw and fw.get("version"):
+        return fw["version"]
+    return "unknown"
+
+
 def stall_window(dmesg_text, case_id, iteration):
     """(mark_ts, onset_ts) for the first playback stall onset inside this
     case's own JT-MARK window, or None if there isn't one."""
@@ -171,6 +185,7 @@ def row_for(run, result):
         "case": case_id,
         "run_id": run.get("run_id") or os.path.basename(run["_dir"]),
         "driver": driver_label(run),
+        "firmware": firmware_label(run),
         "target_rate": target_rate(case_id, params),
         "achieved_rate": metrics.get("achieved_bps"),
         "planned_s": planned,
@@ -212,9 +227,10 @@ def fmt_actual_duration(actual, planned):
 
 
 def render_table(rows):
-    head = ("| Date | Target | Case | Driver | Target rate | Achieved rate | "
-           "Duration | Stall? | Time to stall | Bytes at stall |")
-    sep = "|" + "---|" * 10
+    head = ("| Date | Target | Case | Driver | Firmware | Target rate | "
+           "Achieved rate | Duration | Stall? | Time to stall | "
+           "Bytes at stall |")
+    sep = "|" + "---|" * 11
     lines = [head, sep]
     for r in rows:
         stall_cell = "**yes**" if r["stalled"] else "no"
@@ -227,7 +243,7 @@ def render_table(rows):
                   if r["bytes_at_stall"] is not None else "unknown")
         lines.append(
             f"| {r['date']} | {r['target']} | {r['case']} (`{r['run_id']}`) "
-            f"| `{r['driver']}` | {fmt_rate(r['target_rate'])} | "
+            f"| `{r['driver']}` | {r['firmware']} | {fmt_rate(r['target_rate'])} | "
             f"{fmt_rate(r['achieved_rate'])} | "
             f"{fmt_actual_duration(r['actual_s'], r['planned_s'])} | "
             f"{stall_cell} | {tts} | {bas} |")
