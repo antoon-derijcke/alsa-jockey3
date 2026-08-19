@@ -851,7 +851,23 @@ def main():
 
     print(f"\nresults -> {run_path}\n")
     for case, iterations, params in plan:
-        if iterations <= 0 or case["status"] != "implemented":
+        if iterations <= 0:
+            # Disabled by a profile's per-target override -- not applicable
+            # here by design, e.g. JT-PM-001 on a Pi with no RTC. Recorded as
+            # SKIP rather than silently dropped: without an entry in run.json,
+            # ledger.py's matrix cannot tell "not applicable to this target"
+            # apart from "nobody has run this here yet", and shows both the
+            # same blank cell.
+            r = results.CaseResult(
+                id=case["id"], mode=case.get("mode", ""),
+                level=case.get("level", ""), area=case.get("area", ""),
+                status=results.SKIP, reason="disabled on this target",
+                started=results.utc_iso())
+            run.add(r)
+            print(f"  {mark(results.SKIP, style)} {case['id']:<16} "
+                  f"SKIP     disabled on this target")
+            continue
+        if case["status"] != "implemented":
             continue
         gap = capability_gap(case, caps)
         if gap:

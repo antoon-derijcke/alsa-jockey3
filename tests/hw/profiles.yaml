@@ -115,6 +115,10 @@ profiles:
         JT-RATE-001:  {params: {rates: [44100, 48000], iterations_per_run: 10}}
         JT-RATE-002:  {iterations: 0}
         JT-AUDIO-001: {params: {rates: [44100, 48000]}}
+        # No onboard RTC and the kernel advertises no suspend-to-RAM support
+        # (see lib/capabilities.py's rtc-wake probe) -- not a gap in this
+        # Pi's config, the board itself has neither. Disabled rather than
+        # left to block every run.
         JT-PM-001:    {iterations: 0}
         JT-PM-002:    {iterations: 0}
         JT-MIDI-004:  {params: {rates: [44100, 48000]}}
@@ -124,6 +128,10 @@ profiles:
         JT-BUILD-003: {iterations: 0}
         JT-BUILD-004: {iterations: 0}
         JT-RATE-001:  {params: {iterations_per_run: 15}}
+        # Same reasoning as armhf-prod above: the Pi 4B has no onboard RTC
+        # and no suspend-to-RAM support.
+        JT-PM-001:    {iterations: 0}
+        JT-PM-002:    {iterations: 0}
       x86_64-debug:
         # Audio quality cannot be judged on a KASAN kernel -- see the
         # constraints on this target in targets.yaml. JT-AUDIO-003 asks whether
@@ -194,6 +202,15 @@ profiles:
         JT-RATE-001: {iterations: 0}
         JT-PCM-001:  {iterations: 0}
         JT-PROBE-002: {iterations: 0}
+        # No onboard RTC, no suspend-to-RAM support -- see the note under
+        # `functional`.
+        JT-PM-001:   {iterations: 0}
+        JT-PM-002:   {iterations: 0}
+      arm64-prod:
+        # Same reasoning as armhf-prod above: the Pi 4B has no onboard RTC
+        # and no suspend-to-RAM support.
+        JT-PM-001:   {iterations: 0}
+        JT-PM-002:   {iterations: 0}
       x86_64-debug:
         # See the note under `functional`: quality verdicts are void here.
         JT-AUDIO-003: {iterations: 0}
