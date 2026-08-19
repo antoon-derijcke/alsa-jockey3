@@ -134,6 +134,16 @@ MODULE_PARM_DESC(enable, "Enable " CARD_NAME " soundcard.");
 #define JOCKEY3_WATCHDOG_HEARTBEAT_MS	60000
 
 /*
+ * Heartbeats stop after this many, so a stall nobody clears -- most commonly
+ * the deferred-idle-capture case, which is expected to persist for as long as
+ * nothing reopens capture -- cannot spam dmesg for the remaining life of the
+ * device. The onset line already recorded when the stall began, and the
+ * eventual recovery line still fires whenever the stream comes back; this
+ * only bounds the "still stalled" reminders in between.
+ */
+#define JOCKEY3_WATCHDOG_HEARTBEAT_MAX	3
+
+/*
  * How long jockey3_pcm_prepare() polls before believing a stream has stalled.
  *
  * .prepare runs on every xrun recovery, so a false positive there would disrupt
@@ -191,8 +201,11 @@ MODULE_PARM_DESC(enable, "Enable " CARD_NAME " soundcard.");
  *	meaningful while @stall_reported is set, and used to report how long the
  *	outage lasted once the stream comes back.
  * @stall_warned_at: ktime of the last stall message emitted for the current
- *	stall; @lock. Paces the still-stalled heartbeat, so a wedge that lasts
- *	for hours stays visible in a truncated log without one line per tick.
+ *	stall; @lock. Paces the still-stalled heartbeat to one line a minute
+ *	rather than one per tick, up to JOCKEY3_WATCHDOG_HEARTBEAT_MAX.
+ * @stall_heartbeats: still-stalled reminders emitted for the current stall;
+ *	@lock. Capped at JOCKEY3_WATCHDOG_HEARTBEAT_MAX so a stall that never
+ *	clears cannot spam dmesg indefinitely; reset with @stall_reported.
  */
 struct jockey3_pcm_urb_stream {
 	struct snd_pcm_substream *substream;
@@ -213,6 +226,7 @@ struct jockey3_pcm_urb_stream {
 	bool stall_reported;
 	u64 stall_since;
 	u64 stall_warned_at;
+	unsigned int stall_heartbeats;
 };
 
 /**
@@ -1382,7 +1396,7 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 	const char *type = direction == SNDRV_PCM_STREAM_PLAYBACK ? "Playback" : "Capture";
 	bool log_onset = false, log_heartbeat = false, log_recovery = false;
 	u64 now, last, age_ns, outage_ns = 0;
-	bool open = false;
+	bool open = false, heartbeats_exhausted = false;
 
 	/*
 	 * Fall back to the start timestamp until the first completion arrives:
@@ -1423,11 +1437,17 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 				urb_stream->stall_reported = true;
 				urb_stream->stall_since = last;
 				urb_stream->stall_warned_at = now;
+				urb_stream->stall_heartbeats = 0;
 				log_onset = true;
+			} else if (urb_stream->stall_heartbeats >= JOCKEY3_WATCHDOG_HEARTBEAT_MAX) {
+				/* already said its piece; wait for recovery in silence */
 			} else if (now - urb_stream->stall_warned_at >=
 				   (u64)JOCKEY3_WATCHDOG_HEARTBEAT_MS * NSEC_PER_MSEC) {
 				urb_stream->stall_warned_at = now;
+				urb_stream->stall_heartbeats++;
 				log_heartbeat = true;
+				heartbeats_exhausted = urb_stream->stall_heartbeats >=
+							JOCKEY3_WATCHDOG_HEARTBEAT_MAX;
 			}
 		} else if (urb_stream->stall_reported) {
 			urb_stream->stall_reported = false;
@@ -1460,8 +1480,9 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 		 * wrong. See jockey3_pcm_hw_params().
 		 */
 		dev_warn(&chip->intf0->dev,
-			 "%s URB stream still stalled while idle: no completion for %llu ms; recovery deferred to next capture open\n",
-			 type, div_u64(age_ns, NSEC_PER_MSEC));
+			 "%s URB stream still stalled while idle: no completion for %llu ms; recovery deferred to next capture open%s\n",
+			 type, div_u64(age_ns, NSEC_PER_MSEC),
+			 heartbeats_exhausted ? "; no further reports until it clears" : "");
 	else if (log_heartbeat)
 		/*
 		 * Everything else. Playback always carries MIDI OUT and is never
@@ -1470,8 +1491,9 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 		 * nothing is dealing with it.
 		 */
 		dev_warn(&chip->intf0->dev,
-			 "%s URB stream still stalled: no completion for %llu ms\n",
-			 type, div_u64(age_ns, NSEC_PER_MSEC));
+			 "%s URB stream still stalled: no completion for %llu ms%s\n",
+			 type, div_u64(age_ns, NSEC_PER_MSEC),
+			 heartbeats_exhausted ? "; no further reports until it clears" : "");
 	else if (log_recovery)
 		dev_warn(&chip->intf0->dev, "%s URB stream recovered after %llu ms\n",
 			 type, div_u64(outage_ns, NSEC_PER_MSEC));
