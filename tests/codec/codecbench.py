@@ -31,19 +31,46 @@ import glob
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER_DIR = os.path.normpath(os.path.join(HERE, "..", ".."))
-BUILD_DIR = os.path.join(HERE, "build")
-SRC_COPY_DIR = os.path.join(BUILD_DIR, "src")
-MANIFEST = os.path.join(SRC_COPY_DIR, "MANIFEST.json")
+BASE_BUILD_DIR = os.path.join(HERE, "build")
 HARNESS_DIR = os.path.join(HERE, "harness")
 STUBS_DIR = os.path.join(HARNESS_DIR, "stubs")
 CANDIDATE_DIR = os.path.join(HERE, "candidates")
-BINARY = os.path.join(BUILD_DIR, "test_codec")
+
+# Set by configure_paths() from the resolved build target (args.cross, or
+# platform.machine() for a native build) before any command runs. Kept as
+# module globals, not threaded through every function, because exactly one
+# target is in play per invocation of this script.
+#
+# Each target gets its own subdirectory of build/ rather than sharing one
+# build/test_codec, because this tree is Seafile-synced between the dev host
+# and test machines of different architectures: a shared path means whichever
+# machine built last silently overwrites the binary the other machine needs,
+# and exec() on the wrong-arch survivor fails with ENOEXEC ("Exec format
+# error") -- see check_sync()'s build_target/build_cross check below for the
+# corner case this directory split does not cover on its own (same
+# platform.machine() string, different toolchain/libc).
+BUILD_DIR = None
+SRC_COPY_DIR = None
+MANIFEST = None
+BINARY = None
+
+
+def configure_paths(args):
+    """Resolve BUILD_DIR and friends to this invocation's target subdirectory."""
+    global BUILD_DIR, SRC_COPY_DIR, MANIFEST, BINARY
+
+    target = args.cross or platform.machine()
+    BUILD_DIR = os.path.join(BASE_BUILD_DIR, target)
+    SRC_COPY_DIR = os.path.join(BUILD_DIR, "src")
+    MANIFEST = os.path.join(SRC_COPY_DIR, "MANIFEST.json")
+    BINARY = os.path.join(BUILD_DIR, "test_codec")
 
 # Copied verbatim from the driver. ploytec_codec_test_vectors.h is generated
 # but lives with the driver because the KUnit suite consumes it too.
@@ -106,7 +133,7 @@ def driver_git_commit():
         return "unknown"
 
 
-def copy_driver_sources():
+def copy_driver_sources(cross=None):
     """Copy the driver codec here verbatim and record what was copied."""
     os.makedirs(SRC_COPY_DIR, exist_ok=True)
 
@@ -128,6 +155,15 @@ def copy_driver_sources():
     manifest = {
         "driver_dir": DRIVER_DIR,
         "driver_commit": driver_git_commit(),
+        # Lets check_sync() catch a binary that got here by Seafile syncing
+        # the build/ directory across machines rather than by an actual
+        # build -- source hashes alone match fine in that case, but the ELF
+        # is for the wrong arch and exec() fails with ENOEXEC ("Exec format
+        # error") on the target. Only meaningful for a native build; a
+        # --cross build's target is a cross-compile prefix, not a
+        # platform.machine() value, and is meant to run under an emulator.
+        "build_target": platform.machine(),
+        "build_cross": cross,
         "sources": entries,
     }
     with open(MANIFEST, "w", encoding="utf-8") as f:
@@ -141,13 +177,27 @@ def check_sync(quiet=False):
     """Verify the copies still match the driver. Returns True when in sync."""
     if not os.path.exists(MANIFEST):
         if not quiet:
-            print("no build/src/MANIFEST.json -- run './codecbench.py build' first")
+            print(f"no {MANIFEST} -- run './codecbench.py build' first")
         return False
 
     with open(MANIFEST, "r", encoding="utf-8") as f:
         manifest = json.load(f)
 
     ok = True
+
+    # A --cross build's target is a cross-compile prefix, not a
+    # platform.machine() value, and it is meant to be run under an emulator
+    # rather than natively -- nothing to compare there. A native build's
+    # target is recorded as platform.machine() at build time, so it must
+    # match this machine's; if not, the binary got here some other way than
+    # being built here, most likely Seafile syncing build/ across machines,
+    # and exec() on it fails with ENOEXEC ("Exec format error").
+    if not manifest.get("build_cross") and manifest.get("build_target") != platform.machine():
+        print(f"  binary: built for {manifest.get('build_target', 'unknown')}, "
+              f"this machine is {platform.machine()} "
+              f"-- looks synced from another machine, not built here")
+        ok = False
+
     for name, recorded in manifest["sources"].items():
         source = os.path.join(DRIVER_DIR, name)
         if not os.path.exists(source):
@@ -162,10 +212,10 @@ def check_sync(quiet=False):
 
     if not quiet:
         if ok:
-            print(f"build/src is in sync with the driver "
+            print(f"{SRC_COPY_DIR} is in sync with the driver "
                   f"({manifest['driver_commit']})")
         else:
-            print("build/src is STALE -- rerun './codecbench.py build'")
+            print(f"{SRC_COPY_DIR} is STALE -- rerun './codecbench.py build'")
 
     return ok
 
@@ -274,12 +324,12 @@ def compile_one(cc, cflags, source, output, extra=None):
 
 
 def build(args):
-    manifest = copy_driver_sources()
-    os.makedirs(BUILD_DIR, exist_ok=True)
-
     cc = args.cc
     if args.cross:
         cc = f"{args.cross}-gcc"
+
+    manifest = copy_driver_sources(args.cross)
+    os.makedirs(BUILD_DIR, exist_ok=True)
 
     cflags = [
         "-O2",
@@ -542,6 +592,7 @@ def main():
     p.set_defaults(func=cmd_report)
 
     args = parser.parse_args()
+    configure_paths(args)
 
     return args.func(args)
 
