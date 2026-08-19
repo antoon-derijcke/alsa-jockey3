@@ -745,23 +745,35 @@ def main():
     print("\nplan:")
     runnable = 0
     manual = 0
+    # Everything that will land a CaseResult in run.json -- runnable, manual
+    # fallback, disabled-on-target (SKIP) and blocked (BLOCKED) alike. Only a
+    # case whose status is not yet "implemented" writes nothing at all, so
+    # that is the one thing that should make "nothing to run" true below --
+    # not just the runnable/manual subset, which used to make a run of only
+    # disabled or blocked cases print "nothing to run" and skip writing them.
+    recorded = 0
     for case, iterations, params in plan:
         gap = capability_gap(case, caps)
         if iterations <= 0:
             note = "disabled on this target"
+            recorded += 1
         elif gap and demotes_to_manual(case, gap):
             note = "manual fallback: no " + gap_reason(gap, cap_detail)
             manual += 1
+            recorded += 1
         elif gap:
             note = "blocked: needs " + gap_reason(gap, cap_detail)
+            recorded += 1
         elif case["status"] != "implemented":
             note = "planned -- not implemented yet"
         elif case["mode"] not in RUNNABLE_MODES:
             note = "manual -- use checklist.py"
             manual += 1
+            recorded += 1
         else:
             note = f"{iterations}x"
             runnable += 1
+            recorded += 1
         extra = ""
         if params:
             bits = [f"{k}={v}" for k, v in params.items()]
@@ -775,7 +787,7 @@ def main():
     if args.dry_run:
         return 0
 
-    if not runnable and not manual:
+    if not recorded:
         print("nothing to run", file=sys.stderr)
         return 1
     # A profile of only manual cases still produces a run record: the pending
