@@ -385,6 +385,12 @@ cases:
     status: implemented
     requires: [device, root]
     exec: cases/probe_bind_unbind.py
+    # 5000 iterations at settle_seconds=5 alone is ~7h before any actual
+    # bind/unbind time; the runner's own default timeout is 3600s, so
+    # without an explicit one here this aborts partway through every time
+    # (see JT-PCM-008/JT-RATE-003 for the same fix). An explicit --timeout
+    # on the command line still wins.
+    timeout: 43200
     params:
       iterations_per_run: 5000
       settle_seconds: 5
@@ -618,6 +624,12 @@ cases:
     requires: [device]
     exec: cases/pcm.py
     args: [soak]
+    # Default params run 8h; the runner's own default timeout is 3600s, so
+    # without an explicit one here this aborts an hour in every time. 12h
+    # leaves headroom for a slower target without needing --timeout passed
+    # by hand every time (see JT-RATE-003). An explicit --timeout on the
+    # command line still wins.
+    timeout: 43200
     params:
       hours: 8
       rate: 44100
