@@ -1170,18 +1170,67 @@ cases:
     area: AUDIO
     level: L3
     mode: automated
-    status: planned
+    status: implemented
     requires: [device, loopback-cable]
+    exec: cases/audio_loopback.py
     params:
       rates: [44100, 48000, 88200, 96000]
-    metrics: [rms_per_channel, crosstalk_db]
+      seconds: 3
+    metrics: [channel_map_ok, isolation_db, snr_db, floor_dbfs, clip_fraction,
+              rms_dbfs, xruns_playback, xruns_capture]
     pass: >
-      A tone played to one channel appears above threshold on the corresponding
-      capture channel and below threshold on the others.
+      For each patched output/input pair, whichever of the four known tones
+      is loudest on a capture channel is the one that output actually sent
+      -- a same-capture ranking, not an absolute level, so it does not
+      depend on the input's analog gain. Gated on that channel's own
+      measured noise floor clearing snr_min_db (default 40 dB), so a dead
+      or disconnected channel reads as inconclusive rather than a false
+      pass or fail.
     notes: >
-      Uses the device's own I/O -- master out into In 1, headphone out into
-      In 2 -- so no second sound card is needed. RMS presence only. Artifacts
-      and distortion are left to the ear, which is better at it.
+      Uses the device's own I/O -- Master out into In 1, Headphone out into
+      In 2 -- so no second sound card is needed, but only pairs that are
+      actually cabled on this bench are checked: which output is patched to
+      which input is machine-local config
+      (audio_loopback.patches in ~/.config/jockey3/machine.yaml), not
+      assumed. A pair with no cable is reported as untested, not failed.
+
+      Deliberately NOT an RMS threshold. Measured absolute level depends on
+      the input's analog gain/volume trim, which this case has no way to
+      read, so a fixed dBFS gate would fail a healthy device on a low trim
+      or pass a broken one on a hot trim. Every verdict here is a ratio
+      measured within one capture (a tone against the other known tones, a
+      tone against that channel's own measured noise floor), which cancels
+      a shared gain out. rms_dbfs is still recorded, informational only,
+      same as JT-PCM-005.
+
+      The floor is a real capture, not a proxy: a short recording with
+      nothing playing, taken once per rate right before the tones. A
+      healthy input is expected around -80 dBFS (Frank, 2026-08-19); a
+      floor well above that is noted (possible hum, ground loop, or wrong
+      input mode) without gating the verdict. Keeping snr_min_db at 40 dB
+      means the tones do not need to run hot to clear it, which matters
+      because Master/Headphone may have real speakers or headphones
+      connected for the duration of this case.
+
+      One tone per playback channel (E3/A3/D4/G4, same as JT-AUDIO-001),
+      read out with a Goertzel bin per tone rather than a deterministic
+      counter pattern and cross-correlation: the round trip is analog, so
+      this case cannot prove bit-exact data integrity either way, and a
+      frequency-domain read needs no alignment between the independent aplay
+      and arecord processes, unlike a correlation lag search. Data integrity
+      stays an open finding -- see docs/test_strategy.md section 12.
+
+      A channel whose loudest tone does not clear its own measured floor by
+      snr_min_db is reported inconclusive rather than failed -- a
+      disconnected cable and a real driver defect read the same way there,
+      and only someone at the bench can tell them apart. The gate looks at
+      whichever tone is loudest, not specifically the expected one, so a
+      full channel-map swap (a strong, wrong tone present) is still scored
+      as a channel-map failure rather than misread as a dead channel. A
+      channel with more than a trace of clipping is flagged too: clipping's
+      harmonics can spill into a neighboring bin and manufacture a spurious
+      channel-map or crosstalk finding that has nothing to do with the
+      driver.
 
   - id: JT-AUDIO-003
     title: Real content playback, listened to

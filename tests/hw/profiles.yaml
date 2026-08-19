@@ -115,6 +115,7 @@ profiles:
         JT-RATE-001:  {params: {rates: [44100, 48000], iterations_per_run: 10}}
         JT-RATE-002:  {iterations: 0}
         JT-AUDIO-001: {params: {rates: [44100, 48000]}}
+        JT-AUDIO-002: {params: {rates: [44100, 48000]}}
         # No onboard RTC and the kernel advertises no suspend-to-RAM support
         # (see lib/capabilities.py's rtc-wake probe) -- not a gap in this
         # Pi's config, the board itself has neither. Disabled rather than

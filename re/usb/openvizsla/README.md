@@ -101,7 +101,8 @@ derived from this driver alone.
 ### What this cannot tell you
 
 Only timing. Whether the *bytes* were right is a different question with a
-different instrument — the loopback case (`JT-AUDIO-002`) for the path end to
-end, and the KUnit suite plus `codecbench.py` for the codec itself. A trace
-showing clean cadence and audible corruption means the problem is in the data,
-and no amount of further tracing will find it.
+different instrument — the loopback case (`JT-AUDIO-002`) for output presence
+and channel map (not bit-exact content; the round trip is analog), and the
+KUnit suite plus `codecbench.py` for the codec itself. A trace showing clean
+cadence and audible corruption means the problem is in the data, and no
+amount of further tracing will find it.

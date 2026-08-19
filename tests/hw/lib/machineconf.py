@@ -26,6 +26,11 @@ remember, fewer to forget.
       type: tasmota
       url: http://relay.example.com
 
+    audio_loopback:         # see cases/audio_loopback.py (JT-AUDIO-002)
+      patches:
+        master: in1          # Master out -> In 1
+        headphone: in2        # Headphone out -> In 2
+
     paths:
       build_host: alsa-dev
       build_path: ~/sound-build/sound/usb/jockey3/snd-reloop-jockey3.ko

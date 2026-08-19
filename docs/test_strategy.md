@@ -723,7 +723,7 @@ users will meet, and the wire is the only place that answer exists.
 |---|---|
 | Were packets late, and by how much? | Yes — this is what it is for |
 | Did the ring drain, or did the host controller stall? | Yes, from the gap pattern |
-| Was the *data* correct? | No — that is loopback (JT-AUDIO-002) |
+| Was the *data* correct? | No — loopback (JT-AUDIO-002) checks presence and channel map, not bit-exact content; nothing does yet |
 | Is the codec packing right? | No — that is the KUnit suite and the bench |
 
 Timing and integrity are separate questions with separate instruments, and a
@@ -773,23 +773,21 @@ than the module name, which is why it is not attributed automatically.
 **Nothing yet proves data integrity.** Every automated case measures timing or
 liveness. `xrun_counter`, `avail_max`, byte counts and stall counts all say
 whether audio flowed on time; none says whether the bits arriving were the bits
-sent. `JT-AUDIO-002` below is the first case that would, which is why it heads
-the list.
+sent. `JT-AUDIO-002` (implemented 2026-08-19) does not close this either — the
+round trip it uses is analog (DAC, cable, ADC), which loses bit-exactness
+regardless of what pattern is played, so this remains open. What it does prove
+is output presence and channel map, gain-invariantly: every verdict is a ratio
+measured within one capture (a tone against the other known tones, a tone
+against a floor bin), so a bench's input gain, which the case has no way to
+read, cannot flip the result the way a fixed RMS threshold would have. A
+tone-per-channel plus a Goertzel bin per tone was used instead of a ramp and
+correlation, because correlation needs a lag search between `aplay` and
+`arecord` — two processes with no shared clock — and a frequency read does
+not.
 
 **Next, in rough priority order:**
 
-1. **Audio loopback** — master out into In 1, headphone out into In 2, using the
-   device's own I/O. An RMS check per channel confirms audio is actually being
-   produced on the expected channel at each rate, and validates the playback
-   channel map. No extra hardware needed beyond one cable.
-
-   Worth building it around a **deterministic pattern** — a sample counter or
-   LFSR — rather than a tone. With a tone the verdict is "sounds about right";
-   with a ramp a dropped, repeated or reordered packet is localizable and
-   countable, and the same measurement works identically on a debug and a
-   production kernel, so the comparison in §4 becomes quantitative. It is also
-   the only instrument that distinguishes a timing fault from a corruption
-   fault, which §11a cannot.
+1. ~~**Audio loopback**~~ — done, as `JT-AUDIO-002`/`cases/audio_loopback.py`.
 2. **Non-interactive MIDI flood** — `miditest.py` already measures throughput
    and running-status handling; it needs a scripted mode.
 3. **Networked serial console logger** — so an overnight crash is captured to a

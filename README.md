@@ -35,8 +35,10 @@ Unlike most modern DJ controllers, the Reloop Jockey 3 does not use a class-comp
   checked against the USB PM model; unresolved, and not yet known to be a
   defect in this driver rather than in the ordering usbcore imposes.
 - No test yet proves **data integrity** — every automated case measures timing
-  or liveness, not whether the bits arriving are the bits sent. Loopback with a
-  deterministic pattern is the next thing to build (`JT-AUDIO-002`).
+  or liveness, not whether the bits arriving are the bits sent. `JT-AUDIO-002`
+  (implemented) checks output presence and channel map via loopback, but the
+  round trip is analog, so it cannot settle bit-exactness either; that stays
+  open.
 - Long-term stability testing
 - Confirmation of other Reloop Jockey 3 hardware
 - Kernel tree integration (eventual goal)
