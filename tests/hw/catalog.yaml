@@ -1747,8 +1747,8 @@ cases:
       evidence for something it never tested.
 
       The -71 accumulation needs a disconnect that DEGRADES: a hand on the
-      cable, or the mains relay of JT-HOTPLUG-003. Until that relay exists,
-      this stays a manual cable pull.
+      cable, or the mains relay of JT-HOTPLUG-003 (automated since
+      2026-08-19, now the repeatable route to that path).
 
   - id: JT-HOTPLUG-002
     title: Replug and reuse
@@ -1772,12 +1772,28 @@ cases:
     title: Power cycle during playback
     area: HOTPLUG
     level: L3
-    mode: manual
+    mode: automated
     status: implemented
-    requires: [device, human]
+    requires: [device, root]
+    exec: cases/hotplug_power_cycle.py
+    params:
+      iterations_per_run: 1
+      off_seconds: 5
+      settle_seconds: 8
+      warmup_seconds: 1
+      rate: 44100
+      operator_timeout_seconds: 120
+    metrics: [power_control, cycles, aplay_error_ms, card_gone_ms, gave_up,
+              reenumerate_ms, resubstream_ms, unload_ok, reload_ok]
     pass: >
-      The driver recovers or fails cleanly; no crash, no hang, no stuck module
-      reference.
+      Playback errors out rather than hanging when the device's own mains
+      power is cut with USB left connected; the card disappears and
+      re-enumerates once power returns; and the module still unloads and
+      reloads cleanly afterwards.
+    expect_dmesg:
+      - '(?:Playback|Capture|MIDI IN) URB error: -71 \(\d+ consecutive\)'
+      - 'MIDI IN stopped after \d+ consecutive URB errors$'
+      - 'jockey3_urb_error_give_up: \d+ callbacks suppressed'
     steps:
       - 'Resolve the card: CARD=$(awk ''/RJ3/{print $1}'' /proc/asound/cards)'
       - >
@@ -1788,9 +1804,10 @@ cases:
         seconds, and restore it.
       - Confirm the application exited with an error rather than hanging.
       - >
-        Check dmesg for the give-up message ("hardware may need
-        power-cycling"). Reaching it here is expected and is not a failure --
-        this is one of the few ways to reach that path at all.
+        Check dmesg for the give-up message ("stopped after N consecutive
+        URB errors; deferring recovery"). Reaching it here is expected and is
+        not a failure -- this is one of the few ways to reach that path at
+        all.
       - Confirm the device re-enumerates, and that the module still unloads
         cleanly afterwards.
     notes: >
@@ -1798,15 +1815,34 @@ cases:
       device stops responding, which is a different failure to a clean
       disconnect: the URBs error without a disconnect() to tidy up after them.
 
-      Becomes automated once a mains relay is wired up, which is also the only
-      way to reach the give-up path repeatably.
-
-      That relay is now the ONLY route to the -71 (EPROTO) accumulation and
-      the consecutive-error give-up, short of a person pulling the cable. The
+      Automated since 2026-08-19 via the mains relay (cases/hotplug_power_cycle.py),
+      which is also the only way to reach the give-up path repeatably -- the
       ppps hub added in 2026-08 does not reach it: a port power-off is a
-      clean, instant VBUS drop and the errors arrive as -19 instead. So this
-      case is not a more thorough duplicate of JT-HOTPLUG-001 -- between them
-      they are the only coverage of that branch, and both are manual today.
+      clean, instant VBUS drop and the errors arrive as -19 instead, not -71.
+      Falls back to an operator at the switch when no relay is configured
+      (same DevicePower/OperatorPower split as JT-AUDIO-005), with `human`
+      deliberately absent from `requires` for the same reason as there: the
+      operator step only instructs, it never blocks on an answer, so the case
+      still runs unattended when a relay is present.
+
+      Measured on hardware (2026-08-19, pi4test, idle): cutting the relay
+      produces the -71 burst and every direction's give-up line within about
+      10 ms, regardless of whether a PCM substream is open -- URBs run free
+      for the device's lifetime. What only an OPEN playback stream can show,
+      and the reason this case still starts a real aplay process, is the
+      userspace-visible half: whether the open substream's writes come back
+      with an error so the application exits, or block forever.
+
+      The steps used to quote a DIFFERENT give-up message, "hardware may
+      need power-cycling" -- that string is real (jockey3.c,
+      jockey3_recover_capture_stream()) but belongs to a capture-recovery
+      escalation reachable only after a URB restart AND a full USB reset
+      both fail to bring capture back. A playback-only power cycle cannot
+      reach it, and forcing a capture open afterward just to chase a message
+      that only fires when recovery has already failed twice was rejected as
+      testing a should-not-happen path on every run instead of the one this
+      case is actually for. expect_dmesg above matches the message this
+      scenario does reach.
 
   - id: JT-HOTPLUG-004
     title: USB reset recovery
