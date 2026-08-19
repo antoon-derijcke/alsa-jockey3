@@ -74,6 +74,13 @@ fail on its own doing and destroy the one signature worth watching for. This
 is also why JT-MIDI-003 ("flood past the ceiling") was retired rather than
 added here: it cannot be done without risking exactly that false failure.
 
+Paced with a direct os.write() per burst on one open fd, not an amidi
+subprocess per burst -- run_burst_window() used to spawn amidi(1), which is
+exactly the ~59%-of-target process-spawn overhead described under PER-RATE
+MODE below, except it had only ever been fixed there. Confirmed 2026-08-19
+(arm64-prod, load_fraction 0.9): 1604 B/s achieved against a 2812 B/s target
+under the old amidi-per-burst design.
+
 PER-RATE MODE
 --------------
 jockey3_get_next_midi_out_byte() paces via
@@ -85,17 +92,17 @@ through the algebra, the achieved byte rate this produces is ~3125 B/s at
 every sample rate -- the divisor scaling exists to cancel the rate-dependent
 URB completion frequency, not to make the target rate-dependent.
 
-Unlike the endurance mode, this mode does not throttle its own writes. It
-opens the rawmidi device node directly (no amidi subprocess per chunk -- see
-measure_throughput()) and writes as fast as write() will go; the kernel's own
-backpressure on the finite rawmidi buffer paces that to whatever the driver
-actually drains, so bytes_sent/elapsed is a direct measurement of the
-driver's real output rate rather than of this script's own overhead. An
-earlier version paced small amidi(1) invocations against a target interval,
-which measured the cost of spawning a process every ~130 ms far more than it
-measured the driver -- confirmed against hardware on 2026-08-16, where every
-rate read back at the same ~59% of target regardless of sample rate, the
-signature of a constant per-call overhead rather than a real per-rate effect.
+Unlike the endurance mode, this mode does not throttle its own writes at
+all -- it writes as fast as write() will go, via measure_throughput(); the
+kernel's own backpressure on the finite rawmidi buffer paces that to
+whatever the driver actually drains, so bytes_sent/elapsed is a direct
+measurement of the driver's real output rate rather than of this script's
+own overhead. An earlier version paced small amidi(1) invocations against a
+target interval, which measured the cost of spawning a process every
+~130 ms far more than it measured the driver -- confirmed against hardware
+on 2026-08-16, where every rate read back at the same ~59% of target
+regardless of sample rate, the signature of a constant per-call overhead
+rather than a real per-rate effect.
 
 Each rate is primed with a few seconds of silent PCM playback first --
 enough to drive jockey3_pcm_hw_params() through the rate change and let the
@@ -181,19 +188,6 @@ PCM_FORMAT = "S24_3LE"              # the only format the device accepts
 
 ON = "90 0B 7F 90 0C 7F 90 0D 7F 90 0E 7F 91 0B 7F 91 0C 7F 91 0D 7F 91 0E 7F"
 OFF = "90 0B 00 90 0C 00 90 0D 00 90 0E 00 91 0B 00 91 0C 00 91 0D 00 91 0E 00"
-
-
-def find_port(c):
-    port = alsa.rawmidi_device(c.card)
-    if port:
-        return port
-    rc, out, _err = c.run(["amidi", "-l"], timeout=20)
-    if rc != 0:
-        return None
-    for line in (out or "").splitlines():
-        if "Jockey" in line and line.strip().startswith("IO"):
-            return line.split()[1]
-    return None
 
 
 def prime_rate(c, device, rate, seconds=2.0):
@@ -299,14 +293,30 @@ def measure_throughput(c, node_path, duration, check_every, report_every, label=
     return bytes_sent, elapsed, write_failures, card_lost
 
 
-def run_burst_window(c, port, duration, load, burst, burst_bytes,
+def run_burst_window(c, node_path, duration, load, burst_pattern, burst_bytes,
                      check_every, report_every, label=""):
     """Send bursts for duration seconds. Returns (bytes_sent, bursts,
-    write_failures, elapsed, card_lost)."""
+    write_failures, elapsed, card_lost).
+
+    Direct os.write() on one open fd, like measure_throughput() -- not an
+    amidi subprocess per burst. That used to be exactly the ~59%-of-target
+    process-spawn overhead the module docstring describes fixing for the
+    per-rate mode (measure_throughput()), except it was never applied here:
+    this endurance mode kept spawning amidi once per burst, so a
+    load_fraction of 0.9 achieved barely more than half that in practice.
+    Confirmed 2026-08-19 (arm64-prod, load_fraction 0.9): 1604 B/s achieved
+    against a 2812 B/s target, 57.0% -- the same signature.
+    """
     interval = burst_bytes / (CEILING_BPS * load)
     prefix = f"{label}: " if label else ""
 
-    c.progress(f"{prefix}soaking {port} for {duration:.0f}s at "
+    try:
+        fd = os.open(node_path, os.O_WRONLY)
+    except OSError as e:
+        c.fail(f"{prefix}could not open {node_path}: {e}")
+        return 0, 0, 1, 0.0, False
+
+    c.progress(f"{prefix}soaking {node_path} for {duration:.0f}s at "
                f"~{CEILING_BPS * load:.0f} B/s "
                f"({burst_bytes} bytes every {interval * 1000:.0f} ms)")
 
@@ -320,48 +330,49 @@ def run_burst_window(c, port, duration, load, burst, burst_bytes,
     write_failures = 0
     card_lost = False
 
-    while time.time() < deadline:
-        t0 = time.time()
-        rc, _out, err = c.run(["amidi", "-p", port, "-S", " ".join(burst)],
-                              timeout=30)
-        if rc != 0:
-            write_failures += 1
-            # Do not fail on the first one. A single refused write during a
-            # long soak is worth knowing about, but the thing being hunted
-            # is a device that stops responding and stays that way -- which
-            # shows up as write_failures climbing, and is judged at the end.
-            if write_failures <= 3:
-                c.note(f"{prefix}MIDI OUT write failed after "
-                       f"{time.time() - started:.0f}s: "
-                       f"{(err or '').strip()[:100]}")
-        else:
-            bytes_sent += burst_bytes
-        bursts += 1
+    try:
+        while time.time() < deadline:
+            t0 = time.time()
+            try:
+                os.write(fd, burst_pattern)
+                bytes_sent += burst_bytes
+            except OSError as e:
+                write_failures += 1
+                # Do not fail on the first one. A single refused write during
+                # a long soak is worth knowing about, but the thing being
+                # hunted is a device that stops responding and stays that
+                # way -- which shows up as write_failures climbing, and is
+                # judged at the end.
+                if write_failures <= 3:
+                    c.note(f"{prefix}MIDI OUT write failed after "
+                           f"{time.time() - started:.0f}s: {e}")
+            bursts += 1
 
-        now = time.time()
-        if now >= next_check:
-            next_check = now + check_every
-            idx, _ = alsa.find_card()
-            if idx is None:
-                card_lost = True
-                c.fail(f"{prefix}card disappeared after {now - started:.0f}s "
-                       f"of MIDI traffic")
-                break
+            now = time.time()
+            if now >= next_check:
+                next_check = now + check_every
+                idx, _ = alsa.find_card()
+                if idx is None:
+                    card_lost = True
+                    c.fail(f"{prefix}card disappeared after {now - started:.0f}s "
+                           f"of MIDI traffic")
+                    break
 
-        if now >= next_report:
-            next_report = now + report_every
-            c.progress(f"   {prefix}{now - started:>6.0f}s  "
-                       f"{bytes_sent:>9d} bytes  {bursts:>7d} bursts"
-                       + (f"  {write_failures} WRITE FAILURES"
-                          if write_failures else ""))
+            if now >= next_report:
+                next_report = now + report_every
+                c.progress(f"   {prefix}{now - started:>6.0f}s  "
+                           f"{bytes_sent:>9d} bytes  {bursts:>7d} bursts"
+                           + (f"  {write_failures} WRITE FAILURES"
+                              if write_failures else ""))
 
-        # Pace against the interval, not against a fixed sleep: amidi's own
-        # runtime is a large and variable part of the budget, and sleeping a
-        # flat interval on top of it would sit well under the rate this is
-        # meant to sustain.
-        slack = interval - (time.time() - t0)
-        if slack > 0:
-            time.sleep(slack)
+            # Pace against the interval, not a flat sleep: the write() itself
+            # takes some of the budget too, small as it is compared to the
+            # amidi spawn it replaced.
+            slack = interval - (time.time() - t0)
+            if slack > 0:
+                time.sleep(slack)
+    finally:
+        os.close(fd)
 
     elapsed = time.time() - started
     return bytes_sent, bursts, write_failures, elapsed, card_lost
@@ -411,7 +422,6 @@ def final_liveness_check(c):
 def main():
     c = Case()
     c.require_card()
-    c.require_tools("amidi")
 
     # Fraction of the driver's ceiling to aim at. Below 1.0 on purpose; see the
     # pacing note in the module docstring.
@@ -419,24 +429,23 @@ def main():
     check_every = float(c.params.get("check_interval_seconds", 30))
     report_every = float(c.params.get("progress_interval_seconds", 60))
 
-    port = find_port(c)
-    if not port:
-        c.blocked("no Jockey 3 rawmidi port found")
+    node = alsa.rawmidi_node(c.card)
+    if not node:
+        c.blocked("no rawmidi device node found for direct write")
 
-    # One amidi invocation per burst, so the cost of starting the process has
-    # to be paid out of the budget rather than ignored. A burst of several
-    # messages amortizes it; one message per invocation could not keep up.
+    # A burst of several ON/OFF pairs amortizes fixed per-write overhead
+    # (negligible for os.write(), but the burst grouping is also what gives
+    # the LED blink pattern its visible rhythm -- see the module comment
+    # above ON/OFF).
     burst = [ON, OFF] * int(c.params.get("messages_per_burst", 8))
     burst_bytes = sum(len(m.split()) for m in burst)
+    burst_pattern = bytes(int(b, 16) for m in burst for b in m.split())
 
     rates = c.params.get("rates")
 
     if rates:
         c.require_tools("aplay")
         device = c.device or alsa.device_name(c.card)
-        node = alsa.rawmidi_node(c.card)
-        if not node:
-            c.blocked("no rawmidi device node found for direct write")
         duration = float(c.params.get("duration_seconds", 30))
         tolerance = float(c.params.get("tolerance", 0.05))
         lo, hi = CEILING_BPS * (1 - tolerance), CEILING_BPS * (1 + tolerance)
@@ -483,7 +492,7 @@ def main():
                    "outlives this case")
 
         bytes_sent, bursts, write_failures, elapsed, card_lost = \
-            run_burst_window(c, port, duration, load, burst, burst_bytes,
+            run_burst_window(c, node, duration, load, burst_pattern, burst_bytes,
                              check_every, report_every)
         after = stall_counts()
 
