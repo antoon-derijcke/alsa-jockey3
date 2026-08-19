@@ -760,9 +760,16 @@ static void jockey3_capture_callback(struct urb *urb)
  *
  * Every outgoing playback packet reserves one slot for MIDI. This returns the
  * byte to put there, applying a leaky-bucket limiter that holds the MIDI stream
- * to roughly 3125 bytes/sec: the device overruns its own buffers and truncates
- * messages if fed faster. When there is nothing to send, or the budget is not
- * yet available, the idle byte is returned.
+ * to roughly 2500 bytes/sec: sustained MIDI OUT above this range was measured
+ * to make the device's control surface (LEDs, VU meters) periodically stop
+ * responding to updates, well before the raw 31250 bps MIDI line rate. This
+ * value is a deliberately conservative margin below the ~2500-2810 bytes/sec
+ * band where that was first observed, not the exact edge -- a normal DJ
+ * controller workload never needs anywhere near this: updating every one of
+ * the device's 46 addressable LEDs/rings/VU-bars at once is ~138 bytes, so
+ * even this reduced ceiling supports well over 18 full-panel updates/sec. When
+ * there is nothing to send, or the budget is not yet available, the idle byte
+ * is returned.
  *
  * midi_lock is held across snd_rawmidi_transmit() rather than being dropped
  * around it: that keeps chip->midi_out_substream from changing under us, and
@@ -783,10 +790,10 @@ static u8 jockey3_get_next_midi_out_byte(struct jockey3_chip *chip)
 	guard(spinlock_irqsave)(&chip->midi_lock);
 
 	/*
-	 * Rate limit MIDI to ~3125 bytes/sec. Sending at higher rates causes buffer
-	 * overflows and message truncation in the device.
+	 * Rate limit MIDI to ~2500 bytes/sec -- see the kernel-doc above for why
+	 * this is well under the device's raw MIDI line rate.
 	 */
-	chip->midi_out_acc += 3125;
+	chip->midi_out_acc += 2500;
 	if (chip->midi_out_acc < chip->midi_rate_divisor)
 		return PLOYTEC_MIDI_IDLE_BYTE;
 	chip->midi_out_acc -= chip->midi_rate_divisor;
