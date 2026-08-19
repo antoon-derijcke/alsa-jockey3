@@ -257,8 +257,8 @@ def measure_throughput(c, node_path, duration, check_every, report_every, label=
         c.fail(f"{prefix}could not open {node_path}: {e}")
         return 0, 0.0, 1, False
 
-    c.progress(f"{prefix}measuring achieved MIDI OUT throughput on "
-               f"{node_path} for {duration:.0f}s")
+    c.status(f"{prefix}measuring achieved MIDI OUT throughput on "
+            f"{node_path} for {duration:.0f}s")
 
     started = time.time()
     deadline = started + duration
@@ -293,10 +293,10 @@ def measure_throughput(c, node_path, duration, check_every, report_every, label=
                 next_report = now + report_every
                 so_far = now - started
                 rate_so_far = bytes_sent / so_far if so_far > 0 else 0
-                c.progress(f"   {prefix}{so_far:>6.0f}s  {bytes_sent:>9d} bytes  "
-                           f"{rate_so_far:>6.0f} B/s"
-                           + (f"  {write_failures} WRITE FAILURES"
-                              if write_failures else ""))
+                c.status(f"   {prefix}{so_far:>6.0f}s  {bytes_sent:>9d} bytes  "
+                        f"{rate_so_far:>6.0f} B/s"
+                        + (f"  {write_failures} WRITE FAILURES"
+                           if write_failures else ""))
     finally:
         os.close(fd)
 
@@ -476,6 +476,17 @@ def main():
             if elapsed > 0:
                 achieved = bytes_sent / elapsed
                 c.metric(f"achieved_bps_{rate}", round(achieved, 1))
+                # Printed unconditionally, not just on failure. measure_
+                # throughput()'s own progress is c.status() -- transient,
+                # redrawn in place -- and its periodic update only fires
+                # every report_every seconds (default 60), longer than this
+                # case's own 30s-per-rate default; without a final line here
+                # the transient "measuring..." status never gets replaced by
+                # anything, and the achieved rate never reaches the console
+                # at all, pass or fail. This line is what it gets rewritten
+                # to once the rate's measurement is done.
+                c.progress(f"   {rate} Hz: achieved {achieved:.0f} B/s "
+                          f"(target {CEILING_BPS} B/s +/-{tolerance * 100:.0f}%)")
                 if not (lo <= achieved <= hi):
                     c.fail(f"{rate} Hz: achieved {achieved:.0f} B/s, expected "
                            f"{CEILING_BPS} B/s +/-{tolerance * 100:.0f}%")

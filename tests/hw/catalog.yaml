@@ -1415,18 +1415,20 @@ cases:
     metrics: [achieved_bps, write_failures, urb_stalls_playback, rates_tested]
     pass: >
       At every rate, achieved MIDI OUT throughput holds within +/-5% of the
-      driver's 3125 B/s ceiling, no MIDI OUT write fails, and no playback URB
+      driver's 2500 B/s ceiling, no MIDI OUT write fails, and no playback URB
       stall goes unended.
     notes: >
       jockey3_get_next_midi_out_byte() paces via
-      midi_out_acc += 3125; emit when midi_out_acc >= midi_rate_divisor, where
+      midi_out_acc += 2500; emit when midi_out_acc >= midi_rate_divisor, where
       midi_rate_divisor = rate / PLOYTEC_PLAYBACK_FRAMES is recomputed on
       every rate change. PLOYTEC_PLAYBACK_FRAMES is 10, which divides all
       four supported rates exactly, so the divisor itself carries no
       truncation bias; working through the algebra, the achieved byte rate
-      this produces is ~3125 B/s at every sample rate -- the divisor scaling
+      this produces is ~2500 B/s at every sample rate -- the divisor scaling
       exists to cancel the rate-dependent URB completion frequency, not to
-      make the target itself rate-dependent.
+      make the target itself rate-dependent. Lowered from 3125 on 2026-08-19
+      after hardware testing found the control surface becoming unresponsive
+      well under the raw MIDI line rate -- see re/playback_stall_wedge.md.
 
       A first hardware run (2026-08-16) using a paced amidi(1)-per-burst
       design read ~59% of the intended target at every rate uniformly -- the
