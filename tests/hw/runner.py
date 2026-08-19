@@ -170,6 +170,23 @@ def capability_gap(case, available):
     return sorted(need - set(available))
 
 
+def gap_reason(gap, cap_detail):
+    """Render a capability gap for a human, with the "why" a probe gave.
+
+    Plain "needs rtc-wake" sends someone hunting for a missing Debian package
+    that was never the problem -- on the Pi fleet rtcwake is installed and the
+    gap is that the hardware has no RTC and no suspend-to-RAM support at all.
+    Any probe can attach a reason (see _probe_rtc_wake() in
+    lib/capabilities.py); this surfaces it inline instead of leaving the
+    operator to go find lib/capabilities.py themselves.
+    """
+    bits = []
+    for name in gap:
+        why = (cap_detail.get(name) or {}).get("why")
+        bits.append(f"{name} ({why})" if why else name)
+    return ", ".join(bits)
+
+
 # Capabilities that exist only to let a machine perform an action a person can
 # perform by hand: switching port power, cutting the mains. Their absence
 # costs automation, not coverage.
@@ -733,10 +750,10 @@ def main():
         if iterations <= 0:
             note = "disabled on this target"
         elif gap and demotes_to_manual(case, gap):
-            note = "manual fallback: no " + ", ".join(gap)
+            note = "manual fallback: no " + gap_reason(gap, cap_detail)
             manual += 1
         elif gap:
-            note = "blocked: needs " + ", ".join(gap)
+            note = "blocked: needs " + gap_reason(gap, cap_detail)
         elif case["status"] != "implemented":
             note = "planned -- not implemented yet"
         elif case["mode"] not in RUNNABLE_MODES:
@@ -847,7 +864,7 @@ def main():
                 r = results.CaseResult(
                     id=case["id"], mode="manual", level=case.get("level", ""),
                     area=case.get("area", ""), status=results.PENDING,
-                    reason=("no " + ", ".join(gap)
+                    reason=("no " + gap_reason(gap, cap_detail)
                             + " -- do it by hand via checklist.py"),
                     # The RESOLVED parameters, not the catalog's. checklist.py
                     # renders what the record says, so omitting them would put
@@ -857,16 +874,16 @@ def main():
                     params=params, started=results.utc_iso())
                 run.add(r)
                 print(f"  {mark(results.PENDING, style)} {case['id']:<16} "
-                      f"PENDING  manual fallback (no {', '.join(gap)})")
+                      f"PENDING  manual fallback (no {gap_reason(gap, cap_detail)})")
                 continue
             r = results.CaseResult(
                 id=case["id"], mode=case.get("mode", ""),
                 level=case.get("level", ""), area=case.get("area", ""),
-                status=results.BLOCKED, reason="needs " + ", ".join(gap),
+                status=results.BLOCKED, reason="needs " + gap_reason(gap, cap_detail),
                 started=results.utc_iso())
             run.add(r)
             print(f"  {mark(results.BLOCKED, style)} {case['id']:<16} "
-                  f"BLOCKED  needs {', '.join(gap)}")
+                  f"BLOCKED  needs {gap_reason(gap, cap_detail)}")
             continue
         if case["mode"] not in RUNNABLE_MODES:
             r = results.CaseResult(

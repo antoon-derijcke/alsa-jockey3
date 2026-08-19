@@ -128,15 +128,35 @@ def _which(*names):
 def _probe_rtc_wake():
     # rtcwake lives in /sbin, which is not on a non-root PATH, so `which` says
     # missing on a machine where it works fine. Look for the binary directly,
-    # and confirm the kernel will actually suspend to RAM.
-    have = any(os.path.exists(p) for p in
-               ("/usr/sbin/rtcwake", "/sbin/rtcwake", "/usr/bin/rtcwake"))
+    # and confirm the kernel will actually suspend to RAM and that there is
+    # an RTC to arm a wake alarm in -- rtcwake needs both, and on the Pi test
+    # fleet it is neither package nor probe that is missing, it is the
+    # hardware: no onboard RTC, and no suspend-to-RAM support advertised by
+    # the kernel. Returning *why* here, not just whether, is what lets the
+    # runner's blocked-case message say that instead of the generic "needs
+    # rtc-wake" that used to send people hunting for a nonexistent missing
+    # Debian package.
+    have_binary = any(os.path.exists(p) for p in
+                      ("/usr/sbin/rtcwake", "/sbin/rtcwake", "/usr/bin/rtcwake"))
     try:
         with open("/sys/power/state", "r", encoding="utf-8") as f:
             mem = "mem" in f.read().split()
     except OSError:
         mem = False
-    return have and mem
+    have_rtc = bool(glob.glob("/dev/rtc*"))
+
+    if have_binary and mem and have_rtc:
+        return True, None
+
+    missing = []
+    if not have_binary:
+        missing.append("rtcwake is not installed")
+    if not mem:
+        missing.append("kernel advertises no suspend-to-RAM support "
+                       "(/sys/power/state has no \"mem\" state)")
+    if not have_rtc:
+        missing.append("no RTC device (no /dev/rtc*) to arm a wake alarm in")
+    return False, "; ".join(missing)
 
 
 def _probe_python_mido():
@@ -220,6 +240,7 @@ def resolve(attended=True, path=None, skip_probes=False):
     detail = {}
 
     for name in ALL:
+        why = None
         if name in INVOCATION:
             value, source = attended, "invocation"
         elif name in PROBED:
@@ -227,21 +248,32 @@ def resolve(attended=True, path=None, skip_probes=False):
                 value, source = False, "not probed"
             else:
                 try:
-                    value = bool(PROBES[name]())
+                    result = PROBES[name]()
                 except Exception:                     # noqa: BLE001
                     # A probe that throws must not take the run with it. It
                     # answers "no", which blocks the affected cases and says
                     # so, rather than aborting everything.
                     value, source = False, "probe failed"
                 else:
+                    # A probe may return a bare bool, or (bool, reason) when
+                    # it has something specific to say about a "no" -- see
+                    # _probe_rtc_wake().
+                    if isinstance(result, tuple):
+                        value, why = result
+                    else:
+                        value, why = result, None
+                    value = bool(value)
                     source = "probed"
             # A declaration may veto a probe, never invent one.
             if value and declared.get(name) is False:
                 value, source = False, "declared off"
+                why = None
         else:
             value = declared.get(name, False)
             source = "declared" if name in declared else "default off"
         detail[name] = {"available": value, "source": source}
+        if why:
+            detail[name]["why"] = why
 
     if note:
         detail["_note"] = note
