@@ -960,6 +960,14 @@ def main():
         # Manual cases are still unanswered, so the run is not yet a pass.
         # checklist.py --import settles it.
         run.outcome = results.PENDING
+    elif run.results and all(r.status in (results.SKIP, results.BLOCKED)
+                             for r in run.results):
+        # Nothing actually ran -- every selected case was disabled on this
+        # target or blocked on a missing capability. That is not a pass:
+        # a `--case JT-PM-001` run on a Pi with no RTC tested nothing, and
+        # calling it PASS would read as "the driver was verified" when it
+        # was not exercised at all.
+        run.outcome = results.RUN_SKIP
     else:
         run.outcome = results.RUN_PASS
 

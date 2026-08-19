@@ -251,6 +251,9 @@ def import_answers(text, run_path, source_name):
             run["outcome"] = results.RUN_FAIL
         elif any(r["status"] == results.PENDING for r in run["results"]):
             run["outcome"] = results.PENDING
+        elif run["results"] and all(r["status"] in (results.SKIP, results.BLOCKED)
+                                    for r in run["results"]):
+            run["outcome"] = results.RUN_SKIP
         else:
             run["outcome"] = results.RUN_PASS
 

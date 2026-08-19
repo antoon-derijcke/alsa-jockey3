@@ -39,6 +39,7 @@ PENDING = "pending"          # manual case, awaiting a human answer
 RUN_PASS = "pass"
 RUN_FAIL = "fail"
 RUN_INVESTIGATE = "investigate"
+RUN_SKIP = "skip"            # every case skipped or blocked -- nothing ran
 
 
 @dataclass
