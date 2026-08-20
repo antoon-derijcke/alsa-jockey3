@@ -312,12 +312,12 @@ class ModuleReload(Actuator):
         self.timeout = timeout
 
     def off(self):
-        rc, err = priv.unload_module()
+        rc, _out, err = priv.unload_module()
         return (rc == 0), (f"unload failed: {str(err).strip()[:120]}"
                            if rc else "unloaded")
 
     def on(self):
-        rc, err = priv.load_module()
+        rc, _out, err = priv.load_module()
         return (rc == 0), (f"load failed: {str(err).strip()[:120]}"
                            if rc else "loaded")
 
