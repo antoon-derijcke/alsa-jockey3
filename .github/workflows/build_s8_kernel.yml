@@ -36,14 +36,6 @@ jobs:
           sed -i 's/EXPORT_SYMBOL_GPL(maxdsm_dsm_write);//g' kernel-src/sound/soc/samsung/abox/abox_adaptation.c 2>/dev/null || true
           sed -i 's/EXPORT_SYMBOL(check_bt_op);//g' kernel-src/drivers/bluetooth/bcm43xx.c 2>/dev/null || true
 
-      - name: Enable Touchscreen in Defconfig
-        run: |
-          DEFCONFIG=kernel-src/arch/arm64/configs/exynos8895-dreamlte_defconfig
-          
-          # Enable Synaptics Touchscreen drivers (SEC_TS is already enabled by default)
-          echo "CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX2=y" >> $DEFCONFIG
-          echo "CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4=y" >> $DEFCONFIG
-
       - name: Compile Kernel
         run: |
           cd kernel-src
@@ -63,7 +55,6 @@ jobs:
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.l 2>/dev/null || true
           sed -i 's/extern extern/extern/g' scripts/dtc/* 2>/dev/null || true
           
-          export PATH=$GITHUB_WORKSPACE/clang-toolchain/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
@@ -74,16 +65,29 @@ jobs:
           make exynos8895-dreamlte_defconfig
           make -j$(nproc)
 
-      - name: Package Boot Image Artifact
+      - name: Package with AnyKernel3 (TWRP Flashable Zip)
         run: |
-          mkdir -p output
-          cp kernel-src/arch/arm64/boot/Image output/Image
-          cp kernel-src/arch/arm64/boot/dts/exynos/exynos8895-dreamlte*.dtb output/ 2>/dev/null || true
-          cd output
-          zip -r ../S8-DJ-Kernel-dreamlte.zip *
+          git clone https://github.com/osm0sis/AnyKernel3.git anykernel
+          cd anykernel
+          
+          # Configure AnyKernel3 for Galaxy S8 (dreamlte / universal8895)
+          sed -i 's/device.name1=.*/device.name1=dreamlte/' anykernel.sh
+          sed -i 's/device.name2=.*/device.name2=dream2lte/' anykernel.sh
+          sed -i 's/device.name3=.*/device.name3=SM-G950F/' anykernel.sh
+          sed -i 's/device.name4=.*/device.name4=SM-G955F/' anykernel.sh
+          sed -i 's/block=.*/block=\/dev\/block\/by-name\/BOOT;/' anykernel.sh
+          sed -i 's/is_slot_device=1;/is_slot_device=0;/' anykernel.sh
+          sed -i 's/ramdisk_compression=auto;/ramdisk_compression=auto;/' anykernel.sh
+          
+          # Copy compiled Image and build combined DTB
+          cp ../kernel-src/arch/arm64/boot/Image Image
+          cat ../kernel-src/arch/arm64/boot/dts/exynos/exynos8895-dreamlte*.dtb > dtb 2>/dev/null || true
+          
+          # Create flashable zip
+          zip -r9 ../S8-DJ-Kernel-dreamlte-AnyKernel3.zip * -x .git README.md *placeholder
 
-      - name: Upload Kernel Artifact
+      - name: Upload Flashable AnyKernel3 Zip
         uses: actions/upload-artifact@v4
         with:
-          name: S8-DJ-Kernel-dreamlte
-          path: S8-DJ-Kernel-dreamlte.zip
+          name: S8-DJ-Kernel-dreamlte-AnyKernel3
+          path: S8-DJ-Kernel-dreamlte-AnyKernel3.zip
