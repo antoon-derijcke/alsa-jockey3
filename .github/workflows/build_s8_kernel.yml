@@ -15,8 +15,11 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            clang-11 llvm-11 lld-11 bc bison flex libssl-dev libncurses5-dev git ccache zip mkbootimg
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev git ccache zip mkbootimg
+
+      - name: Download Proton Clang Toolchain (Android 11 / AArch64)
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang-proton
 
       - name: Clone Galaxy S8 Kernel Source (Lineage 18.1 / 8d79a2d9)
         run: |
@@ -55,11 +58,12 @@ jobs:
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.l 2>/dev/null || true
           sed -i 's/extern extern/extern/g' scripts/dtc/* 2>/dev/null || true
           
+          export PATH=$GITHUB_WORKSPACE/clang-proton/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-          export CC=clang-11
+          export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
           make exynos8895-dreamlte_defconfig
