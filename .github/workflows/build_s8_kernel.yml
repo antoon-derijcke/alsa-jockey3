@@ -15,14 +15,7 @@ jobs:
       - name: Install Build Host Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev git ccache zip python3
-
-      - name: Install mkbootimg & unpackbootimg
-        run: |
-          git clone https://github.com/osm0sis/mkbootimg.git mkbootimg-src
-          cd mkbootimg-src
-          make
-          sudo cp mkbootimg unpackbootimg /usr/local/bin/
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev git ccache zip python3 mkbootimg abootimg
 
       - name: Download Official Google Android Toolchains
         run: |
