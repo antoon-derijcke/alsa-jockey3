@@ -75,9 +75,9 @@ jobs:
           sed -i 's/device.name2=.*/device.name2=dream2lte/' anykernel.sh
           sed -i 's/device.name3=.*/device.name3=SM-G950F/' anykernel.sh
           sed -i 's/device.name4=.*/device.name4=SM-G955F/' anykernel.sh
-          sed -i 's/block=.*/block=\/dev\/block\/by-name\/BOOT;/' anykernel.sh
-          sed -i 's/is_slot_device=1;/is_slot_device=0;/' anykernel.sh
-          sed -i 's/ramdisk_compression=auto;/ramdisk_compression=auto;/' anykernel.sh
+          sed -i 's/BLOCK=.*/BLOCK=auto;/' anykernel.sh
+          sed -i 's/IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=0;/' anykernel.sh
+          sed -i 's/RAMDISK_COMPRESSION=.*/RAMDISK_COMPRESSION=auto;/' anykernel.sh
           
           # Copy compiled Image and build combined DTB
           cp ../kernel-src/arch/arm64/boot/Image Image
