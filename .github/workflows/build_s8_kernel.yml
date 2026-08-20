@@ -25,7 +25,7 @@ jobs:
 
       - name: Clone Galaxy S8 Kernel Source (Lineage 18.1 / 8d79a2d9)
         run: |
-          git clone --depth=1 -b lineage-18.1 https://github.com/ivanmeler/android_kernel_samsung_universal8895.git kernel-src
+          git clone --depth=1 https://github.com/ivanmeler/android_kernel_samsung_universal8895.git kernel-src
 
       - name: Inject Jockey 3 Driver into Kernel Source
         run: |
