@@ -52,6 +52,11 @@ jobs:
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.l 2>/dev/null || true
           sed -i 's/extern extern/extern/g' scripts/dtc/* 2>/dev/null || true
 
+          # Fix Clang VDSO macro positional arguments comma syntax
+          sed -i 's/clock_gettime_return, shift=1/clock_gettime_return shift=1/g' arch/arm64/kernel/vdso/gettimeofday.S 2>/dev/null || true
+          sed -i 's/clock_gettime_return,/clock_gettime_return/g' arch/arm64/kernel/vdso/gettimeofday.S 2>/dev/null || true
+          sed -i 's/gettimeofday_return,/gettimeofday_return/g' arch/arm64/kernel/vdso/gettimeofday.S 2>/dev/null || true
+
           # Clang bcmp and stpcpy compatibility shims
           printf "\n#undef bcmp\nint bcmp(const void *a, const void *b, size_t len) { return memcmp(a, b, len); }\nEXPORT_SYMBOL(bcmp);\n" >> lib/string.c
           printf "\n#undef stpcpy\nchar *stpcpy(char *dest, const char *src) { while ((*dest++ = *src++)); return dest - 1; }\nEXPORT_SYMBOL(stpcpy);\n" >> lib/string.c
