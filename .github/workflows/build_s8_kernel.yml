@@ -79,8 +79,10 @@ jobs:
           sed -i 's/HOSTLDFLAGS :=/HOSTLDFLAGS := -fcommon /' Makefile || true
           sed -i 's/HOSTLDFLAGS =/HOSTLDFLAGS = -fcommon /' Makefile || true
 
-          # Replace all duplicate yylloc definitions across the entire scripts directory
-          find scripts/ -type f -exec sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' {} +
+          # Fix duplicate yylloc in dtc-lexer for GCC 10+
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped 2>/dev/null || true
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.l 2>/dev/null || true
+          sed -i 's/extern extern/extern/g' scripts/dtc/* 2>/dev/null || true
           
           export PATH=$GITHUB_WORKSPACE/clang-toolchain/bin:$PATH
           export ARCH=arm64
