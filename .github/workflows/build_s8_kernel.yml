@@ -24,6 +24,15 @@ jobs:
           curl -sL "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902b.tar.gz" | tar -xz -C clang
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git gcc64
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git gcc32
+          chmod +x clang/bin/* gcc64/bin/* gcc32/bin/* 2>/dev/null || true
+
+          # Create robust toolchain aliases in /usr/local/bin
+          for f in /usr/bin/aarch64-linux-gnu-*; do
+            sudo ln -sf "$f" "/usr/local/bin/$(basename "$f" | sed 's/aarch64-linux-gnu-/aarch64-linux-android-/')"
+          done
+          for f in /usr/bin/arm-linux-gnueabi-*; do
+            sudo ln -sf "$f" "/usr/local/bin/$(basename "$f" | sed 's/arm-linux-gnueabi-/arm-linux-androideabi-/')"
+          done
 
       - name: Clone Galaxy S8 Kernel Source (universal8895)
         run: |
