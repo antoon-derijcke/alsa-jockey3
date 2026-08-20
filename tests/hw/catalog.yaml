@@ -1849,7 +1849,7 @@ cases:
     area: HOTPLUG
     level: L3
     mode: manual
-    status: implemented
+    status: idea
     requires: [device, root, human]
     metrics: [reset_ms, resets_attempted, resets_failed]
     pass: The device recovers after a queued reset and audio resumes.
@@ -1870,15 +1870,51 @@ cases:
         Confirm no hung task and no lockdep report -- the deadlock this path
         guards against would appear as a blocked task, not as an error return.
     notes: >
-      The reset must be queued, never called synchronously from an ALSA ioctl:
-      usb_reset_device() from ioctl context can reach disconnect() and then
-      snd_card_free() on the same thread, which blocks on the file descriptor
-      the ioctl still holds. post_reset() is also not guaranteed to run, since
-      a failed reset unbinds instead. Both are the interesting cases here.
+      RETIRED 2026-08-20 (status idea, same precedent as JT-PROBE-004; out of
+      --list and the ledger, same mechanism). A manual case that waits for an
+      event neither predictable nor under the tester's control is not a valid
+      test -- it either passes vacuously (the event never happened, nobody
+      noticed) or wastes a session babysitting a probability. And the
+      probability kept dropping: resets_per_change_pct from JT-RATE-001 is
+      0% on x86_64-prod across its last six runs (Milestone 13 eliminated the
+      path there) and 1.7% and falling on arm64-prod -- not something a human
+      can wait for and call a result.
 
-      Manual for now because forcing a reset on demand is awkward; the stall
-      that provokes it is probabilistic. A dedicated case would need a way to
-      induce the stall rather than wait for one.
+      Two things this case cared about are already covered elsewhere, not by
+      a dedicated instrument but as a side effect of ones that already exist:
+
+      1. Whether the reset itself works (queued rather than reached from ioctl
+         context, audio resumes afterwards) -- JT-RATE-001/JT-RATE-002 already
+         provoke this path directly (the "shape that provokes the fault" is
+         deliberate in JT-RATE-001's sweep_order) and already record it:
+         resets_total_device, resets_capture_stall, resets_playback_stall,
+         reset_wait_ms. Whenever a reset actually fires during a routine run,
+         it is measured, not merely hoped for.
+      2. Whether it deadlocks -- lib/rules.yaml's `investigate` bucket matches
+         "INFO: task .* blocked for more than", lockdep's circular/recursive
+         locking warnings, and Call Trace: unconditionally, on every case's
+         kernel-log slice, not only a dedicated hotplug run. The specific
+         deadlock this case worried about (usb_reset_device() from ioctl
+         context) would surface there regardless of which case happened to be
+         running when it did.
+
+      Deliberately NOT rebuilt as a driver-forced fault injection. Adding a
+      hook, an #ifdef or a sysfs attribute so the driver can be told to stall
+      on demand is against this project's own constraints on the test tooling
+      (see docs/codec_testing.md and CLAUDE.md: no test hooks in the driver) --
+      and it would also change what passing means, from "this recovers on
+      real hardware" to "this code path runs when asked to", which is a
+      weaker, L2-shaped claim wearing an L3 case's clothes.
+
+      A non-invasive alternative exists but covers less than this case did:
+      /sys/bus/usb/devices/<dev>/reset is usbcore's own facility, triggers a
+      real external reset with no driver changes, and would deterministically
+      exercise .pre_reset/.post_reset (a failed reset unbinding rather than
+      resuming). It would NOT exercise jockey3_recover_capture_stream()'s own
+      usb_queue_reset_device() + jockey3_wait_for_reset_completion() machinery,
+      since that only runs from an internally-detected stall, which an
+      external sysfs reset bypasses entirely. Worth its own case if that
+      narrower guarantee is ever wanted; not a replacement for this one.
 
   # ------------------------------------------------------------- INTEGRATION
 

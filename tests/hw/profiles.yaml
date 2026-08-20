@@ -196,7 +196,6 @@ profiles:
       - {id: JT-HOTPLUG-001, iterations: 1}
       - {id: JT-HOTPLUG-002, iterations: 1}
       - {id: JT-HOTPLUG-003, iterations: 1}
-      - {id: JT-HOTPLUG-004, iterations: 1}
     overrides:
       armhf-prod:
         # The Pi 1B does not get a regression pass. Use `functional`.
