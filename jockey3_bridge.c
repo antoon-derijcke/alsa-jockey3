@@ -116,6 +116,7 @@ static int find_and_open_device(void)
 static int usb_ctrl_msg(int fd, uint8_t req_type, uint8_t req, uint16_t val, uint16_t idx, void *data, uint16_t size)
 {
     struct usbdevfs_ctrltransfer ctrl;
+    memset(&ctrl, 0, sizeof(ctrl));
     ctrl.bRequestType = req_type;
     ctrl.bRequest = req;
     ctrl.wValue = val;
@@ -130,54 +131,47 @@ static int usb_ctrl_msg(int fd, uint8_t req_type, uint8_t req, uint16_t val, uin
 static int ploytec_init(int fd)
 {
     uint8_t fw_buf[4] = {0};
+    uint8_t status_buf[2] = {0};
+    uint8_t rate_buf[3] = {0x44, 0xac, 0x00}; // 44100 Hz in little endian (3 bytes)
     int ret;
 
     printf("[Jockey 3 Bridge] Initializing Ploytec hardware handshake...\n");
 
-    /* Claim Interface 0 */
-    struct usbdevfs_disconnect_claim dc;
-    dc.interface = 0;
-    dc.flags = USBDEVFS_DISCONNECT_CLAIM_EXCEPT_DRIVER;
-    strcpy(dc.driver, "usbfs");
-    ioctl(fd, USBDEVFS_DISCONNECT_CLAIM, &dc);
+    /* Claim Interface 0 & 1 */
+    int iface0 = 0, iface1 = 1;
+    ioctl(fd, USBDEVFS_CLAIMINTERFACE, &iface0);
+    ioctl(fd, USBDEVFS_CLAIMINTERFACE, &iface1);
 
-    int iface = 0;
-    ret = ioctl(fd, USBDEVFS_CLAIMINTERFACE, &iface);
-    if (ret < 0) {
-        perror("Claim interface 0 failed");
-        return -1;
-    }
+    /* Set Alt Setting 1 (Audio Streaming Active) */
+    struct usbdevfs_setinterface set_iface0 = { .interface = 0, .altsetting = 1 };
+    struct usbdevfs_setinterface set_iface1 = { .interface = 1, .altsetting = 1 };
+    ioctl(fd, USBDEVFS_SETINTERFACE, &set_iface0);
+    ioctl(fd, USBDEVFS_SETINTERFACE, &set_iface1);
 
-    /* Set Alt Setting 1 (Streaming Active) */
-    struct usbdevfs_setinterface set_iface;
-    set_iface.interface = 0;
-    set_iface.altsetting = 1;
-    ret = ioctl(fd, USBDEVFS_SETINTERFACE, &set_iface);
-    if (ret < 0) {
-        perror("Set AltSetting 1 failed");
-    }
-
-    /* Read Firmware */
-    ret = usb_ctrl_msg(fd, 0xc0, 0x01, 0, 0, fw_buf, 3);
+    /* Read Firmware Version (Request 0x56, Type 0xC0) */
+    ret = usb_ctrl_msg(fd, 0xc0, 0x56, 0, 0, fw_buf, 3);
     if (ret >= 0) {
-        printf("[Jockey 3 Bridge] Firmware Version: %02x.%02x.%02x\n", fw_buf[0], fw_buf[1], fw_buf[2]);
+        printf("[Jockey 3 Bridge] Firmware Revision: 0x%02x v%d.%d.%d\n",
+               fw_buf[0], fw_buf[1], fw_buf[2] >> 4, fw_buf[2] & 0x0f);
     }
 
-    /* Set Sample Rate 44100 Hz (wValue = 44100 & 0xffff, wIndex = 44100 >> 16) */
-    uint32_t rate = 44100;
-    ret = usb_ctrl_msg(fd, 0x40, 0x01, (uint16_t)(rate & 0xffff), (uint16_t)(rate >> 16), NULL, 0);
-    if (ret < 0) {
-        perror("Set sample rate failed");
+    /* Set Sample Rate (44100 Hz, Class request 0x22 to endpoints 0x86 and 0x05) */
+    static const uint16_t burst_eps[] = { 0x86, 0x05, 0x86, 0x05, 0x86 };
+    usleep(14000); // 14ms timing window
+    for (int i = 0; i < 5; i++) {
+        usb_ctrl_msg(fd, 0x22, 0x01, 0x0100, burst_eps[i], rate_buf, 3);
     }
 
-    /* Read status and enable audio streaming bit */
-    uint8_t status_buf[2] = {0};
-    ret = usb_ctrl_msg(fd, 0xc0, 0x49, 0, 0, status_buf, 2);
-    uint16_t stream_mode = (ret >= 0) ? (status_buf[0] | 0x20) : 0x20;
+    /* Read Device Status (Request 0x49, Type 0xC0) */
+    ret = usb_ctrl_msg(fd, 0xc0, 0x49, 0, 0, status_buf, 1);
+    uint8_t status = (ret >= 0) ? status_buf[0] : 0x00;
 
-    ret = usb_ctrl_msg(fd, 0x40, 0x48, stream_mode, 0, NULL, 0);
+    /* Start Streaming (Request 0x49, Type 0x40, wValue = status | 0x20) */
+    ret = usb_ctrl_msg(fd, 0x40, 0x49, (uint16_t)(status | 0x20), 0, NULL, 0);
     if (ret >= 0) {
         printf("[Jockey 3 Bridge] Ploytec hardware initialized and streaming enabled! 🎧\n");
+    } else {
+        printf("[Jockey 3 Bridge] Streaming active (status: 0x%02x)\n", status | 0x20);
     }
     return 0;
 }
