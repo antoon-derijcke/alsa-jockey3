@@ -21,7 +21,7 @@ jobs:
       - name: Download Android Clang Toolchain (r383902)
         run: |
           mkdir -p clang-toolchain
-          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r383902.git clang-toolchain
+          curl -sSL "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902.tar.gz" | tar -xz -C clang-toolchain
 
       - name: Clone Galaxy S8 Kernel Source (Lineage 18.1 / 8d79a2d9)
         run: |
