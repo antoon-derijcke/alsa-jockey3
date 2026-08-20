@@ -78,11 +78,12 @@ jobs:
 
           export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
           export ARCH=arm64
-          export SUBARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
+
+          # Enable Hardware Rev 10 Touchscreen digitizers (Y661 & Synaptics DSX2)
+          echo "CONFIG_TOUCHSCREEN_SEC_TS_Y661=y" >> arch/arm64/configs/exynos8895-dreamlte_defconfig
+          echo "CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX2=y" >> arch/arm64/configs/exynos8895-dreamlte_defconfig
 
           make exynos8895-dreamlte_defconfig CC=clang
           make -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
