@@ -59,10 +59,11 @@ jobs:
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.l 2>/dev/null || true
           sed -i 's/extern extern/extern/g' scripts/dtc/* 2>/dev/null || true
 
-          # Fix Clang bcmp optimization undefined reference
+          # Fix Clang bcmp and stpcpy optimization undefined references
           printf "\n#undef bcmp\nint bcmp(const void *a, const void *b, size_t len) { return memcmp(a, b, len); }\nEXPORT_SYMBOL(bcmp);\n" >> lib/string.c
-          sed -i 's/KBUILD_CFLAGS   :=/KBUILD_CFLAGS   := -fno-builtin-bcmp /' Makefile || true
-          sed -i 's/KBUILD_CFLAGS   =/KBUILD_CFLAGS   = -fno-builtin-bcmp /' Makefile || true
+          printf "\n#undef stpcpy\nchar *stpcpy(char *dest, const char *src) { while ((*dest++ = *src++)); return dest - 1; }\nEXPORT_SYMBOL(stpcpy);\n" >> lib/string.c
+          sed -i 's/KBUILD_CFLAGS   :=/KBUILD_CFLAGS   := -fno-builtin-bcmp -fno-builtin-stpcpy /' Makefile || true
+          sed -i 's/KBUILD_CFLAGS   =/KBUILD_CFLAGS   = -fno-builtin-bcmp -fno-builtin-stpcpy /' Makefile || true
           
           export PATH=$GITHUB_WORKSPACE/clang-proton/bin:$PATH
           export ARCH=arm64
