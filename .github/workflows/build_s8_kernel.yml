@@ -89,42 +89,7 @@ jobs:
 
       - name: Package Boot Image with Stock Offsets & SEAndroid Signature
         run: |
-          python3 - << 'EOF'
-import struct
-
-page_sz = 2048
-def pad(data, sz=2048):
-    rem = len(data) % sz
-    return data + (b'\0' * (sz - rem)) if rem != 0 else data
-
-with open("kernel-src/arch/arm64/boot/Image", "rb") as f: k = f.read()
-with open("stock/BOOT.img-ramdisk", "rb") as f: r = f.read()
-with open("stock/BOOT.img-dt", "rb") as f: d = f.read()
-
-hdr = struct.pack(
-    "<8s10I16s512s32s1024s",
-    b"ANDROID!",
-    len(k), 0x10008000,
-    len(r), 0x11000000,
-    0, 0,
-    0x10000100,
-    page_sz,
-    len(d),
-    0x16000196,
-    b"",
-    b"buildvariant=userdebug",
-    b"",
-    b""
-)
-
-boot = pad(hdr) + pad(k) + pad(r) + pad(d) + b"SEANDROIDENFORCE\xff\xff\xff\xff"
-boot = pad(boot)
-
-with open("S8-DJ-boot.img", "wb") as f:
-    f.write(boot)
-
-print(f"Successfully generated signed S8-DJ-boot.img: {len(boot)} bytes!")
-EOF
+          python3 scripts/package_boot.py
 
           # Package TWRP flashable zip with AnyKernel3
           git clone https://github.com/osm0sis/AnyKernel3.git anykernel
