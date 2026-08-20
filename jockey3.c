@@ -23,12 +23,13 @@
 #include <sound/initval.h>
 #include <sound/rawmidi.h>
 #include <sound/pcm.h>
+#include "compat.h"
 #include "ploytec_proto.h"
 #include "ploytec_codec.h"
 #include "ploytec_midi.h"
 
 #define RELOOP_VENDOR_ID         0x200c
-#define RELOOP_JOCKEY3_ME_PID    0x1009
+#define RELOOP_JOCKEY3_ME_PID    0x1019
 #define RELOOP_JOCKEY3_REMIX_PID 0x1037
 
 enum { JOCKEY3_ME, JOCKEY3_REMIX };
@@ -134,16 +135,6 @@ MODULE_PARM_DESC(enable, "Enable " CARD_NAME " soundcard.");
 #define JOCKEY3_WATCHDOG_HEARTBEAT_MS	60000
 
 /*
- * Heartbeats stop after this many, so a stall nobody clears -- most commonly
- * the deferred-idle-capture case, which is expected to persist for as long as
- * nothing reopens capture -- cannot spam dmesg for the remaining life of the
- * device. The onset line already recorded when the stall began, and the
- * eventual recovery line still fires whenever the stream comes back; this
- * only bounds the "still stalled" reminders in between.
- */
-#define JOCKEY3_WATCHDOG_HEARTBEAT_MAX	3
-
-/*
  * How long jockey3_pcm_prepare() polls before believing a stream has stalled.
  *
  * .prepare runs on every xrun recovery, so a false positive there would disrupt
@@ -201,11 +192,8 @@ MODULE_PARM_DESC(enable, "Enable " CARD_NAME " soundcard.");
  *	meaningful while @stall_reported is set, and used to report how long the
  *	outage lasted once the stream comes back.
  * @stall_warned_at: ktime of the last stall message emitted for the current
- *	stall; @lock. Paces the still-stalled heartbeat to one line a minute
- *	rather than one per tick, up to JOCKEY3_WATCHDOG_HEARTBEAT_MAX.
- * @stall_heartbeats: still-stalled reminders emitted for the current stall;
- *	@lock. Capped at JOCKEY3_WATCHDOG_HEARTBEAT_MAX so a stall that never
- *	clears cannot spam dmesg indefinitely; reset with @stall_reported.
+ *	stall; @lock. Paces the still-stalled heartbeat, so a wedge that lasts
+ *	for hours stays visible in a truncated log without one line per tick.
  */
 struct jockey3_pcm_urb_stream {
 	struct snd_pcm_substream *substream;
@@ -226,7 +214,6 @@ struct jockey3_pcm_urb_stream {
 	bool stall_reported;
 	u64 stall_since;
 	u64 stall_warned_at;
-	unsigned int stall_heartbeats;
 };
 
 /**
@@ -760,16 +747,9 @@ static void jockey3_capture_callback(struct urb *urb)
  *
  * Every outgoing playback packet reserves one slot for MIDI. This returns the
  * byte to put there, applying a leaky-bucket limiter that holds the MIDI stream
- * to roughly 2500 bytes/sec: sustained MIDI OUT above this range was measured
- * to make the device's control surface (LEDs, VU meters) periodically stop
- * responding to updates, well before the raw 31250 bps MIDI line rate. This
- * value is a deliberately conservative margin below the ~2500-2810 bytes/sec
- * band where that was first observed, not the exact edge -- a normal DJ
- * controller workload never needs anywhere near this: updating every one of
- * the device's 46 addressable LEDs/rings/VU-bars at once is ~138 bytes, so
- * even this reduced ceiling supports well over 18 full-panel updates/sec. When
- * there is nothing to send, or the budget is not yet available, the idle byte
- * is returned.
+ * to roughly 3125 bytes/sec: the device overruns its own buffers and truncates
+ * messages if fed faster. When there is nothing to send, or the budget is not
+ * yet available, the idle byte is returned.
  *
  * midi_lock is held across snd_rawmidi_transmit() rather than being dropped
  * around it: that keeps chip->midi_out_substream from changing under us, and
@@ -790,10 +770,10 @@ static u8 jockey3_get_next_midi_out_byte(struct jockey3_chip *chip)
 	guard(spinlock_irqsave)(&chip->midi_lock);
 
 	/*
-	 * Rate limit MIDI to ~2500 bytes/sec -- see the kernel-doc above for why
-	 * this is well under the device's raw MIDI line rate.
+	 * Rate limit MIDI to ~3125 bytes/sec. Sending at higher rates causes buffer
+	 * overflows and message truncation in the device.
 	 */
-	chip->midi_out_acc += 2500;
+	chip->midi_out_acc += 3125;
 	if (chip->midi_out_acc < chip->midi_rate_divisor)
 		return PLOYTEC_MIDI_IDLE_BYTE;
 	chip->midi_out_acc -= chip->midi_rate_divisor;
@@ -1305,7 +1285,7 @@ static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate, bool c
 
 	dev_dbg(&chip->intf0->dev, "Setting rate to %u Hz\n", rate);
 
-	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, !cold_init, NULL);
+	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, !cold_init);
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Failed to initialize device to change rate: %d\n",
 			ret);
@@ -1403,7 +1383,7 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 	const char *type = direction == SNDRV_PCM_STREAM_PLAYBACK ? "Playback" : "Capture";
 	bool log_onset = false, log_heartbeat = false, log_recovery = false;
 	u64 now, last, age_ns, outage_ns = 0;
-	bool open = false, heartbeats_exhausted = false;
+	bool open = false;
 
 	/*
 	 * Fall back to the start timestamp until the first completion arrives:
@@ -1444,17 +1424,11 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 				urb_stream->stall_reported = true;
 				urb_stream->stall_since = last;
 				urb_stream->stall_warned_at = now;
-				urb_stream->stall_heartbeats = 0;
 				log_onset = true;
-			} else if (urb_stream->stall_heartbeats >= JOCKEY3_WATCHDOG_HEARTBEAT_MAX) {
-				/* already said its piece; wait for recovery in silence */
 			} else if (now - urb_stream->stall_warned_at >=
 				   (u64)JOCKEY3_WATCHDOG_HEARTBEAT_MS * NSEC_PER_MSEC) {
 				urb_stream->stall_warned_at = now;
-				urb_stream->stall_heartbeats++;
 				log_heartbeat = true;
-				heartbeats_exhausted = urb_stream->stall_heartbeats >=
-							JOCKEY3_WATCHDOG_HEARTBEAT_MAX;
 			}
 		} else if (urb_stream->stall_reported) {
 			urb_stream->stall_reported = false;
@@ -1487,9 +1461,8 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 		 * wrong. See jockey3_pcm_hw_params().
 		 */
 		dev_warn(&chip->intf0->dev,
-			 "%s URB stream still stalled while idle: no completion for %llu ms; recovery deferred to next capture open%s\n",
-			 type, div_u64(age_ns, NSEC_PER_MSEC),
-			 heartbeats_exhausted ? "; no further reports until it clears" : "");
+			 "%s URB stream still stalled while idle: no completion for %llu ms; recovery deferred to next capture open\n",
+			 type, div_u64(age_ns, NSEC_PER_MSEC));
 	else if (log_heartbeat)
 		/*
 		 * Everything else. Playback always carries MIDI OUT and is never
@@ -1498,9 +1471,8 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 		 * nothing is dealing with it.
 		 */
 		dev_warn(&chip->intf0->dev,
-			 "%s URB stream still stalled: no completion for %llu ms%s\n",
-			 type, div_u64(age_ns, NSEC_PER_MSEC),
-			 heartbeats_exhausted ? "; no further reports until it clears" : "");
+			 "%s URB stream still stalled: no completion for %llu ms\n",
+			 type, div_u64(age_ns, NSEC_PER_MSEC));
 	else if (log_recovery)
 		dev_warn(&chip->intf0->dev, "%s URB stream recovered after %llu ms\n",
 			 type, div_u64(outage_ns, NSEC_PER_MSEC));
@@ -1918,7 +1890,7 @@ static snd_pcm_uframes_t jockey3_pcm_pointer(struct snd_pcm_substream *substream
 	return bytes_to_frames(substream->runtime, dma_off);
 }
 
-static int jockey3_initialize_ploytec(struct jockey3_chip *chip, u32 *fw_version)
+static int jockey3_initialize_ploytec(struct jockey3_chip *chip)
 {
 	enum ploytec_codec_variant codec_variant;
 	int ret;
@@ -1939,7 +1911,7 @@ static int jockey3_initialize_ploytec(struct jockey3_chip *chip, u32 *fw_version
 		break;
 	}
 
-	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, false, fw_version);
+	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, false);
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Ploytec failed to initialize: %d\n", ret);
 		return ret;
@@ -1968,18 +1940,6 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 
 	if (jockey3_is_disconnected(chip))
 		return -ENODEV;
-
-	/*
-	 * A previous call may have left a stall-recovery reset in flight (see
-	 * the reset queued below). Without this, a rate change arriving before
-	 * that reset completes runs jockey3_set_rate() and the URB restart
-	 * against a device that is mid-reset, which fails outright instead of
-	 * recovering. jockey3_pcm_prepare() and jockey3_recover_capture_stream()
-	 * already wait for the same reason.
-	 */
-	ret = jockey3_wait_for_reset_completion(chip);
-	if (ret < 0)
-		return ret;
 
 	/*
 	 * rate_mutex is held across the whole stop/set-rate/start sequence, which
@@ -2164,42 +2124,9 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 {
 	int ret;
 	int rate;
-	u32 fw_version;
-
-	/*
-	 * Let the device finish booting before speaking to it.
-	 *
-	 * After a mains power cycle the Jockey 3 enumerates and answers control
-	 * transfers while its audio engine is still coming up. Initialize it in
-	 * that window and the engine never starts: every control transfer
-	 * succeeds, the rate reads back correctly, ALSA accepts playback, and the
-	 * device is silent -- capture returns bit-exact zero and nothing is
-	 * logged. A USB re-enumeration does not provoke it; only a real
-	 * power-off does, because the device is self-powered and a VBUS cut is
-	 * merely a cable unplug to it.
-	 *
-	 * Bisected on hardware over 100 cold boots: the device needs between 144
-	 * and 156 ms after enumeration, sharply -- below it the engine fails to
-	 * start every time, above it never. 250 ms is chosen rather than the
-	 * smallest passing value because the ~124 ms this driver otherwise takes
-	 * to reach its first transfer is host-dependent (USB core enumeration
-	 * plus the card, PCM and MIDI registration above), so a value that only
-	 * tops that up would erode on a faster machine. 250 ms satisfies the
-	 * requirement on its own. For reference the vendor drivers wait far
-	 * longer still: Windows ~300 ms from SET_ADDRESS, macOS over a second.
-	 *
-	 * Placed here rather than in ploytec_initialize_device() because that
-	 * runs twice per probe -- once below, once via jockey3_set_rate() -- and
-	 * again on every rate change. This point runs once, and is the last
-	 * before the driver's first EP0 transfer; everything above it in probe()
-	 * is ALSA and USB core bookkeeping.
-	 *
-	 * See re/usb/init_timing_comparison.md for the measurements.
-	 */
-	msleep(250);
 
 	for (int retry = 10; retry > 0; retry--) {
-		ret = jockey3_initialize_ploytec(chip, &fw_version);
+		ret = jockey3_initialize_ploytec(chip);
 		if (ret == 0)
 			break;
 		usleep_range(50000, 100000); /* Wait 50-100 ms before retrying */
@@ -2208,11 +2135,6 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 		dev_err(&chip->intf0->dev, "Failed to initialize Ploytec: %d\n", ret);
 		return ret;
 	}
-
-	// see ploytec_get_firmware() for the packing of buf[0..2] into fw_version
-	dev_info(&chip->intf0->dev, "Firmware 0x%02x v%d.%d.%d\n",
-		 (fw_version >> 16) & 0xFF, (fw_version >> 8) & 0xFF,
-		 (fw_version >> 4) & 0x0F, fw_version & 0x0F);
 
 	rate = 44100;	// default sample rate at power-on
 	scoped_guard(mutex, &chip->rate_mutex)
@@ -2763,7 +2685,7 @@ static int jockey3_post_reset(struct usb_interface *intf)
 
 	if (chip && intf == chip->intf0) {
 		scoped_guard(mutex, &chip->rate_mutex) {
-			jockey3_initialize_ploytec(chip, NULL);
+			jockey3_initialize_ploytec(chip);
 
 			/*
 			 * Re-apply the rate unconditionally. Reading it first
@@ -2823,7 +2745,7 @@ static int jockey3_restore_device(struct jockey3_chip *chip, bool reset)
 	guard(mutex)(&chip->rate_mutex);
 
 	if (reset) {
-		ret = jockey3_initialize_ploytec(chip, NULL);
+		ret = jockey3_initialize_ploytec(chip);
 		if (ret < 0)
 			return ret;
 	}
