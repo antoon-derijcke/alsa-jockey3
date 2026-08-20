@@ -19,7 +19,8 @@ jobs:
 
       - name: Download Official Google Android Toolchains
         run: |
-          git clone --depth=1 https://github.com/nabil2004/android_prebuilts_clang_host_linux-x86_clang-r383902.git clang
+          mkdir -p clang
+          curl -sL "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902b.tar.gz" | tar -xz -C clang
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git gcc64
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git gcc32
 
