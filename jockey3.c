@@ -1834,6 +1834,7 @@ static int jockey3_pcm_close(struct snd_pcm_substream *substream)
  *
  * Return: 0 always; a timeout is logged but cannot usefully be reported.
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16, 0)
 static int jockey3_pcm_sync_stop(struct snd_pcm_substream *substream)
 {
 	struct jockey3_chip *chip = snd_pcm_substream_chip(substream);
@@ -1855,6 +1856,7 @@ static int jockey3_pcm_sync_stop(struct snd_pcm_substream *substream)
 
 	return 0;
 }
+#endif
 
 static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 {
