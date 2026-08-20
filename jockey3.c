@@ -2241,13 +2241,13 @@ static void jockey3_midi_out_trigger(struct snd_rawmidi_substream *substream, in
 	chip->midi_out_substream = up ? substream : NULL;
 }
 
-static const struct snd_rawmidi_ops jockey3_midi_in_ops = {
+static struct snd_rawmidi_ops jockey3_midi_in_ops = {
 	.open = jockey3_midi_in_open,
 	.close = jockey3_midi_in_close,
 	.trigger = jockey3_midi_in_trigger
 };
 
-static const struct snd_rawmidi_ops jockey3_midi_out_ops = {
+static struct snd_rawmidi_ops jockey3_midi_out_ops = {
 	.open = jockey3_midi_out_open,
 	.close = jockey3_midi_out_close,
 	.trigger = jockey3_midi_out_trigger
@@ -2611,9 +2611,10 @@ static int jockey3_probe(struct usb_interface *intf, const struct usb_device_id 
 			if (enable[dev_idx] && !test_bit(dev_idx, jockey3_devices_used))
 				break;
 
-		if (dev_idx >= SNDRV_CARDS)
+		if (dev_idx >= SNDRV_CARDS) {
 			mutex_unlock(&jockey3_devices_mutex);
 			return -ENODEV;
+		}
 
 		__set_bit(dev_idx, jockey3_devices_used);
 		mutex_unlock(&jockey3_devices_mutex);
