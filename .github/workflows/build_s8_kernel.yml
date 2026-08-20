@@ -40,8 +40,7 @@ jobs:
         run: |
           DEFCONFIG=kernel-src/arch/arm64/configs/exynos8895-dreamlte_defconfig
           
-          # Enable missing Touchscreen drivers
-          echo "CONFIG_TOUCHSCREEN_SEC_TS_Y661=y" >> $DEFCONFIG
+          # Enable Synaptics Touchscreen drivers (SEC_TS is already enabled by default)
           echo "CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX2=y" >> $DEFCONFIG
           echo "CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4=y" >> $DEFCONFIG
 
