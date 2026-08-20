@@ -89,24 +89,42 @@ jobs:
 
       - name: Package Boot Image with Stock Offsets & SEAndroid Signature
         run: |
-          # Create exact boot.img using stock offsets
-          mkbootimg \
-            --kernel kernel-src/arch/arm64/boot/Image \
-            --ramdisk stock/BOOT.img-ramdisk \
-            --dt stock/BOOT.img-dt \
-            --cmdline "buildvariant=userdebug" \
-            --base 0x10000000 \
-            --pagesize 2048 \
-            --kernel_offset 0x00008000 \
-            --ramdisk_offset 0x01000000 \
-            --second_offset 0x00f00000 \
-            --tags_offset 0x00000100 \
-            --os_version 11.0.0 \
-            --os_patch_level 2025-06 \
-            --output S8-DJ-boot.img
+          python3 - << 'EOF'
+import struct
 
-          # Append Samsung SEAndroid Signature
-          printf "SEANDROIDENFORCE\xff\xff\xff\xff" >> S8-DJ-boot.img
+page_sz = 2048
+def pad(data, sz=2048):
+    rem = len(data) % sz
+    return data + (b'\0' * (sz - rem)) if rem != 0 else data
+
+with open("kernel-src/arch/arm64/boot/Image", "rb") as f: k = f.read()
+with open("stock/BOOT.img-ramdisk", "rb") as f: r = f.read()
+with open("stock/BOOT.img-dt", "rb") as f: d = f.read()
+
+hdr = struct.pack(
+    "<8s10I16s512s32s1024s",
+    b"ANDROID!",
+    len(k), 0x10008000,
+    len(r), 0x11000000,
+    0, 0,
+    0x10000100,
+    page_sz,
+    len(d),
+    0x16000196,
+    b"",
+    b"buildvariant=userdebug",
+    b"",
+    b""
+)
+
+boot = pad(hdr) + pad(k) + pad(r) + pad(d) + b"SEANDROIDENFORCE\xff\xff\xff\xff"
+boot = pad(boot)
+
+with open("S8-DJ-boot.img", "wb") as f:
+    f.write(boot)
+
+print(f"Successfully generated signed S8-DJ-boot.img: {len(boot)} bytes!")
+EOF
 
           # Package TWRP flashable zip with AnyKernel3
           git clone https://github.com/osm0sis/AnyKernel3.git anykernel
