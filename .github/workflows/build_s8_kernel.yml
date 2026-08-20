@@ -15,7 +15,8 @@ jobs:
       - name: Install Build Host Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev git ccache zip python3 mkbootimg abootimg
+          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            bc bison flex libssl-dev libncurses5-dev git ccache zip python3 mkbootimg abootimg
 
       - name: Download Official Google Android Toolchains
         run: |
@@ -56,6 +57,9 @@ jobs:
           sed -i 's/clock_gettime_return, shift=1/clock_gettime_return shift=1/g' arch/arm64/kernel/vdso/gettimeofday.S 2>/dev/null || true
           sed -i 's/clock_gettime_return,/clock_gettime_return/g' arch/arm64/kernel/vdso/gettimeofday.S 2>/dev/null || true
           sed -i 's/gettimeofday_return,/gettimeofday_return/g' arch/arm64/kernel/vdso/gettimeofday.S 2>/dev/null || true
+
+          # Tell Clang VDSO linker where the AArch64 cross-linker is
+          sed -i 's/$(CC) -nostdlib/$(CC) -B$(CROSS_COMPILE) -nostdlib/g' arch/arm64/kernel/vdso/Makefile 2>/dev/null || true
 
           # Clang bcmp and stpcpy compatibility shims
           printf "\n#undef bcmp\nint bcmp(const void *a, const void *b, size_t len) { return memcmp(a, b, len); }\nEXPORT_SYMBOL(bcmp);\n" >> lib/string.c
