@@ -15,7 +15,8 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev git ccache zip mkbootimg
+          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            bc bison flex libssl-dev libncurses5-dev git ccache zip mkbootimg
 
       - name: Download Proton Clang Toolchain (Android 11 / AArch64)
         run: |
@@ -66,8 +67,8 @@ jobs:
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
-          make exynos8895-dreamlte_defconfig
-          make -j$(nproc)
+          make exynos8895-dreamlte_defconfig CC=clang
+          make -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package with AnyKernel3 (TWRP Flashable Zip)
         run: |
