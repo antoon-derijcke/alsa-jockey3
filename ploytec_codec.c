@@ -224,11 +224,13 @@ static u64 ploytec_bit_spread_64[256];
  */
 static void init_ploytec_bit_spread_lut64(void)
 {
-	for (int b = 0; b < 256; b++) {
+	int b, i;
+
+	for (b = 0; b < 256; b++) {
 		u64 spread = 0;
 
 		// Extract bit (7 - i) and place it into bit 0 of byte i
-		for (int i = 0; i < 8; i++)
+		for (i = 0; i < 8; i++)
 			spread |= (u64)((b >> (7 - i)) & 1) << (i * 8);
 
 		ploytec_bit_spread_64[b] = spread;
@@ -352,16 +354,18 @@ static u32 ploytec_bit_spread_32_low[256];
  */
 static void init_ploytec_bit_spread_lut32(void)
 {
-	for (int b = 0; b < 256; b++) {
+	int b, i;
+
+	for (b = 0; b < 256; b++) {
 		u32 high_spread = 0;
 		u32 low_spread  = 0;
 
 		// Process high nibble (bits 7 down to 4) -> maps to bytes 0 to 3
-		for (int i = 0; i < 4; i++)
+		for (i = 0; i < 4; i++)
 			high_spread |= (u32)((b >> (7 - i)) & 1) << (i * 8);
 
 		// Process low nibble (bits 3 down to 0) -> maps to bytes 0 to 3
-		for (int i = 0; i < 4; i++)
+		for (i = 0; i < 4; i++)
 			low_spread  |= (u32)((b >> (3 - i)) & 1) << (i * 8);
 
 		ploytec_bit_spread_32_high[b] = high_spread;
@@ -590,7 +594,9 @@ enum ploytec_codec_variant ploytec_initialize_codec(void)
  */
 void ploytec_encode_batch(u8 *dest, const u8 *src, const int n_frames)
 {
-	for (int f = 0; f < n_frames; f++) {
+	int f;
+
+	for (f = 0; f < n_frames; f++) {
 		ploytec_encode_frame(dest, src);
 		dest += PLOYTEC_PLAYBACK_FRAME_SIZE;
 		src += PLOYTEC_PLAYBACK_PCM_FRAME_SIZE;
@@ -605,7 +611,9 @@ void ploytec_encode_batch(u8 *dest, const u8 *src, const int n_frames)
  */
 void ploytec_decode_batch(u8 *dest, const u8 *src, const int n_frames)
 {
-	for (int f = 0; f < n_frames; f++) {
+	int f;
+
+	for (f = 0; f < n_frames; f++) {
 		ploytec_decode_frame(dest, src);
 		dest += PLOYTEC_CAPTURE_PCM_FRAME_SIZE;
 		src += PLOYTEC_CAPTURE_FRAME_SIZE;

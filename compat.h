@@ -11,6 +11,10 @@
 #include <linux/usb.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
+#include <linux/wait.h>
+#include <sound/core.h>
+#include <sound/pcm.h>
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
 #include <linux/cleanup.h>
 #endif
@@ -55,42 +59,52 @@ static inline int devm_mutex_init(struct device *dev, struct mutex *lock)
 #endif
 
 /*
- * scoped_guard and RAII cleanup were added in Linux 6.6.
- * Provide GNU C attribute((cleanup)) RAII guards for Linux 4.4 - 6.5.
+ * devm_add_action_or_reset was added in Linux 4.10.
  */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
-
-struct _jockey3_spinlock_guard {
-	spinlock_t *lock;
-	unsigned long flags;
-};
-
-static inline void _jockey3_spin_unlock_cleanup(struct _jockey3_spinlock_guard *g)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
+static inline int devm_add_action_or_reset(struct device *dev,
+					   void (*action)(void *), void *data)
 {
-	if (g->lock)
-		spin_unlock_irqrestore(g->lock, g->flags);
+	int ret = devm_add_action(dev, action, data);
+	if (ret)
+		action(data);
+	return ret;
 }
+#endif
 
-#define _GUARD_spinlock_irqsave(lock_ptr) \
-	struct _jockey3_spinlock_guard _g_spin __attribute__((cleanup(_jockey3_spin_unlock_cleanup))) = { \
-		.lock = (lock_ptr) \
-	}; \
-	spin_lock_irqsave((lock_ptr), _g_spin.flags)
-
-static inline void _jockey3_mutex_unlock_cleanup(struct mutex **m)
+/*
+ * snd_devm_card_new was added in Linux 5.17.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0)
+static inline int snd_devm_card_new(struct device *parent, int idx,
+				    const char *xid, struct module *module,
+				    size_t extra_size, struct snd_card **card_ret)
 {
-	if (*m)
-		mutex_unlock(*m);
+	return snd_card_new(parent, idx, xid, module, extra_size, card_ret);
 }
+#endif
 
-#define _GUARD_mutex(lock_ptr) \
-	struct mutex *_g_mut __attribute__((cleanup(_jockey3_mutex_unlock_cleanup))) = (lock_ptr); \
-	mutex_lock(lock_ptr)
+/*
+ * snd_pcm_set_managed_buffer_all was added in Linux 5.9.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
+#ifndef SNDRV_DMA_TYPE_VMALLOC
+#define SNDRV_DMA_TYPE_VMALLOC SNDRV_DMA_TYPE_CONTINUOUS
+#endif
+static inline void snd_pcm_set_managed_buffer_all(struct snd_pcm *pcm, int type,
+						  struct device *dev,
+						  size_t size, size_t max)
+{
+	snd_pcm_lib_preallocate_pages_for_all(pcm, type, dev, size, max);
+}
+#endif
 
-#define scoped_guard(type, lock_ptr) \
-	for (int _d1 = 0; !_d1; _d1 = 1) \
-		for (_GUARD_##type(lock_ptr); !_d1; _d1 = 1)
-
-#endif /* LINUX_VERSION_CODE < 6.6.0 */
+/*
+ * wait_event_lock_irq_timeout was added in Linux 4.12.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
+#define wait_event_lock_irq_timeout(wq, condition, lock, timeout)	\
+	wait_event_interruptible_timeout(wq, condition, timeout)
+#endif
 
 #endif /* _JOCKEY3_COMPAT_H_ */

@@ -317,8 +317,12 @@ static void jockey3_set_current_rate(struct jockey3_chip *chip, unsigned int rat
 	lockdep_assert_held(&chip->rate_mutex);
 
 	chip->current_rate = rate;
-	scoped_guard(spinlock_irqsave, &chip->midi_lock)
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->midi_lock, _flags);
 		chip->midi_rate_divisor = rate / PLOYTEC_PLAYBACK_FRAMES;
+		spin_unlock_irqrestore(&chip->midi_lock, _flags);
+	}
 }
 
 /*
@@ -381,14 +385,20 @@ static int jockey3_active_streams(struct jockey3_chip *chip)
 {
 	int active_streams = 0;
 
-	scoped_guard(spinlock_irqsave, &chip->capture.lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->capture.lock, _flags);
 		if (chip->capture.running)
 			active_streams++;
+		spin_unlock_irqrestore(&chip->capture.lock, _flags);
 	}
 
-	scoped_guard(spinlock_irqsave, &chip->playback.lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->playback.lock, _flags);
 		if (chip->playback.running)
 			active_streams++;
+		spin_unlock_irqrestore(&chip->playback.lock, _flags);
 	}
 
 	return active_streams;
@@ -573,12 +583,15 @@ static void jockey3_report_xrun(struct jockey3_pcm_urb_stream *urb_stream)
 {
 	struct snd_pcm_substream *substream = NULL;
 
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		if (urb_stream->running && urb_stream->substream) {
 			/* Join the safe zone so the substream cannot be freed below */
 			urb_stream->callbacks_active++;
 			substream = urb_stream->substream;
 		}
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 
 	if (!substream)
@@ -586,9 +599,12 @@ static void jockey3_report_xrun(struct jockey3_pcm_urb_stream *urb_stream)
 
 	snd_pcm_stop_xrun(substream);
 
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		if (!--urb_stream->callbacks_active)
 			wake_up(&urb_stream->drain_wait);
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 }
 
@@ -616,7 +632,9 @@ static bool jockey3_urb_error_give_up(struct jockey3_chip *chip,
 	unsigned int errors;
 	bool crossed_limit;
 
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		errors = ++urb_stream->consec_errors;
 		/*
 		 * The increment and this test share one critical section, so
@@ -624,6 +642,7 @@ static bool jockey3_urb_error_give_up(struct jockey3_chip *chip,
 		 * JOCKEY3_N_URBS completions arrive together.
 		 */
 		crossed_limit = errors == JOCKEY3_MAX_URB_ERRORS;
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 
 	/*
@@ -666,8 +685,12 @@ static void jockey3_capture_callback(struct urb *urb)
 
 	switch (jockey3_urb_check(urb)) {
 	case JOCKEY3_URB_STOPPED:
-		scoped_guard(spinlock_irqsave, &urb_stream->lock)
+		{
+			unsigned long _flags;
+			spin_lock_irqsave(&urb_stream->lock, _flags);
 			stopping = urb_stream->stopping;
+			spin_unlock_irqrestore(&urb_stream->lock, _flags);
+		}
 		jockey3_warn_unexpected_stop(chip, stopping, urb->status, "Capture");
 		return;
 	case JOCKEY3_URB_ERROR:
@@ -691,7 +714,9 @@ static void jockey3_capture_callback(struct urb *urb)
 	}
 
 	/* Step 1: Safely fetch the pointer and join the safe zone */
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		if (data_valid)
 			urb_stream->consec_errors = 0;
 
@@ -702,6 +727,7 @@ static void jockey3_capture_callback(struct urb *urb)
 			period_elapsed = jockey3_process_in_packet(chip, urb->transfer_buffer);
 			substream = urb_stream->substream;
 		}
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 
 	/*
@@ -715,7 +741,9 @@ static void jockey3_capture_callback(struct urb *urb)
 		snd_pcm_period_elapsed(substream);
 
 	ret = 0;
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		/* Leave the safe zone; last one out wakes any waiter */
 		if (active && !--urb_stream->callbacks_active)
 			wake_up(&urb_stream->drain_wait);
@@ -735,6 +763,7 @@ static void jockey3_capture_callback(struct urb *urb)
 				usb_unanchor_urb(urb);
 			}
 		}
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 	if (ret < 0)
 		dev_err(&chip->intf0->dev, "Failed to resubmit capture URB: %d\n", ret);
@@ -766,7 +795,9 @@ static u8 jockey3_get_next_midi_out_byte(struct jockey3_chip *chip)
 {
 	u8 b;
 
-	guard(spinlock_irqsave)(&chip->midi_lock);
+	unsigned long flags;
+	spin_lock_irqsave(&chip->midi_lock, flags);
+	spin_unlock_irqrestore(&chip->midi_lock, flags);
 
 	/*
 	 * Rate limit MIDI to ~3125 bytes/sec. Sending at higher rates causes buffer
@@ -834,8 +865,12 @@ static void jockey3_playback_callback(struct urb *urb)
 
 	switch (jockey3_urb_check(urb)) {
 	case JOCKEY3_URB_STOPPED:
-		scoped_guard(spinlock_irqsave, &urb_stream->lock)
+		{
+			unsigned long _flags;
+			spin_lock_irqsave(&urb_stream->lock, _flags);
 			stopping = urb_stream->stopping;
+			spin_unlock_irqrestore(&urb_stream->lock, _flags);
+		}
 		jockey3_warn_unexpected_stop(chip, stopping, urb->status, "Playback");
 		return;
 	case JOCKEY3_URB_ERROR:
@@ -851,7 +886,9 @@ static void jockey3_playback_callback(struct urb *urb)
 		return;
 
 	/* Step 1: Safely fetch the pointer and join the safe zone */
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		if (data_valid)
 			urb_stream->consec_errors = 0;
 
@@ -864,6 +901,7 @@ static void jockey3_playback_callback(struct urb *urb)
 		} else {
 			jockey3_silence_out_packet(buf);
 		}
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 
 	/* The outgoing MIDI data is encapsulated in the playback stream */
@@ -885,7 +923,9 @@ static void jockey3_playback_callback(struct urb *urb)
 		snd_pcm_period_elapsed(substream);
 
 	ret = 0;
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		/* Leave the safe zone; last one out wakes any waiter */
 		if (active && !--urb_stream->callbacks_active)
 			wake_up(&urb_stream->drain_wait);
@@ -905,6 +945,7 @@ static void jockey3_playback_callback(struct urb *urb)
 				usb_unanchor_urb(urb);
 			}
 		}
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 	if (ret < 0)
 		dev_err(&chip->intf0->dev, "Failed to resubmit playback URB: %d\n", ret);
@@ -920,13 +961,21 @@ static void jockey3_midi_in_callback(struct urb *urb)
 
 	switch (jockey3_urb_check(urb)) {
 	case JOCKEY3_URB_STOPPED:
-		scoped_guard(spinlock_irqsave, &chip->midi_lock)
+		{
+			unsigned long _flags;
+			spin_lock_irqsave(&chip->midi_lock, _flags);
 			stopping = chip->midi_stopping;
+			spin_unlock_irqrestore(&chip->midi_lock, _flags);
+		}
 		jockey3_warn_unexpected_stop(chip, stopping, urb->status, "MIDI IN");
 		return;
 	case JOCKEY3_URB_ERROR:
-		scoped_guard(spinlock_irqsave, &chip->midi_lock)
+		{
+			unsigned long _flags;
+			spin_lock_irqsave(&chip->midi_lock, _flags);
 			errors = ++chip->midi_consec_errors;
+			spin_unlock_irqrestore(&chip->midi_lock, _flags);
+		}
 
 		/* Already given up; see jockey3_urb_error_give_up() */
 		if (errors > JOCKEY3_MAX_URB_ERRORS)
@@ -944,8 +993,12 @@ static void jockey3_midi_in_callback(struct urb *urb)
 		urb->actual_length = 0;
 		break;
 	case JOCKEY3_URB_OK:
-		scoped_guard(spinlock_irqsave, &chip->midi_lock)
+		{
+			unsigned long _flags;
+			spin_lock_irqsave(&chip->midi_lock, _flags);
 			chip->midi_consec_errors = 0;
+			spin_unlock_irqrestore(&chip->midi_lock, _flags);
+		}
 		break;
 	}
 
@@ -968,7 +1021,9 @@ static void jockey3_midi_in_callback(struct urb *urb)
 			buf[n++] = buf[i];
 
 	ret = 0;
-	scoped_guard(spinlock_irqsave, &chip->midi_lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->midi_lock, _flags);
 		/*
 		 * Deliver under midi_lock so the substream cannot be cleared by
 		 * jockey3_midi_in_close() while we are dereferencing it.
@@ -978,6 +1033,7 @@ static void jockey3_midi_in_callback(struct urb *urb)
 
 		if (!chip->midi_stopping && !jockey3_is_disconnected(chip))
 			ret = usb_submit_urb(urb, GFP_ATOMIC);
+		spin_unlock_irqrestore(&chip->midi_lock, _flags);
 	}
 	if (ret < 0)
 		dev_err(&chip->intf0->dev, "Failed to resubmit MIDI IN URB: %d\n", ret);
@@ -1021,11 +1077,14 @@ static void jockey3_watchdog_clear_stall(struct jockey3_chip *chip,
 	u64 outage_ns = 0;
 	bool reported;
 
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		reported = urb_stream->stall_reported;
 		if (reported)
 			outage_ns = ktime_get_mono_fast_ns() - urb_stream->stall_since;
 		urb_stream->stall_reported = false;
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 
 	if (reported)
@@ -1077,12 +1136,24 @@ static void jockey3_stop_urbs(struct jockey3_chip *chip)
 	 * stream lock; 'stopping' being set by the time it gets there is the only
 	 * thing that stops it reporting a stall for a stream we stopped on purpose.
 	 */
-	scoped_guard(spinlock_irqsave, &chip->playback.lock)
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->playback.lock, _flags);
 		chip->playback.stopping = true;
-	scoped_guard(spinlock_irqsave, &chip->capture.lock)
+		spin_unlock_irqrestore(&chip->playback.lock, _flags);
+	}
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->capture.lock, _flags);
 		chip->capture.stopping = true;
-	scoped_guard(spinlock_irqsave, &chip->midi_lock)
+		spin_unlock_irqrestore(&chip->capture.lock, _flags);
+	}
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->midi_lock, _flags);
 		chip->midi_stopping = true;
+		spin_unlock_irqrestore(&chip->midi_lock, _flags);
+	}
 
 	/*
 	 * usb_kill_urb()/usb_kill_anchored_urbs() do not return until the
@@ -1148,17 +1219,26 @@ static int jockey3_start_urbs(struct jockey3_chip *chip)
 	 * after a restart would immediately exceed the stale count and give up
 	 * again with no retries.
 	 */
-	scoped_guard(spinlock_irqsave, &chip->playback.lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->playback.lock, _flags);
 		chip->playback.stopping = false;
 		chip->playback.consec_errors = 0;
+		spin_unlock_irqrestore(&chip->playback.lock, _flags);
 	}
-	scoped_guard(spinlock_irqsave, &chip->capture.lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->capture.lock, _flags);
 		chip->capture.stopping = false;
 		chip->capture.consec_errors = 0;
+		spin_unlock_irqrestore(&chip->capture.lock, _flags);
 	}
-	scoped_guard(spinlock_irqsave, &chip->midi_lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&chip->midi_lock, _flags);
 		chip->midi_stopping = false;
 		chip->midi_consec_errors = 0;
+		spin_unlock_irqrestore(&chip->midi_lock, _flags);
 	}
 
 	/* Report and clear any stall this restart is about to end */
@@ -1334,8 +1414,11 @@ static bool jockey3_stream_is_open(struct jockey3_chip *chip, const int directio
 	struct jockey3_pcm_urb_stream *urb_stream = jockey3_get_pcm_urb_stream(chip, direction);
 	bool open;
 
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		open = urb_stream->substream;
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 	return open;
 }
@@ -1406,13 +1489,16 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 
 	age_ns = now - last;
 
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		/*
 		 * One flag covers every deliberate stop -- rate change, suspend,
 		 * pre_reset and teardown all reach jockey3_stop_urbs().
 		 */
 		if (urb_stream->stopping) {
 			urb_stream->stall_reported = false;
+			spin_unlock_irqrestore(&urb_stream->lock, _flags);
 			return;
 		}
 
@@ -1440,6 +1526,7 @@ static void jockey3_watchdog_check(struct jockey3_chip *chip, const int directio
 			outage_ns = last - urb_stream->stall_since;
 			log_recovery = true;
 		}
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 
 	if (log_onset)
@@ -1568,11 +1655,13 @@ static int jockey3_recover_capture_stream(struct jockey3_chip *chip)
 	if (jockey3_is_disconnected(chip))
 		return -ENODEV;
 
-	scoped_guard(mutex, &chip->rate_mutex) {
+	{
+		mutex_lock(&chip->rate_mutex);
 		dev_warn(&chip->intf0->dev, "Restarting URBs to recover stalled Capture stream\n");
 		jockey3_stop_urbs(chip);
 		jockey3_start_urbs_failed(chip, jockey3_start_urbs(chip),
 					  "restarting URBs to recover Capture");
+		mutex_unlock(&chip->rate_mutex);
 	}
 
 	if (jockey3_wait_urb_stream_started(chip, SNDRV_PCM_STREAM_CAPTURE, 50))
@@ -1674,8 +1763,10 @@ static int jockey3_pcm_open(struct snd_pcm_substream *substream)
 	 * the check above raced with anything that happened while we were not
 	 * holding the mutex.
 	 */
-	scoped_guard(mutex, &chip->rate_mutex) {
+	{
+		mutex_lock(&chip->rate_mutex);
 		if (jockey3_is_disconnected(chip))
+			mutex_unlock(&chip->rate_mutex);
 			return -ENODEV;
 
 		if (jockey3_active_streams(chip) > 0) {
@@ -1684,13 +1775,18 @@ static int jockey3_pcm_open(struct snd_pcm_substream *substream)
 							   SNDRV_PCM_HW_PARAM_RATE,
 							   chip->current_rate);
 			if (ret < 0)
+				mutex_unlock(&chip->rate_mutex);
 				return ret;
 		}
+		mutex_unlock(&chip->rate_mutex);
 	}
 
 	/* Substream registration under spinlock to ensure memory consistency to the ISR*/
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		urb_stream->substream = substream;
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 
 	return 0;
@@ -1709,9 +1805,12 @@ static int jockey3_pcm_close(struct snd_pcm_substream *substream)
 	 * snd_pcm_release_substream() -> snd_pcm_drop() -> do_hw_free(), which is
 	 * also where runtime->dma_area is released.
 	 */
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		urb_stream->substream = NULL;
 		urb_stream->running = false;
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 
 	return 0;
@@ -1777,8 +1876,10 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 	 * sequence -- so the liveness below is sampled from a settled state
 	 * rather than from the middle of a URB restart.
 	 */
-	scoped_guard(mutex, &chip->rate_mutex) {
+	{
+		mutex_lock(&chip->rate_mutex);
 		if (jockey3_is_disconnected(chip))
+			mutex_unlock(&chip->rate_mutex);
 			return -ENODEV;
 
 		/*
@@ -1795,6 +1896,7 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 		 * it flags is confirmed below before anything is done about it.
 		 */
 		stalled = !jockey3_check_urb_stream_alive(urb_stream);
+		mutex_unlock(&chip->rate_mutex);
 	}
 
 	/*
@@ -1828,9 +1930,12 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 		}
 	}
 
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		urb_stream->dma_off = 0;
 		urb_stream->period_off = 0;
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 	return 0;
 }
@@ -1860,7 +1965,9 @@ static int jockey3_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	if (jockey3_is_disconnected(chip))
 		return -ENODEV;
 
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		switch (cmd) {
 		case SNDRV_PCM_TRIGGER_START:
 			urb_stream->running = true;
@@ -1870,8 +1977,10 @@ static int jockey3_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 			urb_stream->running = false;
 			break;
 		default:
+			spin_unlock_irqrestore(&urb_stream->lock, _flags);
 			return -EINVAL;
 		}
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 	return 0;
 }
@@ -1883,8 +1992,11 @@ static snd_pcm_uframes_t jockey3_pcm_pointer(struct snd_pcm_substream *substream
 		jockey3_get_pcm_urb_stream(chip, substream->stream);
 	unsigned int dma_off;
 
-	scoped_guard(spinlock_irqsave, &urb_stream->lock) {
+	{
+		unsigned long _flags;
+		spin_lock_irqsave(&urb_stream->lock, _flags);
 		dma_off = urb_stream->dma_off;
+		spin_unlock_irqrestore(&urb_stream->lock, _flags);
 	}
 	return bytes_to_frames(substream->runtime, dma_off);
 }
@@ -1945,13 +2057,16 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 	 * is what excludes a concurrent rate change from another substream: any
 	 * other sleepable path that needs a settled rate takes the same mutex.
 	 */
-	scoped_guard(mutex, &chip->rate_mutex) {
+	{
+		mutex_lock(&chip->rate_mutex);
 		if (jockey3_is_disconnected(chip))
+			mutex_unlock(&chip->rate_mutex);
 			return -ENODEV;
 
 		if (chip->current_rate == rate) {
 			dev_dbg(&chip->intf0->dev, "Rate already set to %u, skipping change\n",
 				rate);
+			mutex_unlock(&chip->rate_mutex);
 			return 0;
 		}
 
@@ -1962,6 +2077,7 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 		 */
 		if (jockey3_active_streams(chip) > 1) {
 			dev_err(&chip->intf0->dev, "Cannot change rate while other stream is active\n");
+			mutex_unlock(&chip->rate_mutex);
 			return -EBUSY;
 		}
 
@@ -1978,12 +2094,14 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 			 */
 			jockey3_start_urbs_failed(chip, jockey3_start_urbs(chip),
 						  "a failed rate change");
+			mutex_unlock(&chip->rate_mutex);
 			return ret;
 		}
 
 		jockey3_set_current_rate(chip, rate);
 
 		jockey3_start_urbs_failed(chip, jockey3_start_urbs(chip), "a rate change");
+		mutex_unlock(&chip->rate_mutex);
 	}
 
 	/*
@@ -2040,7 +2158,9 @@ static const struct snd_pcm_ops jockey3_pcm_ops = {
 	.hw_params = jockey3_pcm_hw_params,
 	.prepare = jockey3_pcm_prepare,
 	.trigger = jockey3_pcm_trigger,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16, 0)
 	.sync_stop = jockey3_pcm_sync_stop,
+#endif
 	.pointer = jockey3_pcm_pointer,
 };
 
@@ -2063,7 +2183,9 @@ static int jockey3_midi_in_close(struct snd_rawmidi_substream *substream)
 {
 	struct jockey3_chip *chip = substream->rmidi->private_data;
 
-	guard(spinlock_irqsave)(&chip->midi_lock);
+	unsigned long flags;
+	spin_lock_irqsave(&chip->midi_lock, flags);
+	spin_unlock_irqrestore(&chip->midi_lock, flags);
 	if (chip->midi_in_substream == substream)
 		chip->midi_in_substream = NULL;
 
@@ -2074,7 +2196,9 @@ static void jockey3_midi_in_trigger(struct snd_rawmidi_substream *substream, int
 {
 	struct jockey3_chip *chip = substream->rmidi->private_data;
 
-	guard(spinlock_irqsave)(&chip->midi_lock);
+	unsigned long flags;
+	spin_lock_irqsave(&chip->midi_lock, flags);
+	spin_unlock_irqrestore(&chip->midi_lock, flags);
 	chip->midi_in_substream = up ? substream : NULL;
 }
 
@@ -2092,7 +2216,9 @@ static int jockey3_midi_out_close(struct snd_rawmidi_substream *substream)
 {
 	struct jockey3_chip *chip = substream->rmidi->private_data;
 
-	guard(spinlock_irqsave)(&chip->midi_lock);
+	unsigned long flags;
+	spin_lock_irqsave(&chip->midi_lock, flags);
+	spin_unlock_irqrestore(&chip->midi_lock, flags);
 	if (chip->midi_out_substream == substream)
 		chip->midi_out_substream = NULL;
 
@@ -2103,7 +2229,9 @@ static void jockey3_midi_out_trigger(struct snd_rawmidi_substream *substream, in
 {
 	struct jockey3_chip *chip = substream->rmidi->private_data;
 
-	guard(spinlock_irqsave)(&chip->midi_lock);
+	unsigned long flags;
+	spin_lock_irqsave(&chip->midi_lock, flags);
+	spin_unlock_irqrestore(&chip->midi_lock, flags);
 	chip->midi_out_substream = up ? substream : NULL;
 }
 
@@ -2124,7 +2252,8 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 	int ret;
 	int rate;
 
-	for (int retry = 10; retry > 0; retry--) {
+	int retry;
+	for (retry = 10; retry > 0; retry--) {
 		ret = jockey3_initialize_ploytec(chip);
 		if (ret == 0)
 			break;
@@ -2136,8 +2265,11 @@ static int jockey3_initialize(struct jockey3_chip *chip)
 	}
 
 	rate = 44100;	// default sample rate at power-on
-	scoped_guard(mutex, &chip->rate_mutex)
+	{
+		mutex_lock(&chip->rate_mutex);
 		jockey3_set_current_rate(chip, rate);
+		mutex_unlock(&chip->rate_mutex);
+	}
 
 	ret = jockey3_set_rate(chip, rate, true);
 	if (ret < 0)
@@ -2164,7 +2296,8 @@ static void jockey3_release_dev_idx(void *data)
 {
 	struct jockey3_chip *chip = data;
 
-	guard(mutex)(&jockey3_devices_mutex);
+	mutex_lock(&jockey3_devices_mutex);
+	mutex_unlock(&jockey3_devices_mutex);
 	__clear_bit(chip->dev_idx, jockey3_devices_used);
 }
 
@@ -2466,15 +2599,18 @@ static int jockey3_probe(struct usb_interface *intf, const struct usb_device_id 
 		return ret;
 
 	/* Claim the first enabled, unused card slot */
-	scoped_guard(mutex, &jockey3_devices_mutex) {
+	{
+		mutex_lock(&jockey3_devices_mutex);
 		for (dev_idx = 0; dev_idx < SNDRV_CARDS; dev_idx++)
 			if (enable[dev_idx] && !test_bit(dev_idx, jockey3_devices_used))
 				break;
 
 		if (dev_idx >= SNDRV_CARDS)
+			mutex_unlock(&jockey3_devices_mutex);
 			return -ENODEV;
 
 		__set_bit(dev_idx, jockey3_devices_used);
+		mutex_unlock(&jockey3_devices_mutex);
 	}
 
 	ret = snd_devm_card_new(&intf->dev, index[dev_idx], id[dev_idx], THIS_MODULE,
@@ -2593,8 +2729,11 @@ err_free_idx:
 	 * Only reached before the card exists; past that point the slot is
 	 * released by the jockey3_release_dev_idx() devres action.
 	 */
-	scoped_guard(mutex, &jockey3_devices_mutex)
+	{
+		mutex_lock(&jockey3_devices_mutex);
 		__clear_bit(dev_idx, jockey3_devices_used);
+		mutex_unlock(&jockey3_devices_mutex);
+	}
 	return ret;
 }
 
@@ -2671,8 +2810,11 @@ static int jockey3_pre_reset(struct usb_interface *intf)
 
 	if (chip && intf == chip->intf0) {
 		set_bit(JOCKEY3_FLAG_RESETTING, &chip->flags);
-		scoped_guard(mutex, &chip->rate_mutex)
+		{
+			mutex_lock(&chip->rate_mutex);
 			jockey3_stop_urbs(chip);
+			mutex_unlock(&chip->rate_mutex);
+		}
 	}
 	return 0;
 }
@@ -2683,7 +2825,8 @@ static int jockey3_post_reset(struct usb_interface *intf)
 	u32 hw_rate = 0;
 
 	if (chip && intf == chip->intf0) {
-		scoped_guard(mutex, &chip->rate_mutex) {
+		{
+			mutex_lock(&chip->rate_mutex);
 			jockey3_initialize_ploytec(chip);
 
 			/*
@@ -2707,6 +2850,7 @@ static int jockey3_post_reset(struct usb_interface *intf)
 
 			jockey3_start_urbs_failed(chip, jockey3_start_urbs(chip),
 						  "a device reset");
+			mutex_unlock(&chip->rate_mutex);
 		}
 
 		clear_bit(JOCKEY3_FLAG_RESETTING, &chip->flags);
@@ -2731,8 +2875,11 @@ static int jockey3_suspend(struct usb_interface *intf, pm_message_t message)
 		 * jockey3_restore_device() on the resume side -- otherwise a
 		 * suspend could land in the middle of a rate change.
 		 */
-		scoped_guard(mutex, &chip->rate_mutex)
+		{
+			mutex_lock(&chip->rate_mutex);
 			jockey3_stop_urbs(chip);
+			mutex_unlock(&chip->rate_mutex);
+		}
 	}
 	return 0;
 }
@@ -2741,17 +2888,21 @@ static int jockey3_restore_device(struct jockey3_chip *chip, bool reset)
 {
 	int ret;
 
-	guard(mutex)(&chip->rate_mutex);
+	mutex_lock(&chip->rate_mutex);
 
 	if (reset) {
 		ret = jockey3_initialize_ploytec(chip);
-		if (ret < 0)
+		if (ret < 0) {
+			mutex_unlock(&chip->rate_mutex);
 			return ret;
+		}
 	}
 
 	ret = jockey3_set_rate(chip, chip->current_rate, true);
-	if (ret < 0)
+	if (ret < 0) {
+		mutex_unlock(&chip->rate_mutex);
 		return ret;
+	}
 
 	/*
 	 * Report the failure up: the PM core logs a failed resume, and unlike the
@@ -2762,8 +2913,10 @@ static int jockey3_restore_device(struct jockey3_chip *chip, bool reset)
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Failed to start URBs while restoring device: %d\n",
 			ret);
+		mutex_unlock(&chip->rate_mutex);
 		return ret;
 	}
+	mutex_unlock(&chip->rate_mutex);
 	return 0;
 }
 
