@@ -43,6 +43,21 @@ jobs:
         run: |
           cd kernel-src
           
+          # Force -fcommon for host tools (dtc / yylloc)
+          sed -i 's/HOSTCFLAGS   :=/HOSTCFLAGS   := -fcommon /' Makefile || true
+          sed -i 's/HOSTCFLAGS   =/HOSTCFLAGS   = -fcommon /' Makefile || true
+          sed -i 's/HOSTLDFLAGS  :=/HOSTLDFLAGS  := -fcommon /' Makefile || true
+          sed -i 's/HOSTLDFLAGS  =/HOSTLDFLAGS  = -fcommon /' Makefile || true
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped 2>/dev/null || true
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.l 2>/dev/null || true
+          sed -i 's/extern extern/extern/g' scripts/dtc/* 2>/dev/null || true
+
+          # Clang bcmp and stpcpy compatibility shims
+          printf "\n#undef bcmp\nint bcmp(const void *a, const void *b, size_t len) { return memcmp(a, b, len); }\nEXPORT_SYMBOL(bcmp);\n" >> lib/string.c
+          printf "\n#undef stpcpy\nchar *stpcpy(char *dest, const char *src) { while ((*dest++ = *src++)); return dest - 1; }\nEXPORT_SYMBOL(stpcpy);\n" >> lib/string.c
+          sed -i 's/KBUILD_CFLAGS   :=/KBUILD_CFLAGS   := -fno-builtin-bcmp -fno-builtin-stpcpy /' Makefile || true
+          sed -i 's/KBUILD_CFLAGS   =/KBUILD_CFLAGS   = -fno-builtin-bcmp -fno-builtin-stpcpy /' Makefile || true
+
           export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
@@ -51,8 +66,8 @@ jobs:
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
-          make exynos8895-dreamlte_defconfig
-          make -j$(nproc)
+          make exynos8895-dreamlte_defconfig CC=clang
+          make -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
       - name: Package Boot Image with Stock Offsets & SEAndroid Signature
         run: |
