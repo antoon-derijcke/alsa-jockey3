@@ -1,4 +1,4 @@
-name: Build Galaxy S8 DJ Kernel (dreamlte)
+name: Build Galaxy S8 DJ Kernel (Official Android Toolchain)
 
 on:
   workflow_dispatch:
@@ -7,31 +7,36 @@ on:
 
 jobs:
   build-kernel:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     steps:
-      - name: Checkout Jockey 3 Driver Repo
+      - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Install Build Dependencies
+      - name: Install Build Host Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            bc bison flex libssl-dev libncurses5-dev git ccache zip mkbootimg
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev git ccache zip python3
 
-      - name: Download Proton Clang Toolchain (Android 11 / AArch64)
+      - name: Install mkbootimg & unpackbootimg
         run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang-proton
+          git clone https://github.com/osm0sis/mkbootimg.git mkbootimg-src
+          cd mkbootimg-src
+          make
+          sudo cp mkbootimg unpackbootimg /usr/local/bin/
 
-      - name: Clone Galaxy S8 Kernel Source (Lineage 18.1 / 8d79a2d9)
+      - name: Download Official Google Android Toolchains
+        run: |
+          git clone --depth=1 https://github.com/nabil2004/android_prebuilts_clang_host_linux-x86_clang-r383902.git clang
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git gcc64
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git gcc32
+
+      - name: Clone Galaxy S8 Kernel Source (universal8895)
         run: |
           git clone --depth=1 https://github.com/ivanmeler/android_kernel_samsung_universal8895.git kernel-src
 
-      - name: Inject Jockey 3 Driver into Kernel Source
+      - name: Inject Reloop Jockey 3 Driver
         run: |
-          # Copy driver files to sound/usb/
           cp jockey3.c ploytec_proto.c ploytec_codec.c ploytec_midi.c compat.h ploytec_proto.h ploytec_codec.h ploytec_midi.h kernel-src/sound/usb/
-          
-          # Link driver statically into sound/usb
           echo "obj-y += snd-reloop-jockey3.o" >> kernel-src/sound/usb/Makefile
           echo "snd-reloop-jockey3-y := jockey3.o ploytec_proto.o ploytec_codec.o ploytec_midi.o" >> kernel-src/sound/usb/Makefile
 
@@ -40,48 +45,45 @@ jobs:
           sed -i 's/EXPORT_SYMBOL_GPL(maxdsm_dsm_write);//g' kernel-src/sound/soc/samsung/abox/abox_adaptation.c 2>/dev/null || true
           sed -i 's/EXPORT_SYMBOL(check_bt_op);//g' kernel-src/drivers/bluetooth/bcm43xx.c 2>/dev/null || true
 
-      - name: Compile Kernel
+      - name: Compile Kernel with Android Toolchain
         run: |
           cd kernel-src
           
-          # Force -fcommon into root Makefile and scripts/Makefile.host for GCC 10+
-          sed -i 's/HOSTCFLAGS   :=/HOSTCFLAGS   := -fcommon /' Makefile || true
-          sed -i 's/HOSTCFLAGS   =/HOSTCFLAGS   = -fcommon /' Makefile || true
-          sed -i 's/HOSTCFLAGS :=/HOSTCFLAGS := -fcommon /' Makefile || true
-          sed -i 's/HOSTCFLAGS =/HOSTCFLAGS = -fcommon /' Makefile || true
-          sed -i 's/HOSTLDFLAGS  :=/HOSTLDFLAGS  := -fcommon /' Makefile || true
-          sed -i 's/HOSTLDFLAGS  =/HOSTLDFLAGS  = -fcommon /' Makefile || true
-          sed -i 's/HOSTLDFLAGS :=/HOSTLDFLAGS := -fcommon /' Makefile || true
-          sed -i 's/HOSTLDFLAGS =/HOSTLDFLAGS = -fcommon /' Makefile || true
-
-          # Fix duplicate yylloc in dtc-lexer for GCC 10+
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped 2>/dev/null || true
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.l 2>/dev/null || true
-          sed -i 's/extern extern/extern/g' scripts/dtc/* 2>/dev/null || true
-
-          # Fix Clang bcmp and stpcpy optimization undefined references
-          printf "\n#undef bcmp\nint bcmp(const void *a, const void *b, size_t len) { return memcmp(a, b, len); }\nEXPORT_SYMBOL(bcmp);\n" >> lib/string.c
-          printf "\n#undef stpcpy\nchar *stpcpy(char *dest, const char *src) { while ((*dest++ = *src++)); return dest - 1; }\nEXPORT_SYMBOL(stpcpy);\n" >> lib/string.c
-          sed -i 's/KBUILD_CFLAGS   :=/KBUILD_CFLAGS   := -fno-builtin-bcmp -fno-builtin-stpcpy /' Makefile || true
-          sed -i 's/KBUILD_CFLAGS   =/KBUILD_CFLAGS   = -fno-builtin-bcmp -fno-builtin-stpcpy /' Makefile || true
-          
-          export PATH=$GITHUB_WORKSPACE/clang-proton/bin:$PATH
+          export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
-          make exynos8895-dreamlte_defconfig CC=clang
-          make -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          make exynos8895-dreamlte_defconfig
+          make -j$(nproc)
 
-      - name: Package with AnyKernel3 (TWRP Flashable Zip)
+      - name: Package Boot Image with Stock Offsets & SEAndroid Signature
         run: |
+          # Create exact boot.img using stock offsets
+          mkbootimg \
+            --kernel kernel-src/arch/arm64/boot/Image \
+            --ramdisk stock/BOOT.img-ramdisk \
+            --dt stock/BOOT.img-dt \
+            --cmdline "buildvariant=userdebug" \
+            --base 0x10000000 \
+            --pagesize 2048 \
+            --kernel_offset 0x00008000 \
+            --ramdisk_offset 0x01000000 \
+            --second_offset 0x00f00000 \
+            --tags_offset 0x00000100 \
+            --os_version 11.0.0 \
+            --os_patch_level 2025-06 \
+            --output S8-DJ-boot.img
+
+          # Append Samsung SEAndroid Signature
+          printf "SEANDROIDENFORCE\xff\xff\xff\xff" >> S8-DJ-boot.img
+
+          # Package TWRP flashable zip with AnyKernel3
           git clone https://github.com/osm0sis/AnyKernel3.git anykernel
           cd anykernel
-          
-          # Configure AnyKernel3 for Galaxy S8 (dreamlte / universal8895)
           sed -i 's/device.name1=.*/device.name1=dreamlte/' anykernel.sh
           sed -i 's/device.name2=.*/device.name2=dream2lte/' anykernel.sh
           sed -i 's/device.name3=.*/device.name3=SM-G950F/' anykernel.sh
@@ -90,15 +92,15 @@ jobs:
           sed -i 's/IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=0;/' anykernel.sh
           sed -i 's/RAMDISK_COMPRESSION=.*/RAMDISK_COMPRESSION=auto;/' anykernel.sh
           
-          # Copy compiled Image and build combined DTB
           cp ../kernel-src/arch/arm64/boot/Image Image
-          cat ../kernel-src/arch/arm64/boot/dts/exynos/exynos8895-dreamlte*.dtb > dtb 2>/dev/null || true
-          
-          # Create flashable zip
-          zip -r9 ../S8-DJ-Kernel-dreamlte-AnyKernel3.zip * -x .git README.md *placeholder
+          cp ../stock/BOOT.img-dt dtb
+          zip -r9 ../S8-DJ-Kernel-Official-TWRP.zip * -x .git README.md *placeholder
+          cd ..
 
-      - name: Upload Flashable AnyKernel3 Zip
+      - name: Upload Boot Image & TWRP Package
         uses: actions/upload-artifact@v4
         with:
-          name: S8-DJ-Kernel-dreamlte-AnyKernel3
-          path: S8-DJ-Kernel-dreamlte-AnyKernel3.zip
+          name: S8-DJ-Kernel-Official
+          path: |
+            S8-DJ-boot.img
+            S8-DJ-Kernel-Official-TWRP.zip
