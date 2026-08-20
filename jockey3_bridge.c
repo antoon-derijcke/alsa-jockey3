@@ -29,7 +29,7 @@
 #define SAMPLES_PER_PACKET 10
 #define NUM_CHANNELS 4
 
-#define FIFO_PATH "/tmp/jockey3_pcm"
+#define FIFO_PATH "/data/local/tmp/jockey3_pcm"
 
 static int usb_fd = -1;
 static int fifo_fd = -1;
@@ -163,21 +163,22 @@ static int ploytec_init(int fd)
         printf("[Jockey 3 Bridge] Firmware Version: %02x.%02x.%02x\n", fw_buf[0], fw_buf[1], fw_buf[2]);
     }
 
-    /* Set Sample Rate 44100 Hz */
-    uint8_t rate_44k[3] = {0x44, 0xac, 0x00};
-    usb_ctrl_msg(fd, 0x40, 0x01, 0, 0, rate_44k, 3);
+    /* Set Sample Rate 44100 Hz (wValue = 44100 & 0xffff, wIndex = 44100 >> 16) */
+    uint32_t rate = 44100;
+    ret = usb_ctrl_msg(fd, 0x40, 0x01, (uint16_t)(rate & 0xffff), (uint16_t)(rate >> 16), NULL, 0);
+    if (ret < 0) {
+        perror("Set sample rate failed");
+    }
 
     /* Read status and enable audio streaming bit */
     uint8_t status_buf[2] = {0};
     ret = usb_ctrl_msg(fd, 0xc0, 0x49, 0, 0, status_buf, 2);
-    uint8_t stream_mode = (ret >= 0) ? (status_buf[0] | 0x20) : 0x20;
+    uint16_t stream_mode = (ret >= 0) ? (status_buf[0] | 0x20) : 0x20;
 
     ret = usb_ctrl_msg(fd, 0x40, 0x48, stream_mode, 0, NULL, 0);
-    if (ret < 0) {
-        perror("Failed to start streaming request 0x48");
+    if (ret >= 0) {
+        printf("[Jockey 3 Bridge] Ploytec hardware initialized and streaming enabled! 🎧\n");
     }
-
-    printf("[Jockey 3 Bridge] Ploytec hardware initialized and streaming enabled! 🎧\n");
     return 0;
 }
 
