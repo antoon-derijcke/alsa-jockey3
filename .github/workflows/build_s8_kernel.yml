@@ -34,9 +34,9 @@ jobs:
             sudo ln -sf "$f" "/usr/local/bin/$(basename "$f" | sed 's/arm-linux-gnueabi-/arm-linux-androideabi-/')"
           done
 
-      - name: Clone Galaxy S8 Kernel Source (universal8895)
+      - name: Clone Galaxy S8 Kernel Source (universal8895 lineage-18.1)
         run: |
-          git clone --depth=1 https://github.com/ivanmeler/android_kernel_samsung_universal8895.git kernel-src
+          git clone --depth=1 -b lineage-18.1 https://github.com/exynos8895/android_kernel_samsung_universal8895.git kernel-src
 
       - name: Inject Reloop Jockey 3 Driver
         run: |

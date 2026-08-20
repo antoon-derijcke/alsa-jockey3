@@ -33,7 +33,7 @@ def main():
         len(d),
         0x16000196,
         b"",
-        b"buildvariant=userdebug",
+        b"buildvariant=userdebug androidboot.selinux=permissive",
         b"",
         b""
     )
