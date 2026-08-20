@@ -32,33 +32,18 @@ jobs:
           # Copy driver files to sound/usb/
           cp jockey3.c ploytec_proto.c ploytec_codec.c ploytec_midi.c compat.h ploytec_proto.h ploytec_codec.h ploytec_midi.h kernel-src/sound/usb/
           
-          # Add to sound/usb/Makefile
-          echo "obj-\$(CONFIG_SND_USB_JOCKEY3) += snd-reloop-jockey3.o" >> kernel-src/sound/usb/Makefile
+          # Link driver statically into sound/usb
+          echo "obj-y += snd-reloop-jockey3.o" >> kernel-src/sound/usb/Makefile
           echo "snd-reloop-jockey3-y := jockey3.o ploytec_proto.o ploytec_codec.o ploytec_midi.o" >> kernel-src/sound/usb/Makefile
-          
-          # Add to sound/usb/Kconfig
-          sed -i '/endmenu/i \
-          config SND_USB_JOCKEY3\
-          \ttristate "Reloop Jockey 3 Master Edition USB Audio/MIDI"\
-          \tdepends on SND_USB\
-          \tselect SND_PCM\
-          \tselect SND_RAWMIDI\
-          \tdefault y\
-          \thelp\
-          \t  Driver for Reloop Jockey 3 Master Edition DJ controllers.\
-          ' kernel-src/sound/usb/Kconfig
 
-      - name: Enable Touchscreen and Modules in Defconfig
+          # Fix Samsung vendor unused EXPORT_SYMBOL declarations
+          sed -i 's/EXPORT_SYMBOL_GPL(maxdsm_dsm_read);//g' kernel-src/sound/soc/samsung/abox/abox_adaptation.c 2>/dev/null || true
+          sed -i 's/EXPORT_SYMBOL_GPL(maxdsm_dsm_write);//g' kernel-src/sound/soc/samsung/abox/abox_adaptation.c 2>/dev/null || true
+          sed -i 's/EXPORT_SYMBOL(check_bt_op);//g' kernel-src/drivers/bluetooth/bcm43xx.c 2>/dev/null || true
+
+      - name: Enable Touchscreen in Defconfig
         run: |
           DEFCONFIG=kernel-src/arch/arm64/configs/exynos8895-dreamlte_defconfig
-          
-          # Enable loadable modules
-          sed -i 's/# CONFIG_MODULES is not set/CONFIG_MODULES=y\nCONFIG_MODULE_UNLOAD=y/' $DEFCONFIG || true
-          echo "CONFIG_MODULES=y" >> $DEFCONFIG
-          echo "CONFIG_MODULE_UNLOAD=y" >> $DEFCONFIG
-          
-          # Enable Jockey 3 driver
-          echo "CONFIG_SND_USB_JOCKEY3=y" >> $DEFCONFIG
           
           # Enable missing Touchscreen drivers
           echo "CONFIG_TOUCHSCREEN_SEC_TS_Y661=y" >> $DEFCONFIG
