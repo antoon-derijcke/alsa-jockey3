@@ -1364,7 +1364,7 @@ static int jockey3_set_rate(struct jockey3_chip *chip, unsigned int rate, bool c
 
 	dev_dbg(&chip->intf0->dev, "Setting rate to %u Hz\n", rate);
 
-	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, !cold_init);
+	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, !cold_init, NULL);
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Failed to initialize device to change rate: %d\n",
 			ret);
@@ -1765,18 +1765,20 @@ static int jockey3_pcm_open(struct snd_pcm_substream *substream)
 	 */
 	{
 		mutex_lock(&chip->rate_mutex);
-		if (jockey3_is_disconnected(chip))
+		if (jockey3_is_disconnected(chip)) {
 			mutex_unlock(&chip->rate_mutex);
 			return -ENODEV;
+		}
 
 		if (jockey3_active_streams(chip) > 0) {
 			/* Force the new stream to match the existing hardware rate */
 			ret = snd_pcm_hw_constraint_single(runtime,
 							   SNDRV_PCM_HW_PARAM_RATE,
 							   chip->current_rate);
-			if (ret < 0)
+			if (ret < 0) {
 				mutex_unlock(&chip->rate_mutex);
 				return ret;
+			}
 		}
 		mutex_unlock(&chip->rate_mutex);
 	}
@@ -1878,9 +1880,10 @@ static int jockey3_pcm_prepare(struct snd_pcm_substream *substream)
 	 */
 	{
 		mutex_lock(&chip->rate_mutex);
-		if (jockey3_is_disconnected(chip))
+		if (jockey3_is_disconnected(chip)) {
 			mutex_unlock(&chip->rate_mutex);
 			return -ENODEV;
+		}
 
 		/*
 		 * Either direction may have been left stalled by an earlier rate
@@ -2022,7 +2025,7 @@ static int jockey3_initialize_ploytec(struct jockey3_chip *chip)
 		break;
 	}
 
-	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, false);
+	ret = ploytec_initialize_device(chip->intf0, chip->xfer_buf, false, NULL);
 	if (ret < 0) {
 		dev_err(&chip->intf0->dev, "Ploytec failed to initialize: %d\n", ret);
 		return ret;
@@ -2059,9 +2062,10 @@ static int jockey3_pcm_hw_params(struct snd_pcm_substream *substream,
 	 */
 	{
 		mutex_lock(&chip->rate_mutex);
-		if (jockey3_is_disconnected(chip))
+		if (jockey3_is_disconnected(chip)) {
 			mutex_unlock(&chip->rate_mutex);
 			return -ENODEV;
+		}
 
 		if (chip->current_rate == rate) {
 			dev_dbg(&chip->intf0->dev, "Rate already set to %u, skipping change\n",
