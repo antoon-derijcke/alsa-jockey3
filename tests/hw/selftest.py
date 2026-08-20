@@ -1614,6 +1614,63 @@ def test_param_overrides():
         check(True, "a value with no key is rejected")
 
 
+def test_log_buf_len():
+    """The printk ring buffer check has to read the same cmdline the kernel
+    parsed, including the suffix forms memparse() accepts.
+
+    Discovered 2026-08-20: alsa-test and pi4test both wrapped their default
+    128 KiB buffer mid-run on a marker-heavy case (JT-RATE-003, 40000 markers
+    over one run) and reported 94% of markers "missing" -- indistinguishable,
+    from the run's own output, from the marker-charset-rejection failure mode
+    test_marker_labels() covers above. runner.preflight() now warns below
+    LOG_BUF_LEN_MIN so this gets caught on any machine before a run wastes
+    hours on suppressed diagnostics, not just the two it was found on.
+    """
+    print("\nprintk ring buffer size")
+    real_read = env._read
+    real_kernel_config = env.kernel_config
+    try:
+        env._read = lambda path, default="": (
+            "console=tty0 log_buf_len=4M quiet" if path == "/proc/cmdline"
+            else real_read(path, default))
+        check(env.log_buf_len() == 4 * 1024 * 1024,
+              "an M suffix on the boot param is read as mebibytes",
+              env.log_buf_len())
+
+        env._read = lambda path, default="": (
+            "log_buf_len=1048576" if path == "/proc/cmdline"
+            else real_read(path, default))
+        check(env.log_buf_len() == 1048576,
+              "a bare byte count needs no suffix", env.log_buf_len())
+
+        env._read = lambda path, default="": (
+            "log_buf_len=256K" if path == "/proc/cmdline"
+            else real_read(path, default))
+        check(env.log_buf_len() == 256 * 1024,
+              "a K suffix is read as kibibytes", env.log_buf_len())
+
+        env._read = lambda path, default="": (
+            "quiet console=tty0" if path == "/proc/cmdline"
+            else real_read(path, default))
+        env.kernel_config = lambda: {"LOG_BUF_SHIFT": "17"}
+        check(env.log_buf_len() == 1 << 17,
+              "absent the boot param, CONFIG_LOG_BUF_SHIFT is the fallback",
+              env.log_buf_len())
+
+        env.kernel_config = lambda: {}
+        check(env.log_buf_len() is None,
+              "and with neither available it says so rather than guessing")
+    finally:
+        env._read = real_read
+        env.kernel_config = real_kernel_config
+
+    sys.path.insert(0, HERE)
+    import runner
+    check(runner.LOG_BUF_LEN_MIN == 4 * 1024 * 1024,
+          "runner.preflight()'s threshold matches what tests/README.md "
+          "documents (log_buf_len=4M)", runner.LOG_BUF_LEN_MIN)
+
+
 def main():
     rules = load(os.path.join("lib", "rules.yaml"))
     catalog = load("catalog.yaml")
@@ -1642,6 +1699,7 @@ def main():
     test_rate_change_log_attribution()
     test_marker_labels()
     test_run_log_trimming()
+    test_log_buf_len()
     test_pointer_rate()
     test_param_overrides()
 

@@ -122,11 +122,22 @@ def run_log(lines, marker):
     """This run's slice of the kernel log, plus a header describing it.
 
     Returns (text, trimmed). The ring buffer on the test machines holds
-    something like eighteen hours, so an untrimmed capture is mostly earlier
-    runs. That is not merely untidy: two JT-RATE-001 runs on 2026-08-17 that
-    stalled zero times in 244 changes shipped dmesg.txt files containing 62
-    and 10 "Capture URB has stalled." lines, every one of them from a previous
-    run. Read raw, either file argues the opposite of what the run measured.
+    something like eighteen hours under ordinary logging -- but that assumes
+    log_buf_len=4M (see tests/README.md, "Test machine prerequisites"). At the
+    default 128 KiB (CONFIG_LOG_BUF_SHIFT=17) a marker-heavy case wraps the
+    buffer well before the run ends: a 20000-change JT-RATE-003 run writes
+    40000 markers, and only the last ~1050 changes were still in dmesg by the
+    time it read the log. That presented as "94% of markers missing" with
+    every per-change figure suppressed -- indistinguishable, from this file's
+    output alone, from the marker-charset-rejection failure mode LABEL_OK
+    guards against above. Undersized log_buf_len is the one to check first;
+    it explained both real occurrences of "markers missing" so far.
+
+    Short of that, an untrimmed capture is mostly earlier runs, which is not
+    merely untidy: two JT-RATE-001 runs on 2026-08-17 that stalled zero times
+    in 244 changes shipped dmesg.txt files containing 62 and 10 "Capture URB
+    has stalled." lines, every one of them from a previous run. Read raw,
+    either file argues the opposite of what the run measured.
 
     When the marker is missing the whole log is kept rather than nothing --
     too much context can be filtered down later, too little cannot be

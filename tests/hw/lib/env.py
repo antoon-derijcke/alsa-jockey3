@@ -327,6 +327,27 @@ def kernel_config():
     return cfg
 
 
+_LOG_BUF_LEN_RE = re.compile(r"\blog_buf_len=(\d+)([kKmMgG]?)\b")
+_LOG_BUF_LEN_MULT = {"": 1, "k": 1024, "m": 1024 ** 2, "g": 1024 ** 3}
+
+
+def log_buf_len():
+    """The effective printk ring buffer size in bytes, or None if it can't be
+    determined from here.
+
+    A log_buf_len= boot parameter overrides the compiled-in size and is the
+    common way to raise it without a kernel rebuild; kernel_config()'s
+    LOG_BUF_SHIFT is what applies absent that override. See
+    tests/README.md, "Test machine prerequisites", for why this matters: a
+    marker-heavy case wraps the stock 128 KiB buffer well before it finishes.
+    """
+    m = _LOG_BUF_LEN_RE.search(_read("/proc/cmdline"))
+    if m:
+        return int(m.group(1)) * _LOG_BUF_LEN_MULT[m.group(2).lower()]
+    shift = kernel_config().get("LOG_BUF_SHIFT")
+    return (1 << int(shift)) if shift and shift.isdigit() else None
+
+
 # Recorded as context for every run.
 DEBUG_OPTIONS = ["KASAN", "KASAN_GENERIC", "PROVE_LOCKING", "DEBUG_OBJECTS",
                  "SND_PCM_XRUN_DEBUG", "DEBUG_KERNEL", "LOCKDEP",

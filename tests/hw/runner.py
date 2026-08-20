@@ -141,6 +141,15 @@ BUILD_LEVELS = {"L1", "L2"}
 # manual cases, as this used to, threw all of that away.
 RUNNABLE_MODES = {"automated", "semi-automated"}
 
+# See tests/README.md, "Test machine prerequisites". Below this, a
+# marker-heavy case (JT-RATE-003: 40000 JT-MARK lines over one run) wraps the
+# printk ring buffer before the run ends, and every per-change diagnostic the
+# case reports goes missing along with the markers -- discovered on
+# 2026-08-20 when it presented as 94% of markers "rejected" on both
+# alsa-test and pi4test, neither of which had raised log_buf_len from the
+# CONFIG_LOG_BUF_SHIFT=17 (128 KiB) default.
+LOG_BUF_LEN_MIN = 4 * 1024 * 1024
+
 
 def capability_gap(case, available):
     """Which of a case's requirements this machine cannot satisfy.
@@ -584,6 +593,15 @@ def preflight(target_name, target_spec, plan, args):
                     f"-- re-run `sudo tests/hw/priv/install.sh`")
         if card is None:
             problems.append("no Jockey 3 card found in /proc/asound")
+        buf = env.log_buf_len()
+        if buf is not None and buf < LOG_BUF_LEN_MIN:
+            problems.append(
+                f"printk ring buffer is {buf // 1024}K, below the {LOG_BUF_LEN_MIN // (1024 * 1024)}M "
+                f"a marker-heavy case needs -- kernel-log markers will be "
+                f"silently lost mid-run and per-change diagnostics will be "
+                f"suppressed; add log_buf_len=4M to this machine's kernel "
+                f"command line and reboot (see tests/README.md, 'Test "
+                f"machine prerequisites')")
         servers = alsa.active_sound_servers()
         if servers:
             problems.append(

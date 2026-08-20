@@ -106,6 +106,33 @@ The runner executes **on the machine with the hardware attached**, not on a
 build host. That is what lets the same suite run on a Raspberry Pi you plugged
 in five minutes ago.
 
+### Test machine prerequisites
+
+Beyond `priv/install.sh`, one boot-time setting matters and is easy to miss
+because nothing fails loudly when it is wrong — cases just run with degraded
+diagnostics.
+
+**`log_buf_len=4M` on the kernel command line.** The stock printk ring buffer
+is `CONFIG_LOG_BUF_SHIFT=17`, 128 KiB, sized for ordinary boot-to-shutdown
+logging. A marker-heavy case blows through that long before it finishes: a
+20000-change JT-RATE-003 run writes 40000 `JT-MARK` lines, and at the default
+size the buffer wraps within about the first 1050 changes, so by the time the
+case reads the log at the end only the tail survives. That showed up as "94%
+of kernel-log markers are missing" on both `alsa-test` and `pi4test` on
+2026-08-20, which suppresses every per-change figure the case reports (steady
+Hz, plateau/xrun attribution) — the run's overall pass/fail is unaffected, but
+the diagnostics needed to explain a fail are not. `4M` was sized to hold a
+full JT-RATE-003 run's markers plus ordinary driver chatter with margin; add
+it to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub` (then
+`sudo update-grub`) on Debian test hosts, or append it to
+`/boot/firmware/cmdline.txt` on a Raspberry Pi, and reboot. Verify with
+`cat /proc/cmdline | grep -o 'log_buf_len=[^ ]*'` after the reboot.
+
+This is a property of the physical test machine, not of a kernel build, so it
+is not part of any `tests/configs/*.config` and is not something
+`derive-prod.sh` touches — it has to be set once per machine and survives
+across every kernel it boots.
+
 ### Live feedback while a case runs
 
 Hardware cases are slow. `JT-AUDIO-005` takes about 125 seconds, because it
