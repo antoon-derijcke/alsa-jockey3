@@ -11,6 +11,9 @@
 #include <linux/usb.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+#include <linux/cleanup.h>
+#endif
 
 /*
  * usb_control_msg_recv and usb_control_msg_send were added in Linux 5.8.

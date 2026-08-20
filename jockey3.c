@@ -18,12 +18,11 @@
 #include <linux/mutex.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
-#include <linux/cleanup.h>
+#include "compat.h"
 #include <sound/core.h>
 #include <sound/initval.h>
 #include <sound/rawmidi.h>
 #include <sound/pcm.h>
-#include "compat.h"
 #include "ploytec_proto.h"
 #include "ploytec_codec.h"
 #include "ploytec_midi.h"
