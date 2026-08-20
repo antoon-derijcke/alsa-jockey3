@@ -60,14 +60,7 @@ jobs:
           sed -i 's/extern extern/extern/g' scripts/dtc/* 2>/dev/null || true
 
           # Fix Clang bcmp optimization undefined reference
-          cat >> lib/string.c << 'EOF'
-#undef bcmp
-int bcmp(const void *a, const void *b, size_t len)
-{
-	return memcmp(a, b, len);
-}
-EXPORT_SYMBOL(bcmp);
-EOF
+          printf "\n#undef bcmp\nint bcmp(const void *a, const void *b, size_t len) { return memcmp(a, b, len); }\nEXPORT_SYMBOL(bcmp);\n" >> lib/string.c
           sed -i 's/KBUILD_CFLAGS   :=/KBUILD_CFLAGS   := -fno-builtin-bcmp /' Makefile || true
           sed -i 's/KBUILD_CFLAGS   =/KBUILD_CFLAGS   = -fno-builtin-bcmp /' Makefile || true
           
